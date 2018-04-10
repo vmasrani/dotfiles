@@ -1,0 +1,325 @@
+#
+# Executes commands at the start of an interactive session.
+#
+# Authors:
+#   Sorin Ionescu <sorin.ionescu@gmail.com>
+#
+
+# Source Prezto.
+if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
+  source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
+fi
+
+# Customize to your needs...
+# added by miniconda2 installer 
+export PATH="$HOME/miniconda2/bin:$PATH"
+
+
+#Init fasd
+eval "$(fasd --init auto)"
+alias v='f -e vim'
+
+# Customize to your needs...
+DIRSTACKSIZE=20 
+
+# Use i to get out of vim mode (enter vimmode with C-x C-v)
+bindkey '^[' vi-cmd-mode
+
+#autoload edit-command-line                                                                                                          ⏎
+#zle -N edit-command-line
+#bindkey -M vicmd v edit-command-line
+EDITOR=vim
+VISUAL=vim
+
+#Fix illegal bytestream error
+
+#ls alias'#
+alias l='ls -FGlAhp'                        # Preferred 'ls' implementation
+alias lt='ls -qaltrh'                       # LS sorted chronologically 
+alias lf='ls -lShr'                         # LS sorted by file size
+alias lr='ls -dl .*/ */'                    # LS only directories 
+
+#cd alias'#
+alias cd..='cd ../'                         # Go back 1 directory level (for fast typers)
+alias ..='cd ../'                           # Go back 1 directory level
+alias .1='cd ../'                           # Go back 1 directory level
+alias .2='cd ../../'                        # Go back 2 directory levels
+alias .3='cd ../../../'                     # Go back 3 directory levels
+alias .4='cd ../../../../'                  # Go back 4 directory levels
+alias .5='cd ../../../../../'               # Go back 5 directory levels
+alias .6='cd ../../../../../../'            # Go back 6 directory levels
+alias .7='cd ../../../../../../../'            # Go back 6 directory levels
+cdd() { builtin cd "$@"; ll; }               # Always list directory contents upon 'cd'
+
+#tree alias's"
+alias t='tree'
+alias t2='tree -L 2'
+alias t3='tree -L 3'
+alias t4='tree -L 4'
+
+#Allow group rename
+autoload -U zmv
+alias mmv='noglob zmv -W'
+
+#Numeric sort
+setopt numeric_glob_sort
+
+#Preferred implementations
+alias mv='mv -iv'                           # Preferred 'mv' implementation
+alias mkdir='mkdir -pv'                     # Preferred 'mkdir' implementation
+alias ll='ls -FGlAhp'                       # Preferred 'ls' implementation
+alias less='less -FSRXc'                    # Preferred 'less' implementation
+alias edit='subl'                           # edit:         Opens any file in sublime editor
+alias rm='rm -v'                            # Show what has been removed
+alias cp='cp -v'                            # Show what has been copied
+alias fd='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
+alias s='subl .'                            # s:            Open current directory in sublime text
+alias ~="cd ~"                              # ~:            Go Home
+alias h="history"                           # h:            History
+alias path='echo -e ${PATH//:/\\n}'         # path:         Echo all executable Paths
+alias show_options='shopt'                  # Show_options: display bash options settings
+alias fix_stty='stty sane'                  # fix_stty:     Restore terminal settings when screwed up
+alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
+alias octave='octave -q'                    # suppress startup message
+alias du='du -sh'                           # Show usage in human readable format and sum content of subdirectories 
+
+alias matlab='matlab -nosplash'             # Hide splash screen by default
+alias mshell='matlab -nodisplay'            # No gui
+alias mrun='matlab -nodesktop -nosplash -r' # Run script
+# alias python='ipython'                      # Always use ipython
+alias rstud='open -a Rstudio .'             # Open R studio
+
+
+#ssh aliases
+alias ubc='ssh -Y vadmas@people.cs.ubc.ca'
+alias newcastle='ssh -Y vadmas@newcastle.cs.ubc.ca'
+pullubc (){
+    if [ "$1" = "-r" ]; then
+     scp -r vadmas@people.cs.ubc.ca:$2 $3;
+    else
+     scp vadmas@people.cs.ubc.ca:$1 $2;
+    fi
+}
+
+pushubc (){
+  if [ "$1" = "-r" ]; then
+    scp -r $2 vadmas@people.cs.ubc.ca:/ubc/cs/home/v/vadmas/scp;
+    else
+    scp $1 vadmas@people.cs.ubc.ca:/ubc/cs/home/v/vadmas/scp;
+    fi
+}
+
+#Function that pronounces words - calls the "pronounce" script in ~/bin
+alias say='pronounce'
+
+mk () { mkdir -p "$1" && cd "$1"; }         # mk:          Makes new Dir and jumps inside
+trash () { command mv "$@" ~/.Trash ; }     # trash:        Moves a file to the MacOS trash
+ql () { qlmanage -p "$*" >& /dev/null; }    # ql:           Opens any file in MacOS Quicklook Preview
+alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
+alias zshrc='vim ~/.zshrc'
+
+
+
+#   ---------------------------
+#   4.  SEARCHING
+#   ---------------------------
+
+alias qfind="find . -iname "                 # qfind:    Quickly search for file
+ff () { /usr/bin/find . -iname "$@" ; }      # ff:       Find file under the current directory
+ffs () { /usr/bin/find . -iname "$@"'*' ; }  # ffs:      Find file whose name starts with a given string
+ffe () { /usr/bin/find . -iname '*'"$@" ; }  # ffe:      Find file whose name ends with a given string
+
+
+# #   extract:  Extract most know archives with one command
+# #   ---------------------------------------------------------
+    extract () {
+        if [ -f $1 ] ; then
+            case $1 in
+                *.tar.bz2)   tar xjf $1     ;;
+        *.tar.gz)    tar xzf $1     ;;
+        *.bz2)       bunzip2 $1     ;;
+        *.rar)       unrar e $1     ;;
+        *.gz)        gunzip $1      ;;
+        *.tar)       tar xf $1      ;;
+        *.tbz2)      tar xjf $1     ;;
+        *.tgz)       tar xzf $1     ;;
+        *.zip)       unzip $1       ;;
+        *.Z)         uncompress $1  ;;
+        *.7z)        7z x $1        ;;
+        *)     echo "'$1' cannot be extracted via extract()" ;;
+        esac
+        else
+            echo "'$1' is not a valid file"
+                fi
+    }
+
+#In order to paste commands that start with a '$'
+function $ { "$@"  }
+
+#function dict {open dict:://$1}
+
+#   spotlight: Search for a file using MacOS Spotlight's metadata
+#   -----------------------------------------------------------
+    spotlight () { mdfind "kMDItemDisplayName == '$@'wc"; }
+
+#youtube audio downloader
+
+function youtube {
+if [ "$1" = "-d" ]; then
+   cd ~/Downloads/youtube
+else
+   youtube-dl  --extract-audio --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" $1
+fi
+}
+
+function youtube_pl {
+youtube-dl --extract-audio --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" --playlist-start $2 $1;
+}
+
+function getlec {
+  dir="/Users/vmasrani/Dropbox/lectures";
+  title=$(youtube-dl -e $1)
+  youtube-dl --extract-audio --audio-format mp3 -o "$dir/%(title)s.%(ext)s" $1 && id3tag --artist=Lectures --album=Lectures $dir/$title.mp3;
+}
+
+function sound {
+scdl -l $1
+}
+
+function getzip {
+curl $1 > package.zip;
+extract package.zip;
+rm package.zip;
+}
+
+#Append to end of file. Made function because one arrow (>) clears file which is dangerous 
+function append(){echo $1  >> $2 }
+
+
+#Send attachment without message or subject
+#send file.pdf vadmas@gmail.com
+function send(){echo "" | mutt -s "Attachment" $2 -a $1}
+
+#mysql
+alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start' 
+alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop' 
+alias mysql_shell='mysql -u root -p -h localhost'
+#So mysql can communicate with python 
+export DYLD_LIBRARY_PATH=/usr/local/mysql/lib/
+
+# Fix python bytecode
+export PYTHONDONTWRITEBYTECODE=1
+
+
+#Make dir and move files to it
+#Eg: mvdir songs *mp3
+function mvdir(){
+
+DIRECTORY=$1
+mkdir $DIRECTORY
+shift
+for file in "$@"
+do
+  mv "$file" $DIRECTORY
+done
+}
+
+#Ruby
+export RBENV_ROOT=/usr/local/var/rbenv
+if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
+
+#git
+#Get only tarball with no git repo info
+function targit(){
+curl -L $(sed 's%\.git%\/tarball\/master%' <<<"$1") | tar zx
+}
+#fzf
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+#command line dictionary
+alias def='sdcv'
+
+#compile and open latex
+function pt(){
+pdflatex $1.tex && open $1.pdf
+}
+
+### LESS Syntax Highlight ###
+## Enable syntax-highlighting in less.
+## brew install source-highlight
+## First, add these two lines to ~/.bashrc
+export LESSOPEN="| /usr/local/bin/src-hilite-lesspipe.sh %s"
+export LESS=" -R "
+alias less='less -M -X -g -i -J --underline-special --SILENT'
+#alias cat="highlight $1 --out-format xterm256 --quiet --force --style solarized-dark"
+#alias ccat="highlight $1 --out-format xterm256 --line-numbers --quiet --force --style solarized-dark"
+
+#Basic Commandline calcultor
+ = (){
+calc="${@//p/+}"
+calc="${calc//x/*}"
+echo "$(($calc))"
+}
+
+# Google search from command line
+function sch() { open /Applications/Google\ Chrome.app/ "http://www.google.com/search?q= $*"\ }
+
+# Make new bash script
+function bscript() {echo '#!/bin/bash' > $1.sh && chmod u+x $1.sh && vim $1.sh}
+
+# Substitue string into previous command 
+function re(){
+  prev_command=${${(z)$(fc -l -1)}[2]};
+  if [ "$prev_command" = "re" ]; then 
+    echo "re called twice"
+  else
+    prev=${${(z)$(fc -l -1):1}}
+    eval "next=\${prev:s/$1/$2}"
+    echo "$next" && eval "$next"
+  fi;
+}
+
+# Substitue string into previous command (global) 
+function gre() {
+  prev_command=${${(z)$(fc -l -1)}[2]};
+  if [ "$prev_command" = "gre" ]; then 
+    echo "re called twice"
+  else
+    prev=${${(z)$(fc -l -1):1}}
+    eval "next=\${prev:gs/$1/$2}"
+    echo "$next" && eval "$next"
+  fi;
+
+}
+
+
+
+test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
+
+# Start tmux automatically
+#if [[ ! $TERM =~ screen ]]; then
+#      exec tmux
+#fi
+
+# sublime text fix
+alias subl='open -a "/Applications/Sublime Text.app"'
+
+# define function that retrieves and runs last command
+function run-again {
+    # get previous history item
+    zle up-history
+    # confirm command
+    zle accept-line
+}
+
+# define run-again widget from function of the same name
+zle -N run-again
+
+# bind widget to Ctrl+X in viins mode
+bindkey '^X' run-again 
+
+# java
+export JAVA_HOME=$(/usr/libexec/java_home)
+
+# Config
+alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
