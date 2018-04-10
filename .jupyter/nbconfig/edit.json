@@ -1,0 +1,11 @@
+{
+  "Editor": {
+    "file_extension_modes": {
+      ".Rmd": "R"
+    }, 
+    "codemirror_options": {
+      "vimMode": false, 
+      "keyMap": "sublime"
+    }
+  }
+}
