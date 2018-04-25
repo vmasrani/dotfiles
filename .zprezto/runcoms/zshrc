@@ -29,9 +29,9 @@ EDITOR=vim
 VISUAL=vim
 
 ## Antigen
-source /usr/local/share/antigen/antigen.zsh
-antigen bundle wfxr/forgit
-antigen apply
+#source /usr/local/share/antigen/antigen.zsh
+#antigen bundle wfxr/forgit
+#antigen apply
 
 
 #Fix illegal bytestream error
