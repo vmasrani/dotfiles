@@ -25,11 +25,14 @@ DIRSTACKSIZE=20
 # Use i to get out of vim mode (enter vimmode with C-x C-v)
 bindkey '^[' vi-cmd-mode
 
-#autoload edit-command-line                                                                                                          ⏎
-#zle -N edit-command-line
-#bindkey -M vicmd v edit-command-line
 EDITOR=vim
 VISUAL=vim
+
+## Antigen
+source /usr/local/share/antigen/antigen.zsh
+antigen bundle wfxr/forgit
+antigen apply
+
 
 #Fix illegal bytestream error
 
@@ -86,7 +89,6 @@ alias du='du -sh'                           # Show usage in human readable forma
 alias matlab='matlab -nosplash'             # Hide splash screen by default
 alias mshell='matlab -nodisplay'            # No gui
 alias mrun='matlab -nodesktop -nosplash -r' # Run script
-# alias python='ipython'                      # Always use ipython
 alias rstud='open -a Rstudio .'             # Open R studio
 
 
@@ -323,3 +325,18 @@ export JAVA_HOME=$(/usr/libexec/java_home)
 
 # Config
 alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
+
+### Better vim mode
+
+# Better searching in command mode
+bindkey -M vicmd '?' history-incremental-search-backward
+bindkey -M vicmd '/' history-incremental-search-forward
+
+# Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
+export KEYTIMEOUT=1
+
+# Enable Ctrl-x-e to edit command line
+autoload -U edit-command-line
+# Emacs style
+zle -N edit-command-line
+bindkey '^f' edit-command-line
