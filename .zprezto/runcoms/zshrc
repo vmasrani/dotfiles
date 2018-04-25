@@ -11,7 +11,7 @@ if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
 fi
 
 # Customize to your needs...
-# added by miniconda2 installer 
+# added by miniconda2 installer
 export PATH="$HOME/miniconda2/bin:$PATH"
 
 
@@ -20,24 +20,27 @@ eval "$(fasd --init auto)"
 alias v='f -e vim'
 
 # Customize to your needs...
-DIRSTACKSIZE=20 
+DIRSTACKSIZE=20
 
 # Use i to get out of vim mode (enter vimmode with C-x C-v)
 bindkey '^[' vi-cmd-mode
 
-#autoload edit-command-line                                                                                                          ⏎
-#zle -N edit-command-line
-#bindkey -M vicmd v edit-command-line
 EDITOR=vim
 VISUAL=vim
+
+## Antigen
+source /usr/local/share/antigen/antigen.zsh
+antigen bundle wfxr/forgit
+antigen apply
+
 
 #Fix illegal bytestream error
 
 #ls alias'#
 alias l='ls -FGlAhp'                        # Preferred 'ls' implementation
-alias lt='ls -qaltrh'                       # LS sorted chronologically 
+alias lt='ls -qaltrh'                       # LS sorted chronologically
 alias lf='ls -lShr'                         # LS sorted by file size
-alias lr='ls -dl .*/ */'                    # LS only directories 
+alias lr='ls -dl .*/ */'                    # LS only directories
 
 #cd alias'#
 alias cd..='cd ../'                         # Go back 1 directory level (for fast typers)
@@ -81,12 +84,11 @@ alias show_options='shopt'                  # Show_options: display bash options
 alias fix_stty='stty sane'                  # fix_stty:     Restore terminal settings when screwed up
 alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
 alias octave='octave -q'                    # suppress startup message
-alias du='du -sh'                           # Show usage in human readable format and sum content of subdirectories 
+alias du='du -sh'                           # Show usage in human readable format and sum content of subdirectories
 
 alias matlab='matlab -nosplash'             # Hide splash screen by default
 alias mshell='matlab -nodisplay'            # No gui
 alias mrun='matlab -nodesktop -nosplash -r' # Run script
-# alias python='ipython'                      # Always use ipython
 alias rstud='open -a Rstudio .'             # Open R studio
 
 
@@ -192,7 +194,7 @@ extract package.zip;
 rm package.zip;
 }
 
-#Append to end of file. Made function because one arrow (>) clears file which is dangerous 
+#Append to end of file. Made function because one arrow (>) clears file which is dangerous
 function append(){echo $1  >> $2 }
 
 
@@ -201,10 +203,10 @@ function append(){echo $1  >> $2 }
 function send(){echo "" | mutt -s "Attachment" $2 -a $1}
 
 #mysql
-alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start' 
-alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop' 
+alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
+alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
 alias mysql_shell='mysql -u root -p -h localhost'
-#So mysql can communicate with python 
+#So mysql can communicate with python
 export DYLD_LIBRARY_PATH=/usr/local/mysql/lib/
 
 # Fix python bytecode
@@ -267,10 +269,10 @@ function sch() { open /Applications/Google\ Chrome.app/ "http://www.google.com/s
 # Make new bash script
 function bscript() {echo '#!/bin/bash' > $1.sh && chmod u+x $1.sh && vim $1.sh}
 
-# Substitue string into previous command 
+# Substitue string into previous command
 function re(){
   prev_command=${${(z)$(fc -l -1)}[2]};
-  if [ "$prev_command" = "re" ]; then 
+  if [ "$prev_command" = "re" ]; then
     echo "re called twice"
   else
     prev=${${(z)$(fc -l -1):1}}
@@ -279,10 +281,10 @@ function re(){
   fi;
 }
 
-# Substitue string into previous command (global) 
+# Substitue string into previous command (global)
 function gre() {
   prev_command=${${(z)$(fc -l -1)}[2]};
-  if [ "$prev_command" = "gre" ]; then 
+  if [ "$prev_command" = "gre" ]; then
     echo "re called twice"
   else
     prev=${${(z)$(fc -l -1):1}}
@@ -316,7 +318,7 @@ function run-again {
 zle -N run-again
 
 # bind widget to Ctrl+X in viins mode
-bindkey '^X' run-again 
+bindkey '^X' run-again
 
 # java
 export JAVA_HOME=$(/usr/libexec/java_home)
@@ -324,5 +326,17 @@ export JAVA_HOME=$(/usr/libexec/java_home)
 # Config
 alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
 
-#JRE
-#export JAVA_HOME=$(/usr/libexec/java_home)
+### Better vim mode
+
+# Better searching in command mode
+bindkey -M vicmd '?' history-incremental-search-backward
+bindkey -M vicmd '/' history-incremental-search-forward
+
+# Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
+export KEYTIMEOUT=1
+
+# Enable Ctrl-x-e to edit command line
+autoload -U edit-command-line
+# Emacs style
+zle -N edit-command-line
+bindkey '^f' edit-command-line
