@@ -1,8 +1,8 @@
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Must Have
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 colorscheme solarized
-" syntax on " syntax highlighting on
+syntax on " syntax highlighting on
 syntax enable
 let g:solarized_termtrans = 1
 call togglebg#map("<F5>")
@@ -27,8 +27,8 @@ call vundle#begin()
 Plugin 'VundleVim/Vundle.vim'
 Plugin 'Valloric/YouCompleteMe'
 " Navigation (IDE frame)
-Plugin 'scrooloose/nerdtree'
-Plugin 'jistr/vim-nerdtree-tabs'
+" Plugin 'scrooloose/nerdtree'
+" Plugin 'jistr/vim-nerdtree-tabs'
 Plugin 'vim-airline/vim-airline'
 Plugin 'vim-airline/vim-airline-themes'
 Plugin 'tpope/vim-fugitive'
@@ -224,8 +224,8 @@ endfunction
 " map <down> <ESC>:bn<RETURN> " right arrow (normal mode) switches buffers
 " map <right> <ESC>:Tlist<RETURN> " show taglist
 " map <left> <ESC>:NERDTreeToggle<RETURN>  " moves left fa split
-" map <F2> <ESC>ggVG:call SuperRetab()<left>
-" map <F12> ggVGg? " apply rot13 for people snooping over shoulder, good fun
+map <F2> <ESC>ggVG:call SuperRetab()<left>
+map <F12> ggVGg? " apply rot13 for people snooping over shoulder, good fun
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Useful abbrevs
@@ -306,3 +306,21 @@ let g:syntastic_pug_checkers = ['jade','pug']
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 let g:sneak#streak = 1
 let g:airline_theme='bubblegum'
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" FZF
+set rtp+=/usr/local/opt/fzf
+" An action can be a reference to a function that processes selected lines
+function! s:build_quickfix_list(lines)
+  call setqflist(map(copy(a:lines), '{ "filename": v:val }'))
+  copen
+  cc
+endfunction
+
+let g:fzf_action = {
+  \ 'ctrl-q': function('s:build_quickfix_list'),
+  \ 'ctrl-t': 'tab split',
+  \ 'ctrl-x': 'split',
+  \ 'ctrl-v': 'vsplit' }
+
+map <c-t> <ESC>:FZF<RETURN>  " moves left fa split
+

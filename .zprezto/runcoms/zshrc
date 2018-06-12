@@ -23,16 +23,20 @@ alias v='f -e vim'
 DIRSTACKSIZE=20 
 
 # Use i to get out of vim mode (enter vimmode with C-x C-v)
-bindkey '^[' vi-cmd-mode
+#bindkey '^[' vi-cmd-mode
 
 EDITOR=vim
 VISUAL=vim
 
 ## Antigen
-#source /usr/local/share/antigen/antigen.zsh
-#antigen bundle wfxr/forgit
-#antigen apply
+source /usr/local/share/antigen/antigen.zsh
+antigen bundle andrewferrier/fzf-z
+antigen apply
 
+## FZF-Z
+export FZFZ_SUBDIR_LIMIT="200"
+export FZFZ_EXTRA_DIRS="~/dev/phd"
+export FZFZ_EXCLUDE_PATTERN='\.git|venv'
 
 #Fix illegal bytestream error
 
@@ -94,7 +98,6 @@ alias rstud='open -a Rstudio .'             # Open R studio
 
 #ssh aliases
 alias ubc='ssh -Y vadmas@people.cs.ubc.ca'
-alias newcastle='ssh -Y vadmas@newcastle.cs.ubc.ca'
 pullubc (){
     if [ "$1" = "-r" ]; then
      scp -r vadmas@people.cs.ubc.ca:$2 $3;
@@ -120,16 +123,6 @@ ql () { qlmanage -p "$*" >& /dev/null; }    # ql:           Opens any file in Ma
 alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
 alias zshrc='vim ~/.zshrc'
 
-
-
-#   ---------------------------
-#   4.  SEARCHING
-#   ---------------------------
-
-alias qfind="find . -iname "                 # qfind:    Quickly search for file
-ff () { /usr/bin/find . -iname "$@" ; }      # ff:       Find file under the current directory
-ffs () { /usr/bin/find . -iname "$@"'*' ; }  # ffs:      Find file whose name starts with a given string
-ffe () { /usr/bin/find . -iname '*'"$@" ; }  # ffe:      Find file whose name ends with a given string
 
 
 # #   extract:  Extract most know archives with one command
@@ -170,22 +163,18 @@ function youtube {
 if [ "$1" = "-d" ]; then
    cd ~/Downloads/youtube
 else
-   youtube-dl  --extract-audio --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" $1
+   youtube-dl  --extract-audio --prefer-ffmpeg --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" $1
 fi
 }
 
 function youtube_pl {
-youtube-dl --extract-audio --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" --playlist-start $2 $1;
+youtube-dl --extract-audio --prefer-ffmpeg --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" --playlist-start $2 $1;
 }
 
 function getlec {
   dir="/Users/vmasrani/Dropbox/lectures";
   title=$(youtube-dl -e $1)
-  youtube-dl --extract-audio --audio-format mp3 -o "$dir/%(title)s.%(ext)s" $1 && id3tag --artist=Lectures --album=Lectures $dir/$title.mp3;
-}
-
-function sound {
-scdl -l $1
+  youtube-dl --extract-audio --prefer-ffmpeg --audio-format mp3 -o "$dir/%(title)s.%(ext)s" $1 && id3tag --artist=Lectures --album=Lectures $dir/$title.mp3;
 }
 
 function getzip {
@@ -212,20 +201,6 @@ export DYLD_LIBRARY_PATH=/usr/local/mysql/lib/
 # Fix python bytecode
 export PYTHONDONTWRITEBYTECODE=1
 
-
-#Make dir and move files to it
-#Eg: mvdir songs *mp3
-function mvdir(){
-
-DIRECTORY=$1
-mkdir $DIRECTORY
-shift
-for file in "$@"
-do
-  mv "$file" $DIRECTORY
-done
-}
-
 #Ruby
 export RBENV_ROOT=/usr/local/var/rbenv
 if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
@@ -237,7 +212,105 @@ curl -L $(sed 's%\.git%\/tarball\/master%' <<<"$1") | tar zx
 }
 #fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+export FZF_DEFAULT_COMMAND='rg --files --no-ignore --hidden --follow -g "!{.git,node_modules}/*" 2> /dev/null'
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 
+# -------------
+# GIT heart FZF
+# -------------
+
+is_in_git_repo() {
+  git rev-parse HEAD > /dev/null 2>&1 || echo "This_is_not_a_git_repository"
+}
+
+fzf-down() {
+  fzf --height 50% "$@" --border
+}
+
+FZF_PREFIX="fg-"
+
+function "${FZF_PREFIX}ga" () {
+  is_in_git_repo || return
+  git -c color.status=always status --short |
+  fzf-down -m --ansi --nth 2..,.. \
+    --preview '(git diff --color=always -- {-1} | sed 1,4d; cat {-1}) | head -500' |
+  cut -c4- | sed 's/.* -> //'
+}
+
+function "${FZF_PREFIX}gb" () {
+  is_in_git_repo || return
+  git branch -a --color=always | grep -v '/HEAD\s' | sort |
+  fzf-down --ansi --multi --tac --preview-window right:70% \
+    --preview 'git log --oneline --graph --date=short --pretty="format:%C(auto)%cd %h%d %s" $(sed s/^..// <<< {} | cut -d" " -f1) | head -'$LINES |
+  sed 's/^..//' | cut -d' ' -f1 |
+  sed 's#^remotes/##'
+}
+
+# git tag
+function "${FZF_PREFIX}gt" () {
+  is_in_git_repo || return
+  git tag --sort -version:refname |
+  fzf-down --multi --preview-window right:70% \
+    --preview 'git show --color=always {} | head -'$LINES
+}
+
+function "${FZF_PREFIX}gh" () {
+  is_in_git_repo || return
+  git log --date=short --format="%C(green)%C(bold)%cd %C(auto)%h%d %s (%an)" --graph --color=always |
+  fzf-down --ansi --no-sort --reverse --multi --bind 'ctrl-s:toggle-sort' \
+    --header 'Press CTRL-S to toggle sort' \
+    --preview 'grep -o "[a-f0-9]\{7,\}" <<< {} | xargs git show --color=always | head -'$LINES |
+  grep -o "[a-f0-9]\{7,\}"
+}
+
+function "${FZF_PREFIX}gr" () {
+  is_in_git_repo || return
+  git remote -v | awk '{print $1 "\t" $2}' | uniq |
+  fzf-down --tac \
+    --preview 'git log --oneline --graph --date=short --pretty="format:%C(auto)%cd %h%d %s" {1} | head -200' |
+  cut -d$'\t' -f1
+}
+
+# join-lines() {
+#   local item
+#   while read item; do
+#     echo -n "${(q)item} "
+#   done
+# }
+# 
+# bind-git-helper() {
+#   local char
+#   for c in $@; do
+#     eval "fzf-g$c-widget() { local result=\$(${FZF_PREFIX}g$c | join-lines); zle reset-prompt; LBUFFER+=\$result }"
+#     eval "zle -N fzf-g$c-widget"
+#     eval "bindkey '^h^$c' fzf-g$c-widget"
+#   done
+# }
+# bind-git-helper f b t r h
+# unset -f bind-git-helper
+
+# fshow - git commit browser
+fshow() {
+  git log --graph --color=always \
+      --format="%C(auto)%h%d %s %C(black)%C(bold)%cr" "$@" |
+  fzf --ansi --no-sort --reverse --tiebreak=index --bind=ctrl-s:toggle-sort \
+      --bind "ctrl-m:execute:
+                (grep -o '[a-f0-9]\{7\}' | head -1 |
+                xargs -I % sh -c 'git show --color=always % | less -R') << 'FZF-EOF'
+                {}
+FZF-EOF"
+}
+
+# # stage files multi-selected modified files
+ga() {
+   git add $("${FZF_PREFIX}ga")
+ }
+
+gdiff() {
+   git diff $("${FZF_PREFIX}ga")
+}
+
+#
 #command line dictionary
 alias def='sdcv'
 
@@ -255,56 +328,6 @@ export LESS=" -R "
 alias less='less -M -X -g -i -J --underline-special --SILENT'
 #alias cat="highlight $1 --out-format xterm256 --quiet --force --style solarized-dark"
 #alias ccat="highlight $1 --out-format xterm256 --line-numbers --quiet --force --style solarized-dark"
-
-#Basic Commandline calcultor
- = (){
-calc="${@//p/+}"
-calc="${calc//x/*}"
-echo "$(($calc))"
-}
-
-# Google search from command line
-function sch() { open /Applications/Google\ Chrome.app/ "http://www.google.com/search?q= $*"\ }
-
-# Make new bash script
-function bscript() {echo '#!/bin/bash' > $1.sh && chmod u+x $1.sh && vim $1.sh}
-
-# Substitue string into previous command 
-function re(){
-  prev_command=${${(z)$(fc -l -1)}[2]};
-  if [ "$prev_command" = "re" ]; then 
-    echo "re called twice"
-  else
-    prev=${${(z)$(fc -l -1):1}}
-    eval "next=\${prev:s/$1/$2}"
-    echo "$next" && eval "$next"
-  fi;
-}
-
-# Substitue string into previous command (global) 
-function gre() {
-  prev_command=${${(z)$(fc -l -1)}[2]};
-  if [ "$prev_command" = "gre" ]; then 
-    echo "re called twice"
-  else
-    prev=${${(z)$(fc -l -1):1}}
-    eval "next=\${prev:gs/$1/$2}"
-    echo "$next" && eval "$next"
-  fi;
-
-}
-
-
-
-test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
-
-# Start tmux automatically
-#if [[ ! $TERM =~ screen ]]; then
-#      exec tmux
-#fi
-
-# sublime text fix
-alias subl='open -a "/Applications/Sublime Text.app"'
 
 # define function that retrieves and runs last command
 function run-again {
