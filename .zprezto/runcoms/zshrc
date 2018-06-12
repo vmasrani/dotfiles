@@ -12,7 +12,13 @@ fi
 
 # Customize to your needs...
 # added by miniconda2 installer
-export PATH="$HOME/miniconda2/bin:$PATH"
+export PATH="$HOME/miniconda/bin:$PATH"
+
+# Cuda
+export CUDA_HOME="/usr/local/cuda"
+export LD_LIBRARY_PATH="/usr/local/cuda-9.0:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda-9.0/lib64:$LD_LIBRARY_PATH"
+export PATH="/usr/local/cuda-9.0/bin:$PATH"
 
 
 #Init fasd
@@ -28,11 +34,19 @@ bindkey '^[' vi-cmd-mode
 EDITOR=vim
 VISUAL=vim
 
-## Antigen
-#source /usr/local/share/antigen/antigen.zsh
-#antigen bundle wfxr/forgit
-#antigen apply
+## zplug
+source ~/.zplug/init.zsh
 
+# Install plugins if there are plugins that have not been installed
+if ! zplug check --verbose; then
+    printf "Install? [y/N]: "
+    if read -q; then
+        echo; zplug install
+    fi
+fi
+
+# Then, source plugins and add commands to $PATH
+zplug load
 
 #Fix illegal bytestream error
 
@@ -320,9 +334,6 @@ zle -N run-again
 # bind widget to Ctrl+X in viins mode
 bindkey '^X' run-again
 
-# java
-export JAVA_HOME=$(/usr/libexec/java_home)
-
 # Config
 alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
 
@@ -340,3 +351,10 @@ autoload -U edit-command-line
 # Emacs style
 zle -N edit-command-line
 bindkey '^f' edit-command-line
+
+alias pbcopy='xclip -selection clipboard'
+alias pbpaste='xclip -selection clipboard -o'
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion

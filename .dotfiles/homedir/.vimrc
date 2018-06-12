@@ -306,3 +306,29 @@ let g:syntastic_pug_checkers = ['jade','pug']
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 let g:sneak#streak = 1
 let g:airline_theme='bubblegum'
+
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Python 
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+:let mapleader = ","
+
+func! s:SetBreakpoint()
+    cal append('.', repeat(' ', strlen(matchstr(getline('.'), '^\s*'))) . 'import ipdb; ipdb.set_trace()')
+endf
+
+func! s:RemoveBreakpoint()
+    exe 'silent! g/^\s*import\sipdb\;\?\n*\s*ipdb.set_trace()/d'
+endf
+
+func! s:ToggleBreakpoint()
+    if getline('.')=~#'^\s*import\sipdb' | cal s:RemoveBreakpoint() | el | cal s:SetBreakpoint() | en
+endf
+nnoremap <leader>b :call <SID>ToggleBreakpoint()<CR>
+command R w|!python %
+nnoremap <leader>r :R <CR> 
+
+
+set rtp+=~/.fzf
+map <c-t> <ESC>:FZF <return>-
+

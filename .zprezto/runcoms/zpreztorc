@@ -43,6 +43,7 @@ zstyle ':prezto:load' pmodule \
   'spectrum' \
   'utility' \
   'fasd' \
+  'git' \
   'completion' \
   'autosuggestions' \
   'syntax-highlighting' \
@@ -211,8 +212,8 @@ zstyle ':prezto:module:prompt' theme 'pure'
 
 #
 # Tmux
-zstyle ':prezto:module:tmux:auto-start' local 'yes'
-zstyle ':prezto:module:tmux:iterm' integrate 'yes'
+# zstyle ':prezto:module:tmux:auto-start' local 'yes'
+# zstyle ':prezto:module:tmux:iterm' integrate 'yes'
 
 # Auto start a session when Zsh is launched in a local terminal.
 # zstyle ':prezto:module:tmux:auto-start' local 'yes'
