@@ -1,7 +1,7 @@
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Must Have
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-colorscheme solarized
+" colorscheme solarized
 syntax on " syntax highlighting on
 syntax enable
 let g:solarized_termtrans = 1
@@ -170,7 +170,7 @@ set preserveindent " but above all -- follow the conventions laid before us
 set ignorecase " case insensitive by default
 set smartcase " if there are caps, go case-sensitive
 set completeopt=menu,longest,preview " improve the way autocomplete works
-set cursorcolumn " show the current column
+" set cursorcolumn " show the current column
 set cursorline
 " hi CursorLine term=underline ctermbg=008 guibg=#493a35
 

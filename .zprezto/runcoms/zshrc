@@ -13,7 +13,7 @@ fi
 # Customize to your needs...
 # added by miniconda2 installer
 export PATH="$HOME/miniconda2/bin:$PATH"
-
+export PATH="/usr/local/opt/tcl-tk/bin:$PATH"
 
 #Init fasd
 eval "$(fasd --init auto)"
@@ -34,8 +34,8 @@ antigen bundle andrewferrier/fzf-z
 antigen apply
 
 ## FZF-Z
-export FZFZ_SUBDIR_LIMIT="200"
-export FZFZ_EXTRA_DIRS="~/dev/phd"
+export FZFZ_SUBDIR_LIMIT="50"
+export FZFZ_EXTRA_DIRS="'~/dev/phd' '~/Downloads' '~/Documents'"
 export FZFZ_EXCLUDE_PATTERN='\.git|venv'
 
 #Fix illegal bytestream error
@@ -79,7 +79,7 @@ alias less='less -FSRXc'                    # Preferred 'less' implementation
 alias edit='subl'                           # edit:         Opens any file in sublime editor
 alias rm='rm -v'                            # Show what has been removed
 alias cp='cp -v'                            # Show what has been copied
-alias fd='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
+alias fr='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
 alias s='subl .'                            # s:            Open current directory in sublime text
 alias ~="cd ~"                              # ~:            Go Home
 alias h="history"                           # h:            History
@@ -188,7 +188,7 @@ function append(){echo $1  >> $2 }
 
 
 #Send attachment without message or subject
-#send file.pdf vadmas@gmail.com
+# send file.pdf vadmas@gmail.com
 function send(){echo "" | mutt -s "Attachment" $2 -a $1}
 
 #mysql
@@ -212,8 +212,17 @@ curl -L $(sed 's%\.git%\/tarball\/master%' <<<"$1") | tar zx
 }
 #fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-export FZF_DEFAULT_COMMAND='rg --files --no-ignore --hidden --follow -g "!{.git,node_modules}/*" 2> /dev/null'
+export FZF_DEFAULT_COMMAND='fd --type f'
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND="fd -t f . $HOME"
+
+# Use fd to generate the list for directory completion
+#_fzf_compgen_dir() {
+#  fd --type d --hidden --follow --exclude ".git" . "$1"
+#}
+#_fzf_compgen_path() {
+#  fd --hidden --follow --exclude ".git" . "$1"
+#}
 
 # -------------
 # GIT heart FZF
@@ -363,3 +372,9 @@ autoload -U edit-command-line
 # Emacs style
 zle -N edit-command-line
 bindkey '^f' edit-command-line
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then source '/Users/vmasrani/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then source '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
