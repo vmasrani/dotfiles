@@ -199,41 +199,41 @@ vnoremap <silent> <leader>es :EsformatterVisual<CR>
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " NERDTree
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-let NERDTreeShowHidden=1
-let NERDTreeIgnore=['\.DS_Store$']
-" auto open if no file sent as arg
-autocmd StdinReadPre * let s:std_in=1
-autocmd VimEnter * if argc() == 0 && !exists("s:std_in") | NERDTree | endif
-" Toggle NERDtree with C-n
-map ,n <plug>NERDTreeTabsToggle<CR>
-" Autoclose if only NERDtree is left
-autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTreeType") && b:NERDTreeType == "primary") | q | endif
-
+"let NERDTreeShowHidden=1
+"let NERDTreeIgnore=['\.DS_Store$']
+"" auto open if no file sent as arg
+"autocmd StdinReadPre * let s:std_in=1
+"autocmd VimEnter * if argc() == 0 && !exists("s:std_in") | NERDTree | endif
+"" Toggle NERDtree with C-n
+"map ,n <plug>NERDTreeTabsToggle<CR>
+"" Autoclose if only NERDtree is left
+"autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTreeType") && b:NERDTreeType == "primary") | q | endif
+"
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Syntastic
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+"set statusline+=%#warningmsg#
+"set statusline+=%{SyntasticStatuslineFlag()}
+"set statusline+=%*
+"
+"let g:syntastic_html_tidy_quiet_messages = { "level": "warnings" }
+"let g:syntastic_html_tidy_ignore_errors = [ '<template> is not recognized!' ]
+"
+"let g:syntastic_always_populate_loc_list = 1
+"let g:syntastic_auto_loc_list = 1
+"let g:syntastic_check_on_open = 1
+""let g:syntastic_check_on_wq = 0
+"let g:syntastic_enable_eslint_checker = 1
+"let g:syntastic_javascript_checkers = ['eslint']
+"let g:syntastic_enable_tslint_checker = 1
+"let g:syntastic_typescript_checkers = ['tslint', 'tsc']
+"let g:syntastic_enable_pug_checker = 1
+"let g:syntastic_pug_checkers = ['jade','pug']
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+"" Other
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-set statusline+=%#warningmsg#
-set statusline+=%{SyntasticStatuslineFlag()}
-set statusline+=%*
-
-let g:syntastic_html_tidy_quiet_messages = { "level": "warnings" }
-let g:syntastic_html_tidy_ignore_errors = [ '<template> is not recognized!' ]
-
-let g:syntastic_always_populate_loc_list = 1
-let g:syntastic_auto_loc_list = 1
-let g:syntastic_check_on_open = 1
-"let g:syntastic_check_on_wq = 0
-let g:syntastic_enable_eslint_checker = 1
-let g:syntastic_javascript_checkers = ['eslint']
-let g:syntastic_enable_tslint_checker = 1
-let g:syntastic_typescript_checkers = ['tslint', 'tsc']
-let g:syntastic_enable_pug_checker = 1
-let g:syntastic_pug_checkers = ['jade','pug']
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Other
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-let g:sneak#streak = 1
-let g:airline_theme='bubblegum'
+"let g:sneak#streak = 1
+"let g:airline_theme='bubblegum'
 
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
