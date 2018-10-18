@@ -95,36 +95,6 @@ alias mshell='matlab -nodisplay'            # No gui
 alias mrun='matlab -nodesktop -nosplash -r' # Run script
 alias rstud='open -a Rstudio .'             # Open R studio
 
-
-#ssh aliases
-alias ubc='ssh -Y vadmas@people.cs.ubc.ca'
-pullubc (){
-    if [ "$1" = "-r" ]; then
-     scp -r vadmas@people.cs.ubc.ca:$2 $3;
-    else
-     scp vadmas@people.cs.ubc.ca:$1 $2;
-    fi
-}
-
-pushubc (){
-  if [ "$1" = "-r" ]; then
-    scp -r $2 vadmas@people.cs.ubc.ca:/ubc/cs/home/v/vadmas/scp;
-    else
-    scp $1 vadmas@people.cs.ubc.ca:/ubc/cs/home/v/vadmas/scp;
-    fi
-}
-
-#Function that pronounces words - calls the "pronounce" script in ~/bin
-alias say='pronounce'
-
-mk () { mkdir -p "$1" && cd "$1"; }         # mk:          Makes new Dir and jumps inside
-trash () { command mv "$@" ~/.Trash ; }     # trash:        Moves a file to the MacOS trash
-ql () { qlmanage -p "$*" >& /dev/null; }    # ql:           Opens any file in MacOS Quicklook Preview
-alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
-alias zshrc='vim ~/.zshrc'
-
-
-
 # #   extract:  Extract most know archives with one command
 # #   ---------------------------------------------------------
     extract () {
@@ -151,31 +121,6 @@ alias zshrc='vim ~/.zshrc'
 #In order to paste commands that start with a '$'
 function $ { "$@"  }
 
-#function dict {open dict:://$1}
-
-#   spotlight: Search for a file using MacOS Spotlight's metadata
-#   -----------------------------------------------------------
-    spotlight () { mdfind "kMDItemDisplayName == '$@'wc"; }
-
-#youtube audio downloader
-
-function youtube {
-if [ "$1" = "-d" ]; then
-   cd ~/Downloads/youtube
-else
-   youtube-dl  --extract-audio --prefer-ffmpeg --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" $1
-fi
-}
-
-function youtube_pl {
-youtube-dl --extract-audio --prefer-ffmpeg --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" --playlist-start $2 $1;
-}
-
-function getlec {
-  dir="/Users/vmasrani/Dropbox/lectures";
-  title=$(youtube-dl -e $1)
-  youtube-dl --extract-audio --prefer-ffmpeg --audio-format mp3 -o "$dir/%(title)s.%(ext)s" $1 && id3tag --artist=Lectures --album=Lectures $dir/$title.mp3;
-}
 
 function getzip {
 curl $1 > package.zip;
@@ -190,20 +135,6 @@ function append(){echo $1  >> $2 }
 #Send attachment without message or subject
 #send file.pdf vadmas@gmail.com
 function send(){echo "" | mutt -s "Attachment" $2 -a $1}
-
-#mysql
-alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
-alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
-alias mysql_shell='mysql -u root -p -h localhost'
-#So mysql can communicate with python
-#export DYLD_LIBRARY_PATH=/usr/local/mysql/lib/
-
-# Fix python bytecode
-export PYTHONDONTWRITEBYTECODE=1
-
-#Ruby
-export RBENV_ROOT=/usr/local/var/rbenv
-if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
 
 #git
 #Get only tarball with no git repo info
@@ -310,14 +241,6 @@ gdiff() {
    git diff $("${FZF_PREFIX}ga")
 }
 
-#
-#command line dictionary
-alias def='sdcv'
-
-#compile and open latex
-function pt(){
-pdflatex $1.tex && open $1.pdf
-}
 
 ### LESS Syntax Highlight ###
 ## Enable syntax-highlighting in less.
