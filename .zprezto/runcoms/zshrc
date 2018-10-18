@@ -13,7 +13,6 @@ fi
 # Customize to your needs...
 # added by miniconda2 installer
 export PATH="$HOME/miniconda2/bin:$PATH"
-export PATH="/usr/local/opt/tcl-tk/bin:$PATH"
 
 #Init fasd
 eval "$(fasd --init auto)"
