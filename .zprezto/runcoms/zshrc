@@ -29,7 +29,7 @@ EDITOR=vim
 VISUAL=vim
 
 ## Antigen
-source /usr/share/zsh-antigen/antigen.zsh
+source .antigen/antigen.zsh
 antigen bundle andrewferrier/fzf-z
 antigen apply
 
@@ -89,7 +89,7 @@ alias fix_stty='stty sane'                  # fix_stty:     Restore terminal set
 alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
 alias octave='octave -q'                    # suppress startup message
 alias du='du -sh'                           # Show usage in human readable format and sum content of subdirectories
-
+alias zshrc='vim ~/.zshrc'
 alias matlab='matlab -nosplash'             # Hide splash screen by default
 alias mshell='matlab -nodisplay'            # No gui
 alias mrun='matlab -nodesktop -nosplash -r' # Run script
