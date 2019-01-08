@@ -13,7 +13,6 @@ fi
 # Customize to your needs...
 # added by miniconda2 installer
 export PATH="$HOME/miniconda2/bin:$PATH"
-export PATH="/usr/local/opt/tcl-tk/bin:$PATH"
 
 #Init fasd
 eval "$(fasd --init auto)"
@@ -378,3 +377,5 @@ if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then source '/Users/v
 
 # The next line enables shell command completion for gcloud.
 if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then source '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
+
+#source /usr/local/share/zsh-history-substring-search/zsh-history-substring-search.zsh

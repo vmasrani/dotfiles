@@ -35,8 +35,8 @@ zstyle ':prezto:*:*' color 'yes'
       'fasd' \
       'git' \
       'completion' \
-      'history-substring-search' \
       'syntax-highlighting' \
+      'history-substring-search' \
       'autosuggestions' \
       'prompt'
 
