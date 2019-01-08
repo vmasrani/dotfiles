@@ -10,18 +10,18 @@ if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
   source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
 fi
  
-if [ -z "$TMUX" ] && [ "$SSH_CONNECTION" != "" ]; then
-     tmux attach-session -t home || tmux new-session -s home 
-fi
+#if [ -z "$TMUX" ] && [ "$SSH_CONNECTION" != "" ]; then
+#     tmux attach-session -t home || tmux new-session -s home 
+#fi
 
 # Customize to your needs...
 # added by miniconda2 installer
-export PATH="$HOME/miniconda/bin:$PATH"
+source /ubc/cs/research/fwood/vadmas/miniconda3/etc/profile.d/conda.sh
 
 
 #Init fasd
-eval "$(fasd --init auto)"
-alias v='f -e vim'
+#eval "$(fasd --init auto)"
+#alias v='f -e vim'
 
 # Customize to your needs...
 DIRSTACKSIZE=20
@@ -33,16 +33,6 @@ EDITOR=vim
 VISUAL=vim
 
 ## Antigen
-source .antigen/antigen.zsh
-antigen bundle andrewferrier/fzf-z
-antigen apply
-
-## FZF-Z
-export FZFZ_SUBDIR_LIMIT="200"
-export FZFZ_EXTRA_DIRS="~/dev"
-export FZFZ_EXCLUDE_PATTERN='\.git|venv'
-
-#Fix illegal bytestream error
 
 #ls alias'#
 alias l='ls -FGlAhp'                        # Preferred 'ls' implementation
@@ -61,6 +51,8 @@ alias .5='cd ../../../../../'               # Go back 5 directory levels
 alias .6='cd ../../../../../../'            # Go back 6 directory levels
 alias .7='cd ../../../../../../../'            # Go back 6 directory levels
 cdd() { builtin cd "$@"; ll; }               # Always list directory contents upon 'cd'
+
+alias fw='cd /ubc/cs/research/fwood/vadmas'
 
 #tree alias's"
 alias t='tree'
