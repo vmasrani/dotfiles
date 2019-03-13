@@ -16,8 +16,12 @@ fi
 
 # Customize to your needs...
 # added by miniconda2 installer
+#export PATH="/ubc/cs/research/fwood/vadmas/miniconda3/bin:$PATH"
 source /ubc/cs/research/fwood/vadmas/miniconda3/etc/profile.d/conda.sh
+conda activate 
 
+# Add to path
+path+=/ubc/cs/home/v/vadmas/bin
 
 #Init fasd
 #eval "$(fasd --init auto)"
@@ -53,7 +57,7 @@ alias .7='cd ../../../../../../../'            # Go back 6 directory levels
 cdd() { builtin cd "$@"; ll; }               # Always list directory contents upon 'cd'
 
 alias fw='cd /ubc/cs/research/fwood/vadmas'
-
+alias scratch='cd /ubc/cs/research/plai-scratch/vadmas'
 #tree alias's"
 alias t='tree'
 alias t2='tree -L 2'
@@ -75,7 +79,6 @@ alias less='less -FSRXc'                    # Preferred 'less' implementation
 alias edit='subl'                           # edit:         Opens any file in sublime editor
 alias rm='rm -v'                            # Show what has been removed
 alias cp='cp -v'                            # Show what has been copied
-alias fd='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
 alias s='subl .'                            # s:            Open current directory in sublime text
 alias ~="cd ~"                              # ~:            Go Home
 alias h="history"                           # h:            History
@@ -90,6 +93,7 @@ alias matlab='matlab -nosplash'             # Hide splash screen by default
 alias mshell='matlab -nodisplay'            # No gui
 alias mrun='matlab -nodesktop -nosplash -r' # Run script
 alias rstud='open -a Rstudio .'             # Open R studio
+alias takeover='tmux detach -a'
 
 # #   extract:  Extract most know archives with one command
 # #   ---------------------------------------------------------
@@ -282,3 +286,10 @@ autoload -U edit-command-line
 # Emacs style
 zle -N edit-command-line
 bindkey '^f' edit-command-line
+
+function erl () {
+	/usr/bin/erl erl -eval 'code:add_path("/ubc/cs/home/m/mrg/public_html/cs521/erl")' "$@"
+}
+
+# Move to fw
+cd /ubc/cs/research/fwood/vadmas/
