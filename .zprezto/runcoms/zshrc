@@ -293,3 +293,10 @@ function erl () {
 
 # Move to fw
 cd /ubc/cs/research/fwood/vadmas/
+
+# Tensorboard
+export LC_ALL=C
+
+#https://github.com/kovidgoyal/kitty/issues/1395
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
