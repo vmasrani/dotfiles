@@ -1,3 +1,20 @@
 channels:
   - conda-forge
   - defaults
+changeps1: False
+create_default_packages:
+    - pip
+    - ipython
+    - scipy
+    - numpy
+    - pandas
+    - matplotlib
+    - seaborn
+    - jupyter
+    - scikit-learn
+    - tqdm
+    - flake8
+    - ipdb
+    - networkx
+    - statsmodels
+    - requests
