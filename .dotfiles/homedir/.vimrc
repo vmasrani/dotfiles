@@ -1,17 +1,59 @@
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Must Have
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " colorscheme solarized
-" syntax on " syntax highlighting on
+syntax on " syntax highlighting on
 syntax enable
 let g:solarized_termtrans = 1
-"call togglebg#map("<F5>")
-if has('gui_running')
-    set background=light
-else
-    set background=dark
-endif
+call togglebg#map("<F5>")
+set background=dark
+"set background=light
 
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Vundle
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+set nocompatible              " be iMproved, required
+filetype off                  " required
+
+" set the runtime path to include Vundle and initialize
+set rtp+=~/.vim/bundle/Vundle.vim
+call vundle#begin()
+
+" Keep Plugin commands between vundle#begin/end.
+" let Vundle manage Vundle
+Plugin 'VundleVim/Vundle.vim'
+Plugin 'Valloric/YouCompleteMe'
+" Navigation (IDE frame)
+Plugin 'scrooloose/nerdtree'
+Plugin 'jistr/vim-nerdtree-tabs'
+Plugin 'vim-airline/vim-airline'
+Plugin 'vim-airline/vim-airline-themes'
+Plugin 'tpope/vim-fugitive'
+Plugin 'tpope/vim-sensible'
+Plugin 'tpope/vim-surround'
+Plugin 'dkprice/vim-easygrep'
+Plugin 'editorconfig/editorconfig-vim'
+" visual undo list
+" markdown preview: opens browser with live reload when vim opens .md
+Plugin 'suan/vim-instant-markdown'
+Plugin 'godlygeek/tabular'
+" language tools
+Plugin 'SuperTab'
+" All of your Plugins must be added before the following line
+call vundle#end()            " required
+filetype plugin indent on    " required
+" To ignore plugin indent changes, instead use:
+"filetype plugin on
+"
+" Brief help
+" :PluginList       - lists configured plugins
+" :PluginInstall    - installs plugins; append `!` to update or just :PluginUpdate
+" :PluginSearch foo - searches for foo; append `!` to refresh local cache
+" :PluginClean      - confirms removal of unused plugins; append `!` to auto-approve removal
+"
+" see :h vundle for more details or wiki for FAQ
+" Put your non-Plugin stuff after this line
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " General
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " set UTF-8 encoding
@@ -152,8 +194,8 @@ endfunction
 " map <down> <ESC>:bn<RETURN> " right arrow (normal mode) switches buffers
 " map <right> <ESC>:Tlist<RETURN> " show taglist
 " map <left> <ESC>:NERDTreeToggle<RETURN>  " moves left fa split
-" map <F2> <ESC>ggVG:call SuperRetab()<left>
-" map <F12> ggVGg? " apply rot13 for people snooping over shoulder, good fun
+map <F2> <ESC>ggVG:call SuperRetab()<left>
+map <F12> ggVGg? " apply rot13 for people snooping over shoulder, good fun
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Useful abbrevs
@@ -199,64 +241,56 @@ vnoremap <silent> <leader>es :EsformatterVisual<CR>
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " NERDTree
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-"let NERDTreeShowHidden=1
-"let NERDTreeIgnore=['\.DS_Store$']
-"" auto open if no file sent as arg
-"autocmd StdinReadPre * let s:std_in=1
-"autocmd VimEnter * if argc() == 0 && !exists("s:std_in") | NERDTree | endif
-"" Toggle NERDtree with C-n
-"map ,n <plug>NERDTreeTabsToggle<CR>
-"" Autoclose if only NERDtree is left
-"autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTreeType") && b:NERDTreeType == "primary") | q | endif
-"
+let NERDTreeShowHidden=1
+let NERDTreeIgnore=['\.DS_Store$']
+" auto open if no file sent as arg
+autocmd StdinReadPre * let s:std_in=1
+autocmd VimEnter * if argc() == 0 && !exists("s:std_in") | NERDTree | endif
+" Toggle NERDtree with C-n
+map <C-l> :NERDTreeToggle<CR>
+" Autoclose if only NERDtree is left
+autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTreeType") && b:NERDTreeType == "primary") | q | endif
+
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Syntastic
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-"set statusline+=%#warningmsg#
-"set statusline+=%{SyntasticStatuslineFlag()}
-"set statusline+=%*
-"
-"let g:syntastic_html_tidy_quiet_messages = { "level": "warnings" }
-"let g:syntastic_html_tidy_ignore_errors = [ '<template> is not recognized!' ]
-"
-"let g:syntastic_always_populate_loc_list = 1
-"let g:syntastic_auto_loc_list = 1
-"let g:syntastic_check_on_open = 1
-""let g:syntastic_check_on_wq = 0
-"let g:syntastic_enable_eslint_checker = 1
-"let g:syntastic_javascript_checkers = ['eslint']
-"let g:syntastic_enable_tslint_checker = 1
-"let g:syntastic_typescript_checkers = ['tslint', 'tsc']
-"let g:syntastic_enable_pug_checker = 1
-"let g:syntastic_pug_checkers = ['jade','pug']
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-"" Other
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-"let g:sneak#streak = 1
-"let g:airline_theme='bubblegum'
+set statusline+=%#warningmsg#
+set statusline+=%{SyntasticStatuslineFlag()}
+set statusline+=%*
 
+let g:syntastic_html_tidy_quiet_messages = { "level": "warnings" }
+let g:syntastic_html_tidy_ignore_errors = [ '<template> is not recognized!' ]
 
+let g:syntastic_always_populate_loc_list = 1
+let g:syntastic_auto_loc_list = 1
+let g:syntastic_check_on_open = 1
+"let g:syntastic_check_on_wq = 0
+let g:syntastic_enable_eslint_checker = 1
+let g:syntastic_javascript_checkers = ['eslint']
+let g:syntastic_enable_tslint_checker = 1
+let g:syntastic_typescript_checkers = ['tslint', 'tsc']
+let g:syntastic_enable_pug_checker = 1
+let g:syntastic_pug_checkers = ['jade','pug']
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Python 
+" Other
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-:let mapleader = ","
+let g:sneak#streak = 1
+let g:airline_theme='bubblegum'
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" FZF
+set rtp+=/usr/local/opt/fzf
+" An action can be a reference to a function that processes selected lines
+function! s:build_quickfix_list(lines)
+  call setqflist(map(copy(a:lines), '{ "filename": v:val }'))
+  copen
+  cc
+endfunction
 
-func! s:SetBreakpoint()
-    cal append('.', repeat(' ', strlen(matchstr(getline('.'), '^\s*'))) . 'import ipdb; ipdb.set_trace()')
-endf
+let g:fzf_action = {
+  \ 'ctrl-q': function('s:build_quickfix_list'),
+  \ 'ctrl-t': 'tab split',
+  \ 'ctrl-x': 'split',
+  \ 'ctrl-v': 'vsplit' }
 
-func! s:RemoveBreakpoint()
-    exe 'silent! g/^\s*import\sipdb\;\?\n*\s*ipdb.set_trace()/d'
-endf
-
-func! s:ToggleBreakpoint()
-    if getline('.')=~#'^\s*import\sipdb' | cal s:RemoveBreakpoint() | el | cal s:SetBreakpoint() | en
-endf
-nnoremap <leader>b :call <SID>ToggleBreakpoint()<CR>
-command R w|!python %
-nnoremap <leader>r :R <CR> 
-
-
-set rtp+=~/.fzf
-map <c-t> <ESC>:FZF <return>-
+map <c-t> <ESC>:FZF<RETURN>  " moves left fa split
 
