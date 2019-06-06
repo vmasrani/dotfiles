@@ -19,6 +19,10 @@ conda activate base
 conda activate ml3
 
 
+#Set PYTHONPATH
+export PYTHONPATH=/Users/vmasrani/.python:$PYTHONPATH
+
+
 #Init fasd
 eval "$(fasd --init auto)"
 alias v='f -e vim'
@@ -100,8 +104,8 @@ alias du='du -sh'                           # Show usage in human readable forma
 #ssh aliases
 alias ubc='ssh -Y vadmas@people.cs.ubc.ca'
 alias cluster="ssh -A -t vadmas@remote.cs.ubc.ca ssh headnode"
-alias compcan="ssh vadmas@cedar.computecanada.ca"
-
+alias cedar="ssh vadmas@cedar.computecanada.ca"
+alias neuro="ssh vadmas@neuromancer.cs.ubc.ca"
 
 # pullubc (){
 #     if [ "$1" = "-r" ]; then
