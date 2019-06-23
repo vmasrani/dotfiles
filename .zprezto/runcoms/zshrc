@@ -95,12 +95,6 @@ alias fix_stty='stty sane'                  # fix_stty:     Restore terminal set
 alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
 alias du='du -sh'                           # Show usage in human readable format and sum content of subdirectories
 
-# alias matlab='matlab -nosplash'             # Hide splash screen by default
-# alias mshell='matlab -nodisplay'            # No gui
-# alias mrun='matlab -nodesktop -nosplash -r' # Run script
-# alias rstud='open -a Rstudio .'             # Open R studio
-
-
 #ssh aliases
 alias ubc='ssh -Y vadmas@people.cs.ubc.ca'
 alias cluster="ssh -A -t vadmas@remote.cs.ubc.ca ssh headnode"
