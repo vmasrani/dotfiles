@@ -10,17 +10,13 @@ if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
   source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
 fi
 
+# Source bash_profile
+source $HOME/.bash_profile
 
-# Customize to your needs...
-# added by miniconda2 installer
-# export PATH="$HOME/miniconda2/bin:$PATH"
-source /Users/vmasrani/miniconda2/etc/profile.d/conda.sh
-conda activate base
-conda activate ml3
-
-
-#Set PYTHONPATH
+# Python stuff
 export PYTHONPATH=/Users/vmasrani/.python:$PYTHONPATH
+export PYTHONBREAKPOINT=ipdb.set_trace
+conda activate ml3
 
 
 #Init fasd
