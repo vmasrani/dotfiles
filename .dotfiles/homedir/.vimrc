@@ -1,296 +1,198 @@
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Must Have
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" colorscheme solarized
-syntax on " syntax highlighting on
-syntax enable
-let g:solarized_termtrans = 1
-call togglebg#map("<F5>")
-set background=dark
-"set background=light
+" based on http://github.com/jferris/config_files/blob/master/vimrc
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Vundle
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-set nocompatible              " be iMproved, required
-filetype off                  " required
+" Use Vim settings, rather then Vi settings (much better!).
+" This must be first, because it changes other options as a side effect.
+set nocompatible
 
-" set the runtime path to include Vundle and initialize
-set rtp+=~/.vim/bundle/Vundle.vim
-call vundle#begin()
+" allow backspacing over everything in insert mode
+set backspace=indent,eol,start
 
-" Keep Plugin commands between vundle#begin/end.
-" let Vundle manage Vundle
-Plugin 'VundleVim/Vundle.vim'
-"Plugin 'Valloric/YouCompleteMe'
-" Navigation (IDE frame)
-Plugin 'scrooloose/nerdtree'
-Plugin 'jistr/vim-nerdtree-tabs'
-Plugin 'vim-airline/vim-airline'
-Plugin 'vim-airline/vim-airline-themes'
-Plugin 'tpope/vim-fugitive'
-Plugin 'tpope/vim-sensible'
-Plugin 'tpope/vim-surround'
-Plugin 'dkprice/vim-easygrep'
-Plugin 'editorconfig/editorconfig-vim'
-" visual undo list
-" markdown preview: opens browser with live reload when vim opens .md
-Plugin 'suan/vim-instant-markdown'
-Plugin 'godlygeek/tabular'
-" language tools
-Plugin 'SuperTab'
-" All of your Plugins must be added before the following line
-call vundle#end()            " required
-filetype plugin indent on    " required
-" To ignore plugin indent changes, instead use:
-"filetype plugin on
-"
-" Brief help
-" :PluginList       - lists configured plugins
-" :PluginInstall    - installs plugins; append `!` to update or just :PluginUpdate
-" :PluginSearch foo - searches for foo; append `!` to refresh local cache
-" :PluginClean      - confirms removal of unused plugins; append `!` to auto-approve removal
-"
-" see :h vundle for more details or wiki for FAQ
-" Put your non-Plugin stuff after this line
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" General
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" set UTF-8 encoding
-set enc=utf-8
-set fenc=utf-8
-set termencoding=utf-8
-set history=1000 " How many lines of history to remember
-set cf " enable error files and error jumping
-" set clipboard+=unnamed " turns out I do like sharing windows clipboard
-set ffs=unix,dos,mac " support all three, in this order
-set viminfo+=! " make sure it can save viminfo
-set isk+=_,$,@,%,# " none of these should be word dividers, so make them not be
-set nosol " leave my cursor where it was
-
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Files/Backups/Sessions
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 set nobackup
-set nowb
-set noswapfile
-set directory=~/.vim/temp " directory for temp files
-set makeef=error.err " When using make, where should it dump the file
-set sessionoptions+=globals " What should be saved during sessions being saved
-set sessionoptions+=localoptions " What should be saved during sessions being saved
-set sessionoptions+=resize " What should be saved during sessions being saved
-set sessionoptions+=winpos " What should be saved during sessions being saved
+set nowritebackup
+set history=50		" keep 50 lines of command line history
+set ruler		  " show the cursor position all the time
+set showcmd		    " display incomplete commands
+set incsearch		      " do incremental searching
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Vim UI
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-set lsp=0 " space it out a little more (easier to read)
-set wildmenu " turn on wild menu
-set wildmode=list:longest " turn on wild menu in special format (long format)
-set wildignore=*.dll,*.o,*.obj,*.bak,*.exe,*.pyc,*.swp,*.jpg,*.gif,*.png " ignore formats
-set ruler " Always show current positions along the bottom
-set cmdheight=1 " the command bar is 1 high
-set number " turn on line numbers
-set lz " do not redraw while running macros (much faster) (LazyRedraw)
-set hid " you can change buffer without saving
-set backspace=2 " make backspace work normal
-set whichwrap+=<,>,h,l  " backspace and cursor keys wrap to
-set mouse=a " use mouse everywhere
-set shortmess=atI " shortens messages to avoid 'press a key' prompt
-set report=0 " tell us when anything is changed via :...
-set noerrorbells " don't make noise
-set list " we do what to show tabs, to ensure we get them out of my files
-set listchars=tab:>-,trail:- " show tabs and trailing whitespace
+" Don't use Ex mode, use Q for formatting
+map Q gq
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Visual Cues
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-set showmatch " show matching brackets
-set mat=5 " how many tenths of a second to blink matching brackets for
-set nohlsearch " do not highlight searched for phrases
-set incsearch " BUT do highlight as you type you search phrase
-set so=5 " Keep 5 lines (top/bottom) for scope
-set novisualbell " don't blink
-" statusline example: ~\myfile[+] [FORMAT=format] [TYPE=type] [ASCII=000] [HEX=00] [POS=0000,0000][00%] [LEN=000]
-set statusline=%F%m%r%h%w\ [FORMAT=%{&ff}]\ [TYPE=%Y]\ [ASCII=\%03.3b]\ [HEX=\%02.2B]\ [POS=%04l,%04v][%p%%]\ [LEN=%L]
-set laststatus=2 " always show the status line
+" This is an alternative that also works in block mode, but the deleted
+" text is lost and it only works for putting the current register.
+"vnoremap p "_dp
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Indent Related
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-set ai " autoindent (filetype indenting instead)
-set nosi " smartindent (filetype indenting instead)
-set cindent " do c-style indenting
-set softtabstop=4 " unify
-set shiftwidth=4 " unify
-set tabstop=4 " real tabs should be 4, but they will show with set list on
-set copyindent " but above all -- follow the conventions laid before us
-" wrap lines at 120 chars. 80 is somewhat antiquated with nowadays displays.
-set textwidth=120
-filetype plugin indent on " load filetype plugins and indent settings
+" Switch syntax highlighting on, when the terminal has colors
+" Also switch on highlighting the last used search pattern.
+if (&t_Co > 2 || has("gui_running")) && !exists("syntax_on")
+  syntax on
+  set hlsearch
+endif
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Text Formatting/Layout
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-set fo=tcrq " See Help (complex)
-set shiftround " when at 3 spaces, and I hit > ... go to 4, not 5
-set expandtab " no real tabs!
-set nowrap " do not wrap line
-set preserveindent " but above all -- follow the conventions laid before us
-set ignorecase " case insensitive by default
-set smartcase " if there are caps, go case-sensitive
-set completeopt=menu,longest,preview " improve the way autocomplete works
-" set cursorcolumn " show the current column
-set cursorline
-" hi CursorLine term=underline ctermbg=008 guibg=#493a35
+" Switch wrap off for everything
+set wrap
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Folding
-"    Enable folding, but by default make it act like folding is
-"    off, because folding is annoying in anything but a few rare
-"    cases
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-set foldenable " Turn on folding
-set foldmarker={,} " Fold C style code
-set foldmethod=marker " Fold on the marker
-set foldlevel=100 " Don't autofold anything (but I can still fold manually)
-set foldopen-=search " don't open folds when you search into them
-set foldopen-=undo " don't open folds when you undo stuff
+" Only do this part when compiled with support for autocommands.
+if has("autocmd")
+  " Enable file type detection.
+  " Use the default filetype settings, so that mail gets 'tw' set to 72,
+  " 'cindent' is on in C files, etc.
+  " Also load indent files, to automatically do language-dependent indenting.
+  filetype plugin indent on
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" CTags
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-"let Tlist_Ctags_Cmd = 'ctags' " Location of ctags
-"let Tlist_Sort_Type = "name" " order by
-"let Tlist_Use_Right_Window = 1 " split to the right side of the screen
-"let Tlist_Compact_Format = 1 " show small meny
-"let Tlist_Exist_OnlyWindow = 1 " if you are the last, kill yourself
-"let Tlist_File_Fold_Auto_Close = 0 " Do not close tags for other files
-"let Tlist_Enable_Fold_Column = 1 " Do show folding tree
-"let Tlist_WinWidth = 50 " 50 cols wide, so I can (almost always) read my functions
+  " Set File type to 'text' for files ending in .txt
+  autocmd BufNewFile,BufRead *.txt setfiletype text
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Matchit
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-let b:match_ignorecase = 1
+  " Enable soft-wrapping for text files
+  autocmd FileType text,markdown,html,xhtml,eruby setlocal wrap linebreak nolist
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Perl
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" let perl_extended_vars=1 " highlight advanced perl vars inside strings
+  " Put these in an autocmd group, so that we can delete them easily.
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Custom Functions
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Select range, then hit :SuperRetab($width) - by p0g and FallingCow
-function! SuperRetab(width) range
-    silent! exe a:firstline . ',' . a:lastline . 's/\v%(^ *)@<= {'. a:width .'}/\t/g'
+  au!
+
+  " For all text files set 'textwidth' to 78 characters.
+  " autocmd FileType text setlocal textwidth=78
+
+  " When editing a file, always jump to the last known cursor position.
+  " Don't do it when the position is invalid or when inside an event handler
+  " (happens when dropping a file on gvim).
+  autocmd BufReadPost *
+    \ if line("'\"") > 0 && line("'\"") <= line("$") |
+    \   exe "normal g`\"" |
+    \ endif
+
+  " Automatically load .vimrc source when saved
+  autocmd BufWritePost .vimrc source $MYVIMRC
+
+  augroup END
+
+else
+
+  set autoindent		" always set autoindenting on
+
+endif " has("autocmd")
+
+" if has("folding")
+  " set foldenable
+  " set foldmethod=syntax
+  " set foldlevel=1
+  " set foldnestmax=2
+  " set foldtext=strpart(getline(v:foldstart),0,50).'\ ...\ '.substitute(getline(v:foldend),'^[\ #]*','','g').'\ '
+" endif
+
+" Softtabs, 2 spaces
+set tabstop=2
+set shiftwidth=2
+set expandtab
+
+" Always display the status line
+set laststatus=2
+
+" \ is the leader character
+let mapleader = ","
+
+" Edit the README_FOR_APP (makes :R commands work)
+map <Leader>R :e doc/README_FOR_APP<CR>
+
+" Hide search highlighting
+map <Leader>h :set invhls <CR>
+
+" Opens an edit command with the path of the currently edited file filled in
+" Normal mode: <Leader>e
+map <Leader>e :e <C-R>=expand("%:p:h") . "/" <CR>
+
+" Opens a tab edit command with the path of the currently edited file filled in
+" Normal mode: <Leader>t
+map <Leader>te :tabe <C-R>=expand("%:p:h") . "/" <CR>
+
+" Inserts the path of the currently edited file into a command
+" Command mode: Ctrl+P
+cmap <C-P> <C-R>=expand("%:p:h") . "/" <CR>
+
+" Duplicate a selection
+" Visual mode: D
+vmap D y'>p
+
+" Press Shift+P while in visual mode to replace the selection without
+" overwriting the default register
+vmap P p :call setreg('"', getreg('0')) <CR>
+
+" For Haml
+au! BufRead,BufNewFile *.haml         setfiletype haml
+
+" No Help, please
+nmap <F1> <Esc>
+
+" Press ^F from insert mode to insert the current file name
+imap <C-F> <C-R>=expand("%")<CR>
+
+" Maps autocomplete to tab
+" imap <Tab> <C-N>
+    
+imap <C-L> <Space>=><Space>
+
+" Display extra whitespace
+" set list listchars=tab:»·,trail:·
+
+" Edit routes
+command! Rroutes :e config/routes.rb
+command! Rschema :e db/schema.rb
+
+" Local config
+if filereadable(".vimrc.local")
+  source .vimrc.local
+endif
+
+" Use Ack instead of Grep when available
+if executable("ack")
+  set grepprg=ack\ -H\ --nogroup\ --nocolor\ --ignore-dir=tmp\ --ignore-dir=coverage
+endif
+
+" Color scheme
+" colorscheme vividchalk
+" highlight NonText guibg=#060606
+" highlight Folded  guibg=#0A0A0A guifg=#9090D0
+
+" Numbers
+set number
+set numberwidth=5
+
+" Snippets are activated by Shift+Tab
+let g:snippetsEmu_key = "<S-Tab>"
+
+" Tab completion options
+" (only complete to the longest unambiguous match, and show a menu)
+set completeopt=longest
+"set completeopt=longest,menu
+set wildmode=list:longest,list:full
+set complete=.,t
+
+" case only matters with mixed case expressions
+set ignorecase
+set smartcase
+
+" Tags
+let g:Tlist_Ctags_Cmd="ctags --exclude='*.js'"
+set tags=./tags;
+
+let g:fuf_splitPathMatching=1
+
+" Open URL
+command -bar -nargs=1 OpenURL :!open <args>
+function! OpenURL()
+  let s:uri = matchstr(getline("."), '[a-z]*:\/\/[^ >,;:]*')
+  echo s:uri
+  if s:uri != ""
+    exec "!open \"" . s:uri . "\""
+  else
+    echo "No URI found in line."
+  endif
 endfunction
+map <Leader>w :call OpenURL()<CR>
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Mappings
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" map <up> <ESC>:bp<RETURN> " left arrow (normal mode) switches buffers
-" map <down> <ESC>:bn<RETURN> " right arrow (normal mode) switches buffers
-" map <right> <ESC>:Tlist<RETURN> " show taglist
-" map <left> <ESC>:NERDTreeToggle<RETURN>  " moves left fa split
-map <F2> <ESC>ggVG:call SuperRetab()<left>
-map <F12> ggVGg? " apply rot13 for people snooping over shoulder, good fun
+set rtp+=~/.fzf
 
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Useful abbrevs
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-iab xdate <c-r>=strftime("%d/%m/%y %H:%M:%S")<cr>
-
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Autocommands
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-au BufRead,BufNewFile *.zcml set filetype=xml
-au BufRead,BufNewFile *.rb,*.rhtml set tabstop=2
-au BufRead,BufNewFile *.rb,*.rhtml set shiftwidth=2
-au BufRead,BufNewFile *.rb,*.rhtml set softtabstop=2
-au BufRead,BufNewFile *.otl set syntax=blockhl
-au BufRead,BufNewFile *.json set syntax=javascript
-au FileType python set omnifunc=pythoncomplete#Complete
-au FileType javascript set omnifunc=javascriptcomplete#CompleteJS
-au FileType html set omnifunc=htmlcomplete#CompleteTags
-au FileType css set omnifunc=csscomplete#CompleteCSS
-au FileType xml set omnifunc=xmlcomplete#CompleteTags
-au FileType c set omnifunc=ccomplete#Complete
-" autocmd vimenter * NERDTree
-
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Change paging overlap amount from 2 to 5 (+3)
-" if you swapped C-y and C-e, and set them to 2, it would
-" remove any overlap between pages
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-nnoremap <C-b> <C-b>3<C-e> "  Make overlap 3 extra on control-b
-
-" Yank text to the macOS clipboard
-noremap <leader>y "*y
-noremap <leader>yy "*Y
-
-" Preserve indentation while pasting text from the macOS clipboard
-noremap <leader>p :set paste<CR>:put  *<CR>:set nopaste<CR>
-
-" esformatter
-" type \es to format
-nnoremap <silent> <leader>es :Esformatter<CR>
-vnoremap <silent> <leader>es :EsformatterVisual<CR>
-
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" NERDTree
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-let NERDTreeShowHidden=1
-let NERDTreeIgnore=['\.DS_Store$']
-" auto open if no file sent as arg
-autocmd StdinReadPre * let s:std_in=1
-autocmd VimEnter * if argc() == 0 && !exists("s:std_in") | NERDTree | endif
-" Toggle NERDtree with C-n
-map <C-l> :NERDTreeToggle<CR>
-" Autoclose if only NERDtree is left
-autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTreeType") && b:NERDTreeType == "primary") | q | endif
-
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Syntastic
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-set statusline+=%#warningmsg#
-set statusline+=%{SyntasticStatuslineFlag()}
-set statusline+=%*
-
-let g:syntastic_html_tidy_quiet_messages = { "level": "warnings" }
-let g:syntastic_html_tidy_ignore_errors = [ '<template> is not recognized!' ]
-
-let g:syntastic_always_populate_loc_list = 1
-let g:syntastic_auto_loc_list = 1
-let g:syntastic_check_on_open = 1
-"let g:syntastic_check_on_wq = 0
-let g:syntastic_enable_eslint_checker = 1
-let g:syntastic_javascript_checkers = ['eslint']
-let g:syntastic_enable_tslint_checker = 1
-let g:syntastic_typescript_checkers = ['tslint', 'tsc']
-let g:syntastic_enable_pug_checker = 1
-let g:syntastic_pug_checkers = ['jade','pug']
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" Other
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-let g:sneak#streak = 1
-let g:airline_theme='bubblegum'
-""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-" FZF
-set rtp+=/usr/local/opt/fzf
-" An action can be a reference to a function that processes selected lines
-function! s:build_quickfix_list(lines)
-  call setqflist(map(copy(a:lines), '{ "filename": v:val }'))
-  copen
-  cc
-endfunction
-
-let g:fzf_action = {
-  \ 'ctrl-q': function('s:build_quickfix_list'),
-  \ 'ctrl-t': 'tab split',
-  \ 'ctrl-x': 'split',
-  \ 'ctrl-v': 'vsplit' }
-
-map <c-t> <ESC>:FZF<RETURN>  " moves left fa split
-
+:set mouse=a
+:syntax enable
+" Remap exit insert mode to jk
+inoremap jk <ESC>
+let mapleader = "\<Space>"
