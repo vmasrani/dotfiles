@@ -37,11 +37,6 @@ source /usr/local/share/antigen/antigen.zsh
 antigen bundle andrewferrier/fzf-z
 antigen apply
 
-## FZF-Z
-export FZFZ_SUBDIR_LIMIT="500"
-export FZFZ_EXTRA_DIRS="'../../..'"
-export FZFZ_EXCLUDE_PATTERN='\.git|venv'
-
 #Fix illegal bytestream error
 
 #ls alias'#
@@ -98,103 +93,50 @@ alias cluster="ssh -A -t vadmas@remote.cs.ubc.ca ssh headnode"
 alias cedar="ssh vadmas@cedar.computecanada.ca"
 alias neuro="ssh vadmas@neuromancer.cs.ubc.ca"
 
-# pullubc (){
-#     if [ "$1" = "-r" ]; then
-#      scp -r vadmas@people.cs.ubc.ca:$2 $3;
-#     else
-#      scp vadmas@people.cs.ubc.ca:$1 $2;
-#     fi
-# }
-
-# pushubc (){
-#   if [ "$1" = "-r" ]; then
-#     scp -r $2 vadmas@people.cs.ubc.ca:/ubc/cs/home/v/vadmas/scp;
-#     else
-#     scp $1 vadmas@people.cs.ubc.ca:/ubc/cs/home/v/vadmas/scp;
-#     fi
-# }
-
-#Function that pronounces words - calls the "pronounce" script in ~/bin
-alias say='pronounce'
-
 mk () { mkdir -p "$1" && cd "$1"; }         # mk:          Makes new Dir and jumps inside
 trash () { command mv "$@" ~/.Trash ; }     # trash:        Moves a file to the MacOS trash
-ql () { qlmanage -p "$*" >& /dev/null; }    # ql:           Opens any file in MacOS Quicklook Preview
 alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
 alias zshrc='vim ~/.zshrc'
 
 
-
 # #   extract:  Extract most know archives with one command
 # #   ---------------------------------------------------------
-    extract () {
-        if [ -f $1 ] ; then
-            case $1 in
-                *.tar.bz2)   tar xjf $1     ;;
-        *.tar.gz)    tar xzf $1     ;;
-        *.bz2)       bunzip2 $1     ;;
-        *.rar)       unrar e $1     ;;
-        *.gz)        gunzip $1      ;;
-        *.tar)       tar xf $1      ;;
-        *.tbz2)      tar xjf $1     ;;
-        *.tgz)       tar xzf $1     ;;
-        *.zip)       unzip $1       ;;
-        *.Z)         uncompress $1  ;;
-        *.7z)        7z x $1        ;;
-        *)     echo "'$1' cannot be extracted via extract()" ;;
-        esac
-        else
-            echo "'$1' is not a valid file"
-                fi
-    }
+extract () {
+    if [ -f $1 ] ; then
+        case $1 in
+            *.tar.bz2)   tar xjf $1     ;;
+    *.tar.gz)    tar xzf $1     ;;
+    *.bz2)       bunzip2 $1     ;;
+    *.rar)       unrar e $1     ;;
+    *.gz)        gunzip $1      ;;
+    *.tar)       tar xf $1      ;;
+    *.tbz2)      tar xjf $1     ;;
+    *.tgz)       tar xzf $1     ;;
+    *.zip)       unzip $1       ;;
+    *.Z)         uncompress $1  ;;
+    *.7z)        7z x $1        ;;
+    *)     echo "'$1' cannot be extracted via extract()" ;;
+    esac
+    else
+        echo "'$1' is not a valid file"
+            fi
+}
 
 #In order to paste commands that start with a '$'
 function $ { "$@"  }
 
-#function dict {open dict:://$1}
-
-#   spotlight: Search for a file using MacOS Spotlight's metadata
-#   -----------------------------------------------------------
-    spotlight () { mdfind "kMDItemDisplayName == '$@'wc"; }
-
-#youtube audio downloader
-
-function youtube {
-if [ "$1" = "-d" ]; then
-   cd ~/Downloads/youtube
-else
-   youtube-dl  --extract-audio --prefer-ffmpeg --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" $1
-fi
-}
-
-function youtube_pl {
-youtube-dl --extract-audio --prefer-ffmpeg --audio-format mp3 -o "~/Downloads/youtube/%(title)s.%(ext)s" --playlist-start $2 $1;
-}
-
-function getlec {
-  dir="/Users/vmasrani/Dropbox/lectures";
-  title=$(youtube-dl -e $1)
-  youtube-dl --extract-audio --prefer-ffmpeg --audio-format mp3 -o "$dir/%(title)s.%(ext)s" $1 && id3tag --artist=Lectures --album=Lectures $dir/$title.mp3;
-}
-
+#
 function getzip {
 curl $1 > package.zip;
 extract package.zip;
 rm package.zip;
 }
 
-#Append to end of file. Made function because one arrow (>) clears file which is dangerous
-function append(){echo $1  >> $2 }
-
-
-#Send attachment without message or subject
-# send file.pdf vadmas@gmail.com
-function send(){echo "" | mutt -s "Attachment" $2 -a $1}
-
 #mysql
 alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
 alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
 alias mysql_shell='mysql -u root -p -h localhost'
+
 #So mysql can communicate with python
 export DYLD_LIBRARY_PATH=/usr/local/mysql/lib/
 
@@ -208,6 +150,7 @@ export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
 
 
 #git
+
 #Get only tarball with no git repo info
 function targit(){
 curl -L $(sed 's%\.git%\/tarball\/master%' <<<"$1") | tar zx
@@ -215,12 +158,16 @@ curl -L $(sed 's%\.git%\/tarball\/master%' <<<"$1") | tar zx
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
+## FZF-Z
+export FZFZ_SUBDIR_LIMIT="500"
+export FZFZ_EXTRA_DIRS="'../../..'"
+export FZFZ_EXCLUDE_PATTERN='\.git|venv'
 
 export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
 export FZF_DEFAULT_OPTS="--layout=reverse --inline-info"
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND . '/Users/vmasrani/dev/' '/Users/vmasrani/Downloads'"
-# export FZF_ALT_C_COMMAND="fd -t d . '/Users/vmasrani/dev/' '/Users/vmasrani/Downloads/' '/Users/vmasrani/Dropbox/' '/Users/vmasrani/Documents/' '/Users/vmasrani/Desktop/'  '/Users/vmasrani/Calibre Library/'"
-export FZF_ALT_C_COMMAND="fd -t d . $HOME"
+
+export FZF_ALT_C_COMMAND="fd -t d . '/Users/vmasrani/dev/' '/Users/vmasrani/Downloads'"
 
 # This is a replacement for the ALT_C command that pastes directories instead of files
 # CTRL-H - Paste the selected file path(s) into the command line
@@ -322,15 +269,6 @@ ga() {
 
 gdiff() {
    git diff $("${FZF_PREFIX}ga")
-}
-
-
-#command line dictionary
-alias def='sdcv'
-
-#compile and open latex
-function pt(){
-pdflatex $1.tex && open $1.pdf
 }
 
 ### LESS Syntax Highlight ###
