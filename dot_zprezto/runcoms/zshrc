@@ -1,0 +1,646 @@
+cat ~/.reminders.txt
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+#
+# Executes commands at the start of an interactive session.
+#
+# Authors:
+#   Sorin Ionescu <sorin.ionescu@gmail.com>
+#
+
+# Source Prezto.
+if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
+  source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
+fi
+
+# Source bash_profile
+source $HOME/.bash_profile
+
+# brew stuff 
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zshrc
+
+# replace code with cursor 
+alias vscode='cursor'
+GITSTATUS_LOG_LEVEL=DEBUG
+
+
+export OPENAI_API_KEY=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
+
+
+# Python stuff
+export PYTHONPATH=/Users/vmasrani/.python:$PYTHONPATH
+export PYTHONBREAKPOINT=ipdb.set_trace
+conda activate ml3
+
+# zsh codex
+export ZSH_CUSTOM="${ZDOTDIR:-$HOME}/.zprezto"
+source "$ZSH_CUSTOM/plugins/zsh_codex/zsh_codex.plugin.zsh"
+bindkey '^X' create_completion
+
+# vscode stuff
+# custom search api
+# https://developers.google.com/custom-search/v1/introduction#identify_your_application_to_google_with_api_key
+export CSAPI='AIzaSyA72ny90-5I_cqTVqxov2FmYf5-9vzMIBg'
+
+export PATH="/Users/vmasrani/bin:$PATH"
+
+#Init fasd
+eval "$(fasd --init auto)"
+alias v='f -e vim'
+
+# Customize to your needs...
+DIRSTACKSIZE=20
+
+# Use i to get out of vim mode (enter vimmode with C-x C-v)
+#bindkey '^[' vi-cmd-mode
+export EDITOR="code -w"
+
+EDITOR=vim
+VISUAL=vim
+
+## Antigen
+source /usr/local/share/antigen/antigen.zsh
+antigen bundle andrewferrier/fzf-z
+antigen apply
+
+
+
+
+# qt
+export PATH="/usr/local/opt/qt@5/bin:$PATH"
+export LDFLAGS="-L/usr/local/opt/qt@5/lib"
+export CPPFLAGS="-I/usr/local/opt/qt@5/include"
+export PKG_CONFIG_PATH="/usr/local/opt/qt@5/lib/pkgconfig"
+
+alias l='exa -aHl --icons --git'
+alias lt='exa -aHl --icons --git --sort=modified'
+alias lf='exa -aHl --icons --git --sort=size'
+alias ld='exa -aHlD --icons --git'
+
+#cd alias'#
+alias cd..='cd ../'                         # Go back 1 directory level (for fast typers)
+alias ..='cd ../'                           # Go back 1 directory level
+alias .1='cd ../'                           # Go back 1 directory level
+alias .2='cd ../../'                        # Go back 2 directory levels
+alias .3='cd ../../../'                     # Go back 3 directory levels
+alias .4='cd ../../../../'                  # Go back 4 directory levels
+alias .5='cd ../../../../../'               # Go back 5 directory levels
+alias .6='cd ../../../../../../'            # Go back 6 directory levels
+alias .7='cd ../../../../../../../'            # Go back 6 directory levels
+cdd() { builtin cd "$@"; ll; }               # Always list directory contents upon 'cd'
+
+#tree alias's"
+alias t='tree'
+alias t2='tree -L 2'
+alias t3='tree -L 3'
+alias t4='tree -L 4'
+
+#Allow group rename
+autoload -U zmv
+alias mmv='noglob zmv -W'
+
+#Numeric sort
+setopt numeric_glob_sort
+
+#Preferred implementations
+alias mv='mv -iv'                           # Preferred 'mv' implementation
+alias mkdir='mkdir -pv'                     # Preferred 'mkdir' implementation
+alias ll='ls -FGlAhp'                       # Preferred 'ls' implementation
+alias less='less -FSRXc'                    # Preferred 'less' implementation
+alias rm='rm -v'                            # Show what has been removed
+alias cp='cp -v'                            # Show what has been copied
+alias fr='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
+alias ~="cd ~"                              # ~:            Go Home
+alias h="history"                           # h:            History
+alias path='echo -e ${PATH//:/\\n}'         # path:         Echo all executable Paths
+alias fix_stty='stty sane'                  # fix_stty:     Restore terminal settings when screwed up
+alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
+alias du='du -sh'                           # Show usage in human readable format and sum content of subdirectories
+alias fda='fd -HI'                          # fd all
+
+function compare { cmp --silent $1 $2 && echo '### SUCCESS: Files Are Identical! ###' || echo '### WARNING: Files Are Different! ###'}
+
+function zipsend {
+    zip -r $1.zip $1;
+    scp -r $1.zip $2;
+    rm $1.zip;
+}
+
+function lazygit() {
+    git add .
+    git commit -a -m "$1"
+    git push
+}
+
+function publishwebsite() {
+    bundle exec jekyll build
+    git add .
+    git commit -a -m "$1"
+    git push
+    ./bin/deploy
+}
+
+
+
+function pushpod {
+    ffmpeg -r 1 -loop 1 -i $1/header.jpeg  -i $1/master.mp3 -acodec copy -r 1 -shortest -vf scale=1280:720 $1/master.flv;
+    lazygit $1
+}
+
+# function gitinit {
+#     echo "# title" >> README.md;
+#     git init;
+#     git add README.md;
+#     git commit -m "first commit";
+#     git branch -M main;
+#     git remote add origin $1;
+#     git push -u origin main;
+# }
+
+# books
+function widen { pdfjam --fitpaper true --trim "0cm 0cm -20cm 0cm" ${1} -o ${1:r}_wide.pdf }
+export CLOUDCONVERT_API_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiZDRjODkwNTJlMWI2MjE1NDE5NjYyN2IwZTI4ZGRhMWExMDUzOGFhZTYzZDJkOWJlYTAwNjkzZTU5ODYwN2E1MGQ2ZjM4ZGExMmExNzA3ODgiLCJpYXQiOjE2MTc4MTU1NTguNTY1OTcxLCJuYmYiOjE2MTc4MTU1NTguNTY1OTc0LCJleHAiOjQ3NzM0ODkxNTguNTI0ODE0LCJzdWIiOiI1MDE5NDcyMiIsInNjb3BlcyI6W119.ayPR7Pb8LLd0KhrLaPxVmbFCuSrFqN0r0cQ_I1g9OAf3NeWeBz5sPARZ2AQlL0keG82m-4IYkUooHodgfMaltjfGBH_RH7ENPO5m0X-UKMPFnSGynrlgdZDOhOt0bBDbmNM79MODzsyOOUACZPKVnYSOtT3ZMztRtrWkMuE1QTRaGFEOdaDDBgBzgIIJejksbpoKFhHbTKbszZylDsE7Eo7K0qPBGAYy6Sz2ML2s1has-QYXQzrqVi_F0QiDJszOroFSw0FOZVpGqIzuPmrPeqTAmvGVMqJoltK88mo5BdQlUmvfcuK605OGVBD5JaTRZirmhGRMK4qPa_8OZOvzTGUNjL7vMXjgpudwgOzhymhpHajKQ8OTT7s4kQI4VMQfzt33197J2yhaZkEVHCUZez7goLyWl2TEbufwTr9tmN53Q--Zr98JYHwIF4yG5TuxootFe5cskXaSpTwGEKCq0wwSyHpb9jVbZ4t6lMWTssM_GZYW_0p6sqCpXhPwQT4jfJApeuEplj2AWqXw_9WPJdxE7iv5iY1xTeuWG3QzeuukVAdM9Xin4xtKocmpKJqoRc-RXKHN6AMZ0pouMPY_hmBhRCU7KhOG0-NbW5oteVO5kBBVRcuH8cOu7QBJfTyWmIlDOxuOoBe1JcnoyeKK63TIcvr3lPd9vruq4ZHvLM8
+export CONVERTIO_API_KEY=bdd65b74d62f60d28e715b471cadcf6a
+
+# -- remote --
+
+# https://pempek.net/articles/2013/04/24/vpn-less-persistent-ssh-sessions/
+function pssh {
+  case "$2" in
+    "") autossh -M 0 $1 -t "if tmux -qu has; then tmux -qu attach; else tmux -qu new; fi";;
+    *) autossh -M 0 $1 -t "if tmux -qu has -t $2; then tmux -qu attach -t $2; else tmux -qu new -s $2; fi";;
+  esac
+}
+
+#ssh aliases
+alias ubc='pssh vadmas@remote.cs.ubc.ca'
+alias cedar="pssh vadmas@cedar.computecanada.ca"
+alias neuro="pssh vadmas@Neuromancer.cs.ubc.ca"
+alias remote="ssh -Y vadmas@remote.cs.ubc.ca"
+alias borg="ssh borg"
+
+alias update_global_python='scp -r ~/.python  vadmas@remote.cs.ubc.ca:~  && scp -r ~/.python vadmas@cedar.computecanada.ca:~'
+
+# -- end remote --
+
+mk () { mkdir -p "$1" && cd "$1"; }         # mk:          Makes new Dir and jumps inside
+trash () { command mv "$@" ~/.Trash ; }     # trash:        Moves a file to the MacOS trash
+alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
+alias zshrc='vim ~/.zshrc'
+
+
+# #   extract:  Extract most know archives with one command
+# #   ---------------------------------------------------------
+extract () {
+    if [ -f $1 ] ; then
+        case $1 in
+            *.tar.bz2)   tar xjf $1     ;;
+    *.tar.gz)    tar xzf $1     ;;
+    *.bz2)       bunzip2 $1     ;;
+    *.rar)       unrar e $1     ;;
+    *.gz)        gunzip $1      ;;
+    *.tar)       tar xf $1      ;;
+    *.tbz2)      tar xjf $1     ;;
+    *.tgz)       tar xzf $1     ;;
+    *.zip)       unzip $1       ;;
+    *.Z)         uncompress $1  ;;
+    *.7z)        7z x $1        ;;
+    *)     echo "'$1' cannot be extracted via extract()" ;;
+    esac
+    else
+        echo "'$1' is not a valid file"
+            fi
+}
+
+#In order to paste commands that start with a '$'
+function $ { "$@"  }
+
+#
+function getzip {
+curl $1 > package.zip;
+extract package.zip;
+rm package.zip;
+}
+
+function killport() { lsof -i TCP:$1 | grep LISTEN | awk '{print $2}' | xargs kill -9 }
+
+#mysql
+alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
+alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
+alias mysql_shell='mysql -u root -p -h localhost'
+
+#postgres
+alias pg_start="launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
+alias pg_stop="launchctl unload ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
+
+#https://github.com/zsh-users/zsh-autosuggestions
+export ZSH_AUTOSUGGEST_USE_ASYNC=1
+
+#So mysql can communicate with python
+export DYLD_LIBRARY_PATH=/usr/local/mysql/lib/
+
+# Fix python bytecode
+export PYTHONDONTWRITEBYTECODE=1
+
+#Ruby
+export PATH="/usr/local/opt/ruby/bin:$PATH"
+#export RBENV_ROOT=/usr/local/var/rbenv
+#if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
+#export PATH=$HOME/.gem/ruby/2.6.0/bin:$PATH
+eval "$(rbenv init -)"
+
+#git
+
+#Get only tarball with no git repo info
+function targit(){
+curl -L $(sed 's%\.git%\/tarball\/master%' <<<"$1") | tar zx
+}
+# fzf
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+## FZF-Z
+export FZFZ_SUBDIR_LIMIT="1000"
+export FZFZ_EXTRA_DIRS="'../../..'"
+export FZFZ_EXCLUDE_PATTERN='\.git|venv'
+
+export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+export FZF_DEFAULT_OPTS="--layout=reverse --inline-info"
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND . '.' '/Users/vmasrani/dev/' '/Users/vmasrani/Documents/' '/Users/vmasrani/Downloads' '/Users/vmasrani/Google Drive'"
+export FZF_ALT_C_COMMAND="fd -t d . '.' '/Users/vmasrani/dev/' '/Users/vmasrani/Downloads' '/Users/vmasrani/Documents/' '/Users/vmasrani/Google Drive'"
+
+# This is a replacement for the ALT_C command that pastes directories instead of files
+# CTRL-H - Paste the selected file path(s) into the command line
+__dsel() {
+     local cmd="${FZF_ALT_C_COMMAND:-"command find -L . -mindepth 1 \\( -path '*/\\.*' -o -fstype 'sysfs' -o -fstype 'devfs' -o -fstype 'devtmpfs' -o -fstype 'proc' \\) -prune
+       -o -type f -print \
+       -o -type d -print \
+      -o -type l -print 2> /dev/null | cut -b3-"}"
+    setopt localoptions pipefail 2> /dev/null
+    eval "$cmd" | FZF_DEFAULT_OPTS="--height ${FZF_TMUX_HEIGHT:-40%} --reverse $FZF_DEFAULT_OPTS $FZF_CTRL_T_OPTS" $(__fzfcmd) -m "$@" | while read item; do
+      echo -n "${(q)item} "
+    done
+    local ret=$?
+    echo
+    return $ret
+}
+
+fzf-dir-widget() {
+  LBUFFER="${LBUFFER}$(__dsel)"
+  local ret=$?
+  zle reset-prompt
+  return $ret
+}
+zle     -N   fzf-dir-widget
+bindkey '^H' fzf-dir-widget
+
+# This pastes fasd directories into the commandline. Unlike the CTRL-H command, only searches
+# most recent dirs and it's sorted by relevance
+
+fzf-fasd-widget(){
+    LBUFFER="${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf +s --height 40%)"
+    local ret=$?
+    zle reset-prompt
+    return $ret
+}
+zle     -N   fzf-fasd-widget
+bindkey '^G' fzf-fasd-widget
+
+#export FZF_COMPLETION_TRIGGER=''
+bindkey '^I' fzf-completion
+# bindkey '^I' $fzf_default_completion
+
+
+
+### LESS Syntax Highlight ###
+## Enable syntax-highlighting in less.
+## brew install source-highlight
+## First, add these two lines to ~/.bashrc
+export LESSOPEN="| /usr/local/bin/src-hilite-lesspipe.sh %s"
+export LESS=" -R "
+alias less='less -M -X -g -i -J --underline-special --SILENT'
+
+# define function that retrieves and runs last command
+function run-again {
+    # get previous history item
+    zle up-history
+    # confirm command
+    zle accept-line
+}
+
+# define run-again widget from function of the same name
+zle -N run-again
+
+# bind widget to Ctrl+X in viins mode
+# bindkey '^X' run-again
+
+# java
+export JAVA_HOME=$(/usr/libexec/java_home)
+
+# Config
+alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
+
+### Better vim mode
+
+# Better searching in command mode
+bindkey -M vicmd '?' history-incremental-search-backward
+bindkey -M vicmd '/' history-incremental-search-forward
+
+# Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
+export KEYTIMEOUT=1
+
+# Enable Ctrl-x-e to edit command line
+autoload -U edit-command-line
+
+# Emacs style
+zle -N edit-command-line
+bindkey '^f' edit-command-line
+
+# task list
+export CANVAS_API='11224~EZurxGrlQ9ekaTB0gg7CxsYd944gKwP0IKyGF0rVE7YV6ReIXdTCh0LNJqbsJvk6'
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then source '/Users/vmasrani/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then source '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
+
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
+
+test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
+
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+eval "$(/opt/homebrew/bin/brew shellenv)"

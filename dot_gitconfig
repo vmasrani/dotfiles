@@ -1,0 +1,16 @@
+# This is Git's per-user configuration file.
+[user]
+# Please adapt and uncomment the following lines:
+name = Vaden Masrani
+email = vadmas@cs.ubc.ca 
+[core]
+	excludesfile = /Users/vmasrani/.gitignore_global
+[pull]
+	rebase = false
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+[http]
+	version = HTTP/1.1

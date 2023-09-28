@@ -1,0 +1,5 @@
+pane	default	0	:zsh	1	:*	0	:/Users/vmasrani	0	zsh	:-zsh
+pane	default	0	:zsh	1	:*	1	:/Users/vmasrani	1	zsh	:-zsh
+pane	default	0	:zsh	1	:*	2	:/Users/vmasrani	0	zsh	:-zsh
+window	default	0	1	:*	0e3f,178x34,0,0[178x24,0,0,0,178x9,0,25{88x9,0,25,1,89x9,89,25,2}]
+state	default	

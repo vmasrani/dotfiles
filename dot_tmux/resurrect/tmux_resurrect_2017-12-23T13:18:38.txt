@@ -1,0 +1,11 @@
+pane	abi	0	:zsh	0	:	0	:/Users/vmasrani/dev/masters/thesis/code/dementia_classifier/lib/SCA/L2SCA	1	zsh	:
+pane	abi	0	:zsh	0	:	1	:/Users/vmasrani/dev/masters/thesis/presentation	0	zsh	:
+pane	abi	0	:zsh	0	:	2	:/Users/vmasrani/Documents/School/administrative/masters_completion_approval	0	zsh	:
+pane	abi	1	:zsh	0	:-	0	:/Users/vmasrani/dev/masters/thesis/presentation	0	zsh	:
+pane	abi	1	:zsh	0	:-	1	:/Users/vmasrani/dev/masters/thesis/presentation	0	zsh	:
+pane	abi	1	:zsh	0	:-	2	:/Users/vmasrani/dev/R/shiny/census-app	1	zsh	:
+pane	abi	2	:zsh	1	:*	0	:/Users/vmasrani	1	zsh	:
+window	abi	0	0	:	66de,158x34,0,0{80x34,0,0,0,77x34,81,0[77x16,81,0,1,77x17,81,17,2]}
+window	abi	1	0	:-	71ec,158x34,0,0{79x34,0,0,3,78x34,80,0[78x17,80,0,4,78x16,80,18,5]}
+window	abi	2	1	:*	bdc3,158x34,0,0,6
+state	abi	
