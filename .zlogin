@@ -1,0 +1,1 @@
+/home/vaden/.zprezto/runcoms/zlogin

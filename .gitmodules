@@ -1,0 +1,9 @@
+[submodule ".python"]
+	path = .python
+	url = https://github.com/vmasrani/machine_learning_helpers.git
+[submodule ".fzf"]
+	path = .fzf
+	url = https://github.com/junegunn/fzf.git
+[submodule ".zprezto"]
+	path = .zprezto
+	url = https://github.com/sorin-ionescu/prezto.git
