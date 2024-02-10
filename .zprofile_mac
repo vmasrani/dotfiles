@@ -1,0 +1,67 @@
+##############################################################################
+#Import the shell-agnostic (Bash or Zsh) environment config
+##############################################################################
+source ~/.profile
+
+##############################################################################
+# History Configuration
+##############################################################################
+HISTSIZE=5000               #How many lines of history to keep in memory
+HISTFILE=~/.zsh_history     #Where to save history to disk
+SAVEHIST=5000               #Number of history entries to save to disk
+HISTDUP=erase               #Erase duplicates in the history file
+setopt    appendhistory     #Append history to the history file (no overwriting)
+setopt    sharehistory      #Share history across terminals
+setopt    incappendhistory  #Immediately append to the history file, not just when a term is killed
+
+##############################################################################
+# z-zsh setup
+##############################################################################
+. ~/.dotfiles/z-zsh/z.sh
+function precmd () {
+  z --add "$(pwd -P)"
+}
+
+export PATH="/Users/vmasrani/.local/share/solana/install/active_release/bin:$PATH"
+
+# qt
+export PATH="/usr/local/opt/qt@5/bin:$PATH"
+export LDFLAGS="-L/usr/local/opt/qt@5/lib"
+export CPPFLAGS="-I/usr/local/opt/qt@5/include"
+export PKG_CONFIG_PATH="/usr/local/opt/qt@5/lib/pkgconfig"
+
+# vscode stuff
+# custom search api
+# https://developers.google.com/custom-search/v1/introduction#identify_your_application_to_google_with_api_key
+export CSAPI='AIzaSyA72ny90-5I_cqTVqxov2FmYf5-9vzMIBg'
+export PATH="/Users/vmasrani/bin:$PATH"
+
+export OPENAI_API_KEY=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
+
+# Python stuff
+export PYTHONPATH=/Users/vmasrani/.python:$PYTHONPATH
+export PYTHONBREAKPOINT=ipdb.set_trace
+
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+#https://github.com/zsh-users/zsh-autosuggestions
+export ZSH_AUTOSUGGEST_USE_ASYNC=1
+
+#So mysql can communicate with python
+export DYLD_LIBRARY_PATH=/usr/local/mysql/lib/
+
+# Fix python bytecode
+export PYTHONDONTWRITEBYTECODE=1
+
+#Ruby
+export PATH="/usr/local/opt/ruby/bin:$PATH"
+
+### LESS Syntax Highlight ###
+## Enable syntax-highlighting in less.
+## brew install source-highlight
+## First, add these two lines to ~/.bashrc
+export LESSOPEN="| /usr/local/bin/src-hilite-lesspipe.sh %s"
+export LESS=" -R "
+
+# java
+export JAVA_HOME=$(/usr/libexec/java_home)

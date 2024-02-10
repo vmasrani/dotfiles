@@ -1,0 +1,63 @@
+alias vscode='cursor'
+alias v='f -e vim'
+
+alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
+alias zshrc='vim ~/.zshrc'
+
+alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
+alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
+alias mysql_shell='mysql -u root -p -h localhost'
+
+#postgres
+alias pg_start="launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
+alias pg_stop="launchctl unload ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
+
+alias less='less -M -X -g -i -J --underline-special --SILENT'
+
+# Config
+alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
+
+
+alias l='eza -aHl --icons --git'
+alias lt='eza -aHl --icons --git --sort=modified'
+alias lf='eza -aHl --icons --git --sort=size --total-size'
+alias ld='eza -aHlD --icons --git'
+
+#cd alias'#
+alias cd..='cd ../'                         # Go back 1 directory level (for fast typers)
+alias ..='cd ../'                           # Go back 1 directory level
+alias .1='cd ../'                           # Go back 1 directory level
+alias .2='cd ../../'                        # Go back 2 directory levels
+alias .3='cd ../../../'                     # Go back 3 directory levels
+alias .4='cd ../../../../'                  # Go back 4 directory levels
+alias .5='cd ../../../../../'               # Go back 5 directory levels
+alias .6='cd ../../../../../../'            # Go back 6 directory levels
+alias .7='cd ../../../../../../../'            # Go back 6 directory levels
+
+#tree alias's"
+alias t='eza -aHl --icons --tree --no-user --no-permissions'
+alias t2='eza -aHl --icons --tree --no-user --no-permissions -L 2'
+alias t3='eza -aHl --icons --tree --no-user --no-permissions -L 3'
+alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4'
+
+#Preferred implementations
+alias mv='mv -iv'                           # Preferred 'mv' implementation
+alias mkdir='mkdir -pv'                     # Preferred 'mkdir' implementation
+alias ll='ls -FGlAhp'                       # Preferred 'ls' implementation
+alias less='less -FSRXc'                    # Preferred 'less' implementation
+alias rm='rm -v'                            # Show what has been removed
+alias cp='cp -v'                            # Show what has been copied
+alias fr='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
+alias ~="cd ~"                              # ~:            Go Home
+alias h="history"                           # h:            History
+alias path='echo -e ${PATH//:/\\n}'         # path:         Echo all executable Paths
+alias fix_stty='stty sane'                  # fix_stty:     Restore terminal settings when screwed up
+alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
+alias du='du -sh'                           # Show usage in human readable format and sum content of subdirectories
+alias fd='fd -HI'                           # fd all
+alias rg='rg --no-ignore'
+alias bat='bat -n --color=always'
+
+alias mmv='noglob zmv -W'
+alias refresh='source ~/.zshrc'
+alias ta="tmux attach"

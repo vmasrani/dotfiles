@@ -1,0 +1,21 @@
+#############################################################
+# Generic configuration that applies to all shells
+#############################################################
+source ~/.shellvars
+source ~/.shellfn
+source ~/.shellpaths
+source ~/.shellaliases
+source ~/.iterm2_shell_integration.`basename $SHELL`
+
+
+# NVM
+#export NVM_DIR="$HOME/.nvm"
+#[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+#[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+
+# Private/Proprietary shell aliases (not to be checked into the public repo) :)
+#source ~/Dropbox/Private/Boxes/osx/.shellaliases
+source "$HOME/.cargo/env"
+
+export PATH="/Users/vmasrani/.local/share/solana/install/active_release/bin:$PATH"
