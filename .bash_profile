@@ -3,6 +3,7 @@ export PATH="/home/vaden/miniconda/bin:$PATH"
 export PATH=$HOME/local/bin:$PATH
 export PATH=/home/vaden/local/texlive/2023/bin/x86_64-linux:$PATH
 
+
 export SHELL=~/bin/zsh
 
 export http_proxy=http://127.0.0.1:3128
@@ -15,3 +16,4 @@ export SSL_CERT_DIR=/etc/ssl/certs
 export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 exec ~/bin/zsh -l
 . "$HOME/.cargo/env"
+

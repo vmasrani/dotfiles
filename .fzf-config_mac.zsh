@@ -18,7 +18,7 @@ export FZF_DEFAULT_DIR_COMMAND="$FZF_DEFAULT_FD_COMMAND -t d"
 # export FZF_DEFAULT_PREVIEW="[[ -f {} ]] && $FZF_DEFAULT_FILES_PREVIEW || $FZF_DEFAULT_DIR_PREVIEW"
 
 
-export FZF_DEFAULT_GLOBAL_DIRS='$HOME/dev $HOME/Downloads $HOME/.python'
+export FZF_DEFAULT_GLOBAL_DIRS='/Users/vmasrani/dev /Users/vmasrani/Downloads /Users/vmasrani/.python'
 
 
 
@@ -67,7 +67,7 @@ zle     -N   fzf-fasd-widget
 bindkey '^G' fzf-fasd-widget
 
 #export FZF_COMPLETION_TRIGGER=''
-source $HOME/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
+source /Users/vmasrani/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
 bindkey '^I' fzf-completion
 
 # press ctrl-r to repeat completion *without* accepting i.e. reload the completion
@@ -82,6 +82,9 @@ zstyle ':completion:*' fzf-completion-keybindings "${keys[@]}"
 # also accept and retrigger completion when pressing / when completing cd
 
 zstyle ':completion::*:cd:*' fzf-completion-keybindings "${keys[@]}" /:accept:'repeat-fzf-completion'
+
+# # basic file preview for ls (you can replace with something more sophisticated than head)
+# export TESTVAR='eval eza -aHl --icons --tree --no-user --no-permissions -L 2 --color=always {1}'
 
 zstyle ':completion:*' fzf-search-display true
 
@@ -117,3 +120,21 @@ _fzf_compgen_path() {
 _fzf_compgen_dir() {
   fd --type d --hidden --follow --no-ignore --exclude ".git" . "$1"
 }
+
+
+# Advanced customization of fzf options via _fzf_comprun function
+# - The first argument to the function is the name of the command.
+# - You should make sure to pass the rest of the arguments to fzf.
+
+# _fzf_comprun() {
+#   local command=$1
+#   shift
+#   case "$command" in
+#     cd)           fzf --preview 'eza -aHl --icons --tree --no-user --no-permissions -L 2 -C {} | head -200'   "$@" ;;
+#     export|unset) fzf --preview "eval 'echo \$'{}"         "$@" ;;
+#     ssh)          fzf --preview 'dig {}'                   "$@" ;;
+#     *)            fzf --preview 'bat -n --color=always {}' "$@" ;;
+#   esac
+# }
+
+
