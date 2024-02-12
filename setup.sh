@@ -1,4 +1,22 @@
-# miniconda
+#!/bin/bash
+
+set -e
+
+mkdir -p $HOME/bin
+chmod +x $HOME/dotfiles/bat_exa_preview.sh
+chmod +x $HOME/dotfiles/rfz.sh
+ln -sf $HOME/dotfiles/bat_exa_preview.sh $HOME/bin/bat_exa_preview
+ln -sf $HOME/dotfiles/rfz.sh $HOME/bin/rfz
+
+# symlink dots
+# this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
+files=(.aliases.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .gitconfig .p10k.zsh .pdbhistory .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
+for file in "${files[@]}"
+do
+    ln -sf $HOME/dotfiles/$file $HOME/$file
+done
+
+
 if ! command -v conda &> /dev/null
 then
     echo "Miniconda is not installed. Installing Miniconda..."
@@ -9,6 +27,8 @@ then
     echo 'export PATH="$HOME/miniconda/bin:$PATH"' >> ~/.zshrc
     conda init zsh
     echo "Miniconda installed successfully."
+    echo "Creating ml3 conda env."
+    conda create -n ml3 python=3.10
 else
     echo "Miniconda is already installed."
 fi
@@ -37,65 +57,44 @@ fi
 if ! command -v fzf &> /dev/null; then
     echo "fzf is not installed. Installing fzf..."
     git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
-    "$HOME/.fzf/install" --all
+    "$HOME/.fzf/install"
     echo "fzf installed successfully."
 else
     echo "fzf is already installed."
 fi
 
-declare -A commands
+declare -A executables
 
-commands["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
-commands["rg"]="https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep-13.0.0-x86_64-unknown-linux-musl.tar.gz"
-commands["fd"]="https://github.com/sharkdp/fd/releases/download/v9.0.0/fd-v9.0.0-x86_64-unknown-linux-musl.tar.gz"
-commands["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
+executables["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
+executables["rg"]="https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep-13.0.0-x86_64-unknown-linux-musl.tar.gz"
+executables["fd"]="https://github.com/sharkdp/fd/releases/download/v9.0.0/fd-v9.0.0-x86_64-unknown-linux-musl.tar.gz"
+executables["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
 
-for command in "${!commands[@]}"; do
+for command in "${!executables[@]}"; do
     if ! command -v $command &> /dev/null; then
         echo "$command is not installed. Installing $command..."
-        bash install_tar.sh ${commands[$command]}
+        bash install_tar.sh ${executables[$command]}
         echo "$command installed successfully."
     else
         echo "$command is already installed."
     fi
 done
 
-# # symlink dots
-# # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
-# ln -sf $HOME/dotfiles/.aliases.zsh $HOME/.aliases.zsh
-# ln -sf $HOME/dotfiles/.bash_logout $HOME/.bash_logout
-# ln -sf $HOME/dotfiles/.bash_profile $HOME/.bash_profile
-# ln -sf $HOME/dotfiles/.bashrc $HOME/.bashrc
-# ln -sf $HOME/dotfiles/.fzf-config.zsh $HOME/.fzf-config.zsh
-# ln -sf $HOME/dotfiles/.fzf.bash $HOME/.fzf.bash
-# ln -sf $HOME/dotfiles/.fzf.zsh $HOME/.fzf.zsh
-# ln -sf $HOME/dotfiles/.gitconfig $HOME/.gitconfig
-# ln -sf $HOME/dotfiles/.p10k.zsh $HOME/.p10k.zsh
-# ln -sf $HOME/dotfiles/.pdbhistory $HOME/.pdbhistory
-# ln -sf $HOME/dotfiles/.profile $HOME/.profile
-# ln -sf $HOME/dotfiles/.pylintrc $HOME/.pylintrc
-# ln -sf $HOME/dotfiles/.tmux.conf $HOME/.tmux.conf
-# ln -sf $HOME/dotfiles/.vimrc $HOME/.vimrc
-# ln -sf $HOME/dotfiles/.zlogin $HOME/.zlogin
-# ln -sf $HOME/dotfiles/.zlogout $HOME/.zlogout
-# ln -sf $HOME/dotfiles/.zpreztorc $HOME/.zpreztorc
-# ln -sf $HOME/dotfiles/.zprofile $HOME/.zprofile
-# ln -sf $HOME/dotfiles/.zshenv $HOME/.zshenv
-# ln -sf $HOME/dotfiles/.zshrc $HOME/.zshrc
 
+declare -A git_repos
 
-git clone ssh://git@rnd-gitlab-ca-g.huawei.com:2222/EI/roma-scripts.git ~/.roma-scripts
-git clone https://github.com/lincheney/fzf-tab-completion $ZPREZTODIR/contrib/fzf-tab-completion
-git clone https://github.com/vmasrani/machine_learning_helpers.git ~/.python
-git clone https://github.com/vmasrani/hypers.git ~/hypers
+git_repos[".roma-scripts"]="https://rnd-gitlab-ca-g.huawei.com/EI/roma-scripts.git"
+git_repos[".zprezto/contrib/fzf-tab-completion"]="https://github.com/lincheney/fzf-tab-completion"
+git_repos[".python"]="https://github.com/vmasrani/machine_learning_helpers.git"
+git_repos["hypers"]="https://github.com/vmasrani/hypers.git"
 
+for repo in "${!git_repos[@]}"; do
+    if [ ! -d ~/$repo ]; then
+        git clone ${git_repos[$repo]} ~/$repo
+    else
+        echo "~/$repo is already installed."
+    fi
+done
 
-mkdir $HOME/bin
-chmod -x $HOME/bin/bat_exa_preview.sh
-chmod -x $HOME/bin/rfz.sh
-ln -sf $HOME/dotfiles/bat_exa_preview.sh $HOME/bin/bat_exa_preview
-ln -sf $HOME/dotfiles/rfz.sh $HOME/bin/rfz
-
-
-
+echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
 
