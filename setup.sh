@@ -31,6 +31,15 @@ then
     echo "Miniconda installed successfully."
     echo "Creating ml3 conda env."
     conda create -n ml3 python=3.10
+    conda activate ml3
+
+    pip install ipykernel joblib seaborn pandas transformers pyarrow wandb scipy datasets scipy scikit-learn ipykernel ipython pyjanitor seaborn matplotlib typing-extensions requests ruff pylint datasets transformers spacy polars jupyter
+
+    conda install pytorch==1.12.1 -c pytorch
+    conda install cudatoolkit=10.2 -c pytorch
+    conda install torchvision==0.13.1 -c pytorch
+    conda install torchaudio==0.12.1 -c pytorch
+
 else
     echo "Miniconda is already installed."
 fi
@@ -65,11 +74,17 @@ else
     echo "fzf is already installed."
 fi
 
+
+# statically linked binaries from
+# https://github.com/mosajjal/binary-tools
+wget -O $HOME/bin/tmux n0p.me/bin/tmux && chmod +x $HOME/bin/tmux
+wget -O $HOME/bin/rg n0p.me/bin/rg && chmod +x $HOME/bin/rg
+wget -O $HOME/bin/fd n0p.me/bin/fd && chmod +x $HOME/bin/fd
+
+
 declare -A executables
 
 executables["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
-executables["rg"]="https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep-13.0.0-x86_64-unknown-linux-musl.tar.gz"
-executables["fd"]="https://github.com/sharkdp/fd/releases/download/v9.0.0/fd-v9.0.0-x86_64-unknown-linux-musl.tar.gz"
 executables["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
 
 for command in "${!executables[@]}"; do
