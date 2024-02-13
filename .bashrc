@@ -116,9 +116,6 @@ if ! shopt -oq posix; then
   fi
 fi
 
-echo "Hello from bash_rc"
-. "$HOME/.cargo/env"
-
 [ -f ~/.fzf.bash ] && source ~/.fzf.bash
 
 # >>> conda initialize >>>

@@ -29,4 +29,4 @@ SSL_CERT_DIR=/etc/ssl/certs
 REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 echo "hello from profile"
-. "$HOME/.cargo/env"
+
