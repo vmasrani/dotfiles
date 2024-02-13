@@ -5,3 +5,5 @@
 	email = vadmas@gmail.com
 [init]
 	defaultBranch = master
+[push]
+	default = simple

@@ -86,3 +86,4 @@ bindkey '^f' edit-command-line
 
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize

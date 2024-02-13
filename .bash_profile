@@ -17,3 +17,4 @@ export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 exec ~/bin/zsh -l
 . "$HOME/.cargo/env"
 
+
