@@ -8,6 +8,8 @@ chmod +x $HOME/dotfiles/rfz.sh
 ln -sf $HOME/dotfiles/bat_exa_preview.sh $HOME/bin/bat_exa_preview
 ln -sf $HOME/dotfiles/rfz.sh $HOME/bin/rfz
 
+ln -sf /usr/bin/zsh $HOME/bin/zsh
+
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
 files=(.aliases.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .gitconfig .p10k.zsh .pdbhistory .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
@@ -33,15 +35,15 @@ else
     echo "Miniconda is already installed."
 fi
 
-# cargo
-if ! command -v cargo &> /dev/null
-then
-    echo "Cargo is not installed. Installing Cargo..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    echo "Cargo installed successfully."
-else
-    echo "Cargo is already installed."
-fi
+# # cargo
+# if ! command -v cargo &> /dev/null
+# then
+#     echo "Cargo is not installed. Installing Cargo..."
+#     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+#     echo "Cargo installed successfully."
+# else
+#     echo "Cargo is already installed."
+# fi
 
 
 # zprezto
@@ -97,4 +99,6 @@ for repo in "${!git_repos[@]}"; do
 done
 
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
+
+
 
