@@ -54,6 +54,8 @@ export FZF_CTRL_T_OPTS="--preview 'bat_exa_preview {}' --prompt 'Files(.)> ' \
 --bind 'ctrl-r:transform:$FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE'"
 
 
+export FZF_CTRL_R_OPTS="--preview 'echo {}' --preview-window=down:25%:wrap --bind 'ctrl-/:change-preview-window(right|hidden|)'"
+
 
 
 fzf-fasd-widget(){
