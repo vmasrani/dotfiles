@@ -5,7 +5,6 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-
 # [[ "$TERM_PROGRAM" == "vscode" ]] && . "$(code --locate-shell-integration-path zsh)"
 
 #
@@ -18,6 +17,7 @@ fi
 if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
   source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
 fi
+
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
@@ -44,7 +44,7 @@ export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 #
 #
-export NODE_EXTRA_CA_CERTS=$(ls /home/vaden/certs/*pem | tr '\n' ':')
+
 conda activate ml3
 
 # fzf
@@ -80,3 +80,10 @@ bindkey '^f' edit-command-line
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
+
+
+
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize

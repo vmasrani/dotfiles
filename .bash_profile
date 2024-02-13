@@ -15,5 +15,6 @@ export SSL_CERT_DIR=/etc/ssl/certs
 #export REQUESTS_CA_BUNDLE=/etc/ssl/certs/my-custom-certificates.crt
 export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 exec ~/bin/zsh -l
-. "$HOME/.cargo/env"
+
+
 
