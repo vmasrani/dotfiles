@@ -2,19 +2,29 @@
 
 set -e
 
+
 mkdir -p $HOME/bin
 chmod +x $HOME/dotfiles/bat_exa_preview.sh
 chmod +x $HOME/dotfiles/rfz.sh
-ln -sf $HOME/dotfiles/bat_exa_preview.sh $HOME/bin/bat_exa_preview
-ln -sf $HOME/dotfiles/rfz.sh $HOME/bin/rfz
 
-ln -sf /usr/bin/zsh $HOME/bin/zsh
+echo "Creating symbolic links for custom scripts and zsh in $HOME/bin..."
+declare -A links=(
+    ["$HOME/dotfiles/bat_exa_preview.sh"]="$HOME/bin/bat_exa_preview"
+    ["$HOME/dotfiles/rfz.sh"]="$HOME/bin/rfz"
+    ["/usr/bin/zsh"]="$HOME/bin/zsh"
+)
 
+for source in "${!links[@]}"; do
+    target=${links[$source]}
+    ln -sf "$source" "$target"
+    echo "Linked $(basename "$source") to $target"
+done
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
 files=(.aliases.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .gitconfig .p10k.zsh .pdbhistory .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
 for file in "${files[@]}"
 do
+    echo "Linking $file from dotfiles to home directory."
     ln -sf $HOME/dotfiles/$file $HOME/$file
 done
 
@@ -86,6 +96,8 @@ declare -A binaries=(
 for bin in "${!binaries[@]}"; do
     if [ ! -f "$HOME/bin/$bin" ]; then
         wget -O "$HOME/bin/$bin" "${binaries[$bin]}" && chmod +x "$HOME/bin/$bin"
+    else
+        echo "$bin is already installed."
     fi
 done
 
