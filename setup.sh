@@ -107,6 +107,7 @@ git_repos["hypers"]="https://github.com/vmasrani/hypers.git"
 git_repos[".tmux/plugins/tpm"]="https://github.com/tmux-plugins/tpm"
 
 # remember my login for 1 yr
+# testing to see if it worked
 git config --global credential.helper 'cache --timeout=31536000'
 
 for repo in "${!git_repos[@]}"; do
