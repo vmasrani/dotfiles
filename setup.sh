@@ -77,10 +77,17 @@ fi
 
 # statically linked binaries from
 # https://github.com/mosajjal/binary-tools
-wget -O $HOME/bin/tmux n0p.me/bin/tmux && chmod +x $HOME/bin/tmux
-wget -O $HOME/bin/rg n0p.me/bin/rg && chmod +x $HOME/bin/rg
-wget -O $HOME/bin/fd n0p.me/bin/fd && chmod +x $HOME/bin/fd
+declare -A binaries=(
+    [tmux]="n0p.me/bin/tmux"
+    [rg]="n0p.me/bin/rg"
+    [fd]="n0p.me/bin/fd"
+)
 
+for bin in "${!binaries[@]}"; do
+    if [ ! -f "$HOME/bin/$bin" ]; then
+        wget -O "$HOME/bin/$bin" "${binaries[$bin]}" && chmod +x "$HOME/bin/$bin"
+    fi
+done
 
 declare -A executables
 
