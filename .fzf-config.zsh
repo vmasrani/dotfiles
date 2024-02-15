@@ -1,7 +1,7 @@
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
 ## FZF-Z
-export FZF_TMUX_OPTS='-p80%,80%'
+export FZF_TMUX_OPTS='-p95%,95%'
 
 
 export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --no-ignore --exclude .git'
@@ -11,12 +11,6 @@ export FZF_DEFAULT_FD_COMMAND='fd --hidden --follow --no-ignore --exclude .git'
 
 export FZF_DEFAULT_FILES_COMMAND="$FZF_DEFAULT_FD_COMMAND -t f"
 export FZF_DEFAULT_DIR_COMMAND="$FZF_DEFAULT_FD_COMMAND -t d"
-
-# change to script
-# export FZF_DEFAULT_FILES_PREVIEW='bat -n --color=always {}'
-# export FZF_DEFAULT_DIR_PREVIEW='eza -aHl --icons --tree --no-user --no-permissions -L 2  --color=always {}'
-# export FZF_DEFAULT_PREVIEW="[[ -f {} ]] && $FZF_DEFAULT_FILES_PREVIEW || $FZF_DEFAULT_DIR_PREVIEW"
-
 
 export FZF_DEFAULT_GLOBAL_DIRS='$HOME/dev $HOME/Downloads $HOME/.python'
 
@@ -72,12 +66,20 @@ bindkey '^G' fzf-fasd-widget
 source $HOME/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
 bindkey '^I' fzf-completion
 
+# rfz to ctrl-X
+rfz-command() {
+  rfz
+}
+
+zle     -N   rfz-command
+bindkey '^X' 'rfz-command'
+
 # press ctrl-r to repeat completion *without* accepting i.e. reload the completion
 # press right to accept the completion and retrigger it
 # press alt-enter to accept the completion and run it
 keys=(
     ctrl-r:'repeat-fzf-completion'
-    right:accept:'repeat-fzf-completion'    
+    right:accept:'repeat-fzf-completion'
     alt-enter:accept:'zle accept-line'
 )
 zstyle ':completion:*' fzf-completion-keybindings "${keys[@]}"

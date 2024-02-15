@@ -35,6 +35,7 @@ unset __conda_setup
 # <<< conda initialize <<<
 
 # source custom alias
+export ZSH_DISABLE_COMPFIX="true"
 source ~/.aliases.zsh
 
 

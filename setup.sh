@@ -7,6 +7,10 @@ mkdir -p $HOME/bin
 chmod +x $HOME/dotfiles/bat_exa_preview.sh
 chmod +x $HOME/dotfiles/rfz.sh
 
+# remember my login for 1 yr
+git config --global credential.helper 'cache --timeout=31536000'
+
+
 echo "Creating symbolic links for custom scripts and zsh in $HOME/bin..."
 declare -A links=(
     ["$HOME/dotfiles/bat_exa_preview.sh"]="$HOME/bin/bat_exa_preview"
@@ -39,17 +43,6 @@ then
     echo 'export PATH="$HOME/miniconda/bin:$PATH"' >> ~/.zshrc
     conda init zsh
     echo "Miniconda installed successfully."
-    echo "Creating ml3 conda env."
-    conda create -n ml3 python=3.10
-    conda activate ml3
-
-    pip install ipykernel joblib seaborn pandas transformers pyarrow wandb scipy datasets scipy scikit-learn ipykernel ipython pyjanitor seaborn matplotlib typing-extensions requests ruff pylint datasets transformers spacy polars jupyter ipdb
-
-    conda install pytorch==1.12.1 -c pytorch
-    conda install cudatoolkit=10.2 -c pytorch
-    conda install torchvision==0.13.1 -c pytorch
-    conda install torchaudio==0.12.1 -c pytorch
-
 else
     echo "Miniconda is already installed."
 fi
@@ -125,9 +118,6 @@ git_repos[".python"]="https://github.com/vmasrani/machine_learning_helpers.git"
 git_repos["hypers"]="https://github.com/vmasrani/hypers.git"
 git_repos[".tmux/plugins/tpm"]="https://github.com/tmux-plugins/tpm"
 
-# remember my login for 1 yr
-# testing to see if it worked
-git config --global credential.helper 'cache --timeout=31536000'
 
 for repo in "${!git_repos[@]}"; do
     if [ ! -d ~/$repo ]; then

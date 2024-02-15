@@ -7,3 +7,5 @@
 	defaultBranch = master
 [push]
 	default = simple
+[credential]
+	helper = cache --timeout=31536000
