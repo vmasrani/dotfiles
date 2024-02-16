@@ -1,7 +1,9 @@
 
+export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
+
 ## FZF-Z
 export FZF_TMUX_OPTS='-p95%,95%'
-export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --no-ignore --exclude .git'
+export FZF_DEFAULT_COMMAND="fd --type f --hidden --follow --no-ignore $FD_EXCLUDE"
 
 # https://erees.dev/terminal-tricks/
 export FZF_DEFAULT_OPTS="--reverse \
@@ -14,23 +16,23 @@ export FZF_DEFAULT_OPTS="--reverse \
 --keep-right"
 # export FZF_DEFAULT_OPTS="--layout=reverse --inline-info --cycle -m --keep-right --pointer ▶"
 
-export FZF_DEFAULT_FD_COMMAND='fd --hidden --follow --no-ignore --exclude .git'
+export FZF_DEFAULT_FD_COMMAND="fd --hidden --follow --no-ignore"
 
-export FZF_DEFAULT_FILES_COMMAND="$FZF_DEFAULT_FD_COMMAND -t f"
-export FZF_DEFAULT_DIR_COMMAND="$FZF_DEFAULT_FD_COMMAND -t d"
+export FZF_DEFAULT_FILES_COMMAND="fd --type f --hidden --follow --no-ignore $FD_EXCLUDE"
+export FZF_DEFAULT_DIR_COMMAND="fd --type d --hidden --follow --no-ignore $FD_EXCLUDE"
 
-export FZF_DEFAULT_GLOBAL_DIRS='$HOME/dev $HOME/Downloads $HOME/.python $HOME/.roma_script $HOME/hypers '
+export FZF_DEFAULT_GLOBAL_DIRS="$HOME/dev $HOME/Downloads $HOME/.python $HOME/.roma_script $HOME/hypers"
 
 
 FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE="
   if [[ {fzf:prompt} =~ \"Files\(~\)\" ]]; then
     echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND .)\"
   elif [[ {fzf:prompt} =~ \"Files\(.\)\" ]]; then
-    echo \"change-prompt(Files(~)> )+reload($FZF_DEFAULT_FILES_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
+    echo \"change-prompt(Files(~)> )+reload($FZF_DEFAULT_FILES_COMMAND . )\"
   elif [[ {fzf:prompt} =~ \"Dirs\(~\)\" ]]; then
     echo \"change-prompt(Dirs(.)> )+reload($FZF_DEFAULT_DIR_COMMAND .)\"
   elif [[ {fzf:prompt} =~ \"Dirs\(.\)\" ]]; then
-    echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
+    echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . )\"
   fi
 "
 
@@ -56,6 +58,3 @@ export FZF_CTRL_R_OPTS="
 --preview 'echo {}' --preview-window up:3:hidden:wrap
 --bind 'ctrl-/:toggle-preview'
 "
-# --bind 'ctrl-y:execute-silent(echo -n {2..} | xclip )+abort'
-# --header 'Press CTRL-Y to copy command into clipboard'
-
