@@ -1,56 +1,5 @@
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
-## FZF-Z
-export FZF_TMUX_OPTS='-p95%,95%'
-
-
-export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --no-ignore --exclude .git'
-export FZF_DEFAULT_OPTS="--layout=reverse --inline-info --cycle -m --keep-right --pointer ▶"
-
-export FZF_DEFAULT_FD_COMMAND='fd --hidden --follow --no-ignore --exclude .git'
-
-export FZF_DEFAULT_FILES_COMMAND="$FZF_DEFAULT_FD_COMMAND -t f"
-export FZF_DEFAULT_DIR_COMMAND="$FZF_DEFAULT_FD_COMMAND -t d"
-
-export FZF_DEFAULT_GLOBAL_DIRS='$HOME/dev $HOME/Downloads $HOME/.python'
-
-
-
-FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE="
-  if [[ {fzf:prompt} =~ \"Files\(~\)\" ]]; then
-    echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND .)\"
-  elif [[ {fzf:prompt} =~ \"Files\(.\)\" ]]; then
-    echo \"change-prompt(Files(~)> )+reload($FZF_DEFAULT_FILES_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
-  elif [[ {fzf:prompt} =~ \"Dirs\(~\)\" ]]; then
-    echo \"change-prompt(Dirs(.)> )+reload($FZF_DEFAULT_DIR_COMMAND .)\"
-  elif [[ {fzf:prompt} =~ \"Dirs\(.\)\" ]]; then
-    echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
-  fi
-"
-
-FZF_CTRL_T_FILES_DIRS_TOGGLE="
-  if [[ {fzf:prompt} =~ \"Files\(~\)\" ]]; then
-    echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
-  elif [[ {fzf:prompt} =~ \"Files\(.\)\" ]]; then
-    echo \"change-prompt(Dirs(.)> )+reload($FZF_DEFAULT_DIR_COMMAND . .)\"
-  elif [[ {fzf:prompt} =~ \"Dirs\(~\)\" ]]; then
-    echo \"change-prompt(Files(~)> )+reload($FZF_DEFAULT_FILES_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
-  elif [[ {fzf:prompt} =~ \"Dirs\(.\)\" ]]; then
-    echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND . .)\"
-  fi
-"
-
-export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_FILES_COMMAND ."
-export FZF_CTRL_T_OPTS="--preview 'bat_exa_preview {}' --prompt 'Files(.)> ' \
---preview-window=right:50%:wrap \
---bind 'ctrl-/:change-preview-window(down|hidden|)' \
---bind 'ctrl-t:transform:$FZF_CTRL_T_FILES_DIRS_TOGGLE' \
---bind 'ctrl-r:transform:$FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE'"
-
-
-export FZF_CTRL_R_OPTS="--preview 'echo {}' --preview-window=down:25%:wrap --bind 'ctrl-/:change-preview-window(right|hidden|)'"
-
-
+source ~/.fzf-env
 
 fzf-fasd-widget(){
  LBUFFER="${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf-tmux -p80%,80% --preview "$FZF_DEFAULT_DIR_PREVIEW" --preview-window=right:50%:wrap --bind 'ctrl-/:change-preview-window(right|hidden|)')"
@@ -89,7 +38,7 @@ zstyle ':completion::*:cd:*' fzf-completion-keybindings "${keys[@]}" /:accept:'r
 
 zstyle ':completion:*' fzf-search-display true
 
-export FZF_COMPLETION_OPTS="--border --info=inline --bind 'ctrl-/:change-preview-window(down|hidden|)'  --preview='eval bat_exa_preview {1}'"
+export FZF_COMPLETION_OPTS="--border --info=inline --bind 'ctrl-/:change-preview-window(down|hidden|)'  --preview='eval fzf_preview {1}'"
 
 zstyle ':completion::*:cd::*' fzf-completion-opts --bind tab:down
 zstyle ':completion::*:ls::*' fzf-completion-opts --bind tab:down

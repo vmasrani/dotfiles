@@ -36,19 +36,14 @@ unset __conda_setup
 
 # source custom alias
 export ZSH_DISABLE_COMPFIX="true"
-source ~/.aliases.zsh
 
 
-export WANDB_API_KEY="local-1cb84cdb8818ab552fb57da6b591af732d4ba09d"
-export WANDB_BASE_URL="http://localhost:8080"
-export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
-export PATH=~/.local/bin:$PATH
-#
-#
+source ~/.aliases-and-envs
 
 conda activate ml3
 
 # fzf
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
 
 # Customize to your needs...

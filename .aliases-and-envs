@@ -1,3 +1,10 @@
+export WANDB_API_KEY="local-1cb84cdb8818ab552fb57da6b591af732d4ba09d"
+export WANDB_BASE_URL="http://localhost:8080"
+export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
+export PATH=~/.local/bin:$PATH
+export PATH=~/bin:$PATH
+
+
 alias vscode='cursor'
 alias v='f -e vim'
 

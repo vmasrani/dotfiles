@@ -4,7 +4,7 @@ set -e
 
 
 mkdir -p $HOME/bin
-chmod +x $HOME/dotfiles/bat_exa_preview.sh
+chmod +x $HOME/dotfiles/fzf_preview.sh
 chmod +x $HOME/dotfiles/rfz.sh
 
 # remember my login for 1 yr
@@ -13,7 +13,7 @@ git config --global credential.helper 'cache --timeout=31536000'
 
 echo "Creating symbolic links for custom scripts and zsh in $HOME/bin..."
 declare -A links=(
-    ["$HOME/dotfiles/bat_exa_preview.sh"]="$HOME/bin/bat_exa_preview"
+    ["$HOME/dotfiles/fzf_preview.sh"]="$HOME/bin/fzf_preview"
     ["$HOME/dotfiles/rfz.sh"]="$HOME/bin/rfz"
     ["/usr/bin/zsh"]="$HOME/bin/zsh"
 )
@@ -25,7 +25,7 @@ for source in "${!links[@]}"; do
 done
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
-files=(.aliases.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .gitconfig .p10k.zsh .pdbhistory .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
+files=(.aliases.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env .gitconfig .p10k.zsh .pdbhistory .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
 for file in "${files[@]}"
 do
     echo "Linking $file from dotfiles to home directory."
@@ -84,6 +84,7 @@ declare -A binaries=(
     [tmux]="n0p.me/bin/tmux"
     [rg]="n0p.me/bin/rg"
     [fd]="n0p.me/bin/fd"
+    [jq]="n0p.me/bin/jq"
 )
 
 for bin in "${!binaries[@]}"; do
@@ -98,6 +99,7 @@ declare -A executables
 
 executables["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
 executables["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
+executables["parquet-tools"]="https://github.com/hangxie/parquet-tools/releases/download/v1.20.4/parquet-tools-1.20.4-1.x86_64.rpm"
 
 for command in "${!executables[@]}"; do
     if ! command -v $command &> /dev/null; then

@@ -1,0 +1,61 @@
+
+## FZF-Z
+export FZF_TMUX_OPTS='-p95%,95%'
+export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --no-ignore --exclude .git'
+
+# https://erees.dev/terminal-tricks/
+export FZF_DEFAULT_OPTS="--reverse \
+--color border:41 --border=sharp \
+--prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
+--inline-info \
+--cycle -m  \
+--preview-window=right:50%:wrap \
+--bind 'ctrl-/:change-preview-window(down|hidden|)' \
+--keep-right"
+# export FZF_DEFAULT_OPTS="--layout=reverse --inline-info --cycle -m --keep-right --pointer ▶"
+
+export FZF_DEFAULT_FD_COMMAND='fd --hidden --follow --no-ignore --exclude .git'
+
+export FZF_DEFAULT_FILES_COMMAND="$FZF_DEFAULT_FD_COMMAND -t f"
+export FZF_DEFAULT_DIR_COMMAND="$FZF_DEFAULT_FD_COMMAND -t d"
+
+export FZF_DEFAULT_GLOBAL_DIRS='$HOME/dev $HOME/Downloads $HOME/.python $HOME/.roma_script $HOME/hypers '
+
+
+FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE="
+  if [[ {fzf:prompt} =~ \"Files\(~\)\" ]]; then
+    echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND .)\"
+  elif [[ {fzf:prompt} =~ \"Files\(.\)\" ]]; then
+    echo \"change-prompt(Files(~)> )+reload($FZF_DEFAULT_FILES_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
+  elif [[ {fzf:prompt} =~ \"Dirs\(~\)\" ]]; then
+    echo \"change-prompt(Dirs(.)> )+reload($FZF_DEFAULT_DIR_COMMAND .)\"
+  elif [[ {fzf:prompt} =~ \"Dirs\(.\)\" ]]; then
+    echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
+  fi
+"
+
+FZF_CTRL_T_FILES_DIRS_TOGGLE="
+  if [[ {fzf:prompt} =~ \"Files\(~\)\" ]]; then
+    echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
+  elif [[ {fzf:prompt} =~ \"Files\(.\)\" ]]; then
+    echo \"change-prompt(Dirs(.)> )+reload($FZF_DEFAULT_DIR_COMMAND . .)\"
+  elif [[ {fzf:prompt} =~ \"Dirs\(~\)\" ]]; then
+    echo \"change-prompt(Files(~)> )+reload($FZF_DEFAULT_FILES_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
+  elif [[ {fzf:prompt} =~ \"Dirs\(.\)\" ]]; then
+    echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND . .)\"
+  fi
+"
+
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_FILES_COMMAND ."
+export FZF_CTRL_T_OPTS="--preview 'fzf_preview {}' --prompt 'Files(.)> ' \
+--bind 'ctrl-t:transform:$FZF_CTRL_T_FILES_DIRS_TOGGLE' \
+--bind 'ctrl-r:transform:$FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE'"
+
+
+export FZF_CTRL_R_OPTS="
+--preview 'echo {}' --preview-window up:3:hidden:wrap
+--bind 'ctrl-/:toggle-preview'
+"
+# --bind 'ctrl-y:execute-silent(echo -n {2..} | xclip )+abort'
+# --header 'Press CTRL-Y to copy command into clipboard'
+
