@@ -79,7 +79,6 @@ export PATH=$HOME/local/bin:$PATH
 export PATH=$HOME/local/texlive/2023/bin/x86_64-linux:$PATH
 
 
-export SHELL=~/bin/zsh
 
 # export http_proxy=http://127.0.0.1:3128
 # export ftp_proxy=http://127.0.0.1:3128

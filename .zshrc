@@ -21,14 +21,14 @@ fi
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/Users/vmasrani/miniconda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+__conda_setup="$('$HOME/miniconda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/Users/vmasrani/miniconda/etc/profile.d/conda.sh" ]; then
-        . "/Users/vmasrani/miniconda/etc/profile.d/conda.sh"
+    if [ -f "$HOME/miniconda/etc/profile.d/conda.sh" ]; then
+        . "$HOME/miniconda/etc/profile.d/conda.sh"
     else
-        export PATH="/Users/vmasrani/miniconda/bin:$PATH"
+        export PATH="$HOME/miniconda/bin:$PATH"
     fi
 fi
 unset __conda_setup
@@ -46,13 +46,13 @@ source ~/.aliases-and-envs
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
 
-
-# ruby
-source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
-source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
-source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
-chruby ruby-3.1.3
-
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  # ruby
+  source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
+  source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
+  source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
+  chruby ruby-3.1.3
+fi
 
 # Customize to your needs...
 export DIRSTACKSIZE=20

@@ -18,7 +18,7 @@
 # # export FZF_DEFAULT_PREVIEW="[[ -f {} ]] && $FZF_DEFAULT_FILES_PREVIEW || $FZF_DEFAULT_DIR_PREVIEW"
 
 
-# export FZF_DEFAULT_GLOBAL_DIRS='/Users/vmasrani/dev /Users/vmasrani/Downloads /Users/vmasrani/.python'
+# export FZF_DEFAULT_GLOBAL_DIRS='$HOME/dev $HOME/Downloads $HOME/.python'
 
 
 
@@ -67,7 +67,7 @@
 # bindkey '^G' fzf-fasd-widget
 
 # #export FZF_COMPLETION_TRIGGER=''
-# source /Users/vmasrani/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
+# source $HOME/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
 # bindkey '^I' fzf-completion
 
 # # press ctrl-r to repeat completion *without* accepting i.e. reload the completion
