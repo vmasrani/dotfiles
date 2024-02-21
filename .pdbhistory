@@ -1557,7 +1557,7 @@
 +tmp
 
 # 2023-08-02 13:56:25.873098
-+tmp == -1 
++tmp == -1
 
 # 2023-08-02 13:56:34.554630
 +all(tmp == -1 )
@@ -2525,7 +2525,7 @@
 # 2023-08-28 15:47:50.773197
 +for name, buffer in self.named_buffers(recurse=True):
 +    print(name)
-+    
++
 
 # 2023-08-28 15:49:39.761773
 +q
@@ -3152,7 +3152,7 @@
 +c
 
 # 2023-09-26 15:42:17.578176
-+import os 
++import os
 
 # 2023-09-26 15:42:22.978525
 +print(os.environ)
@@ -3161,7 +3161,7 @@
 +q
 
 # 2023-09-26 15:50:31.124327
-+environ({'SHELL': '/home/vaden/bin/zsh', 'no_proxy': '127.0.0.*,*.huawei.com,localhost', 'PWD': '/home/vaden/dev/projects/llm-watermarking', 'LOGNAME': 'vaden', 'XDG_SESSION_TYPE': 'tty', 'cntlm_port': '3128', 'ftp_proxy': 'http://127.0.0.1:3128', 'MOTD_SHOWN': 'pam', 'HOME': '/home/vaden', 'LANG': 'en_US.UTF-8', 'cntlm_host': '127.0.0.1', 'SSL_CERT_DIR': '/etc/ssl/certs', 'https_proxy': 'http://127.0.0.1:3128', 'SSH_CONNECTION': '10.209.203.47 1030 10.213.96.117 22', 'cntlm_proxy': '127.0.0.1:3128', 'XDG_SESSION_CLASS': 'user', 'TERM': 'xterm-256color', 'USER': 'vaden', 'SHLVL': '1', 'XDG_SESSION_ID': '2240', 'http_proxy': 'http://127.0.0.1:3128', 'XDG_RUNTIME_DIR': '/run/user/1010', 'SSH_CLIENT': '10.209.203.47 1030 22', 'REQUESTS_CA_BUNDLE': '/etc/ssl/certs/ca-certificates.crt', 'XDG_DATA_DIRS': '/usr/local/share:/usr/share:/var/lib/snapd/desktop', 'PATH': '/home/vaden/miniconda/envs/ml3/bin:/home/vaden/miniconda/condabin:/home/vaden/bin:/usr/local/bin:/usr/local/sbin:/home/vaden/.cargo/bin:/home/vaden/local/bin:/home/vaden/miniconda/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/vaden/.fzf/bin', 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/1010/bus', 'SSH_TTY': '/dev/pts/462', 'OLDPWD': '/home/vaden/dev/projects/llm-watermarking/roma_scripts', 'EDITOR': 'nano', 'VISUAL': 'nano', 'PAGER': 'less', 'LESS': '-g -i -M -R -S -w -X -z-4', 'LESSOPEN': '| /usr/bin/env lesspipe %s 2>&-', 'P9K_TTY': 'old', '_P9K_TTY': '/dev/pts/462', 'LESS_TERMCAP_mb': '\x1b[01;31m', 'LESS_TERMCAP_md': '\x1b[01;31m', 'LESS_TERMCAP_me': '\x1b[0m', 'LESS_TERMCAP_se': '\x1b[0m', 'LESS_TERMCAP_so': '\x1b[00;47;30m', 'LESS_TERMCAP_ue': '\x1b[0m', 'LESS_TERMCAP_us': '\x1b[01;32m', 'LS_COLORS': 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:', 'GREP_COLOR': '37;45', 'GREP_COLORS': 'mt=37;45', 'P9K_SSH': '1', '_P9K_SSH_TTY': '/dev/pts/462', 'CONDA_EXE': '/home/vaden/miniconda/bin/conda', '_CE_M': '', '_CE_CONDA': '', 'CONDA_PYTHON_EXE': '/home/vaden/miniconda/bin/python', 'CONDA_SHLVL': '2', 'CONDA_PREFIX': '/home/vaden/miniconda/envs/ml3', 'CONDA_DEFAULT_ENV': 'ml3', 'CONDA_PROMPT_MODIFIER': '(ml3) ', 'PYTHONPATH': '/home/vaden/.python:', 'CONDA_PREFIX_1': '/home/vaden/miniconda', 'CONDA_PYTHONBREAKPOINT': '', 'PYTHONBREAKPOINT': 'ipdb.set_trace', 'CONDA_MKL_INTERFACE_LAYER_BACKUP': '', 'MKL_INTERFACE_LAYER': 'LP64,GNU', 'GSETTINGS_SCHEMA_DIR_CONDA_BACKUP': '', 'GSETTINGS_SCHEMA_DIR': '/home/vaden/miniconda/envs/ml3/share/glib-2.0/schemas', 'XML_CATALOG_FILES': 'file:///home/vaden/miniconda/envs/ml3/etc/xml/catalog file:///etc/xml/catalog', 'FZFZ_SUBDIR_LIMIT': '1000', 'FZFZ_EXTRA_DIRS': "'../../..'", 'FZFZ_EXCLUDE_PATTERN': '\\.git|venv', 'FZF_DEFAULT_COMMAND': 'fd --type f --hidden --follow --exclude .git', 'FZF_DEFAULT_OPTS': '--layout=reverse --inline-info', 'FZF_CTRL_T_COMMAND': "fd --type f --hidden --follow --exclude .git . '.' '/home/vaden/dev'", 'FZF_ALT_C_COMMAND': "fd -t d . '.' '/home/vaden/dev'", '_': '/home/vaden/miniconda/envs/ml3/bin/python'})q
++environ({'SHELL': '$HOME/bin/zsh', 'no_proxy': '127.0.0.*,*.huawei.com,localhost', 'PWD': '$HOME/dev/projects/llm-watermarking', 'LOGNAME': 'vaden', 'XDG_SESSION_TYPE': 'tty', 'cntlm_port': '3128', 'ftp_proxy': 'http://127.0.0.1:3128', 'MOTD_SHOWN': 'pam', 'HOME': '$HOME', 'LANG': 'en_US.UTF-8', 'cntlm_host': '127.0.0.1', 'SSL_CERT_DIR': '/etc/ssl/certs', 'https_proxy': 'http://127.0.0.1:3128', 'SSH_CONNECTION': '10.209.203.47 1030 10.213.96.117 22', 'cntlm_proxy': '127.0.0.1:3128', 'XDG_SESSION_CLASS': 'user', 'TERM': 'xterm-256color', 'USER': 'vaden', 'SHLVL': '1', 'XDG_SESSION_ID': '2240', 'http_proxy': 'http://127.0.0.1:3128', 'XDG_RUNTIME_DIR': '/run/user/1010', 'SSH_CLIENT': '10.209.203.47 1030 22', 'REQUESTS_CA_BUNDLE': '/etc/ssl/certs/ca-certificates.crt', 'XDG_DATA_DIRS': '/usr/local/share:/usr/share:/var/lib/snapd/desktop', 'PATH': '$HOME/miniconda/envs/ml3/bin:$HOME/miniconda/condabin:$HOME/bin:/usr/local/bin:/usr/local/sbin:$HOME/.cargo/bin:$HOME/local/bin:$HOME/miniconda/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:$HOME/.fzf/bin', 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/1010/bus', 'SSH_TTY': '/dev/pts/462', 'OLDPWD': '$HOME/dev/projects/llm-watermarking/roma_scripts', 'EDITOR': 'nano', 'VISUAL': 'nano', 'PAGER': 'less', 'LESS': '-g -i -M -R -S -w -X -z-4', 'LESSOPEN': '| /usr/bin/env lesspipe %s 2>&-', 'P9K_TTY': 'old', '_P9K_TTY': '/dev/pts/462', 'LESS_TERMCAP_mb': '\x1b[01;31m', 'LESS_TERMCAP_md': '\x1b[01;31m', 'LESS_TERMCAP_me': '\x1b[0m', 'LESS_TERMCAP_se': '\x1b[0m', 'LESS_TERMCAP_so': '\x1b[00;47;30m', 'LESS_TERMCAP_ue': '\x1b[0m', 'LESS_TERMCAP_us': '\x1b[01;32m', 'LS_COLORS': 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:', 'GREP_COLOR': '37;45', 'GREP_COLORS': 'mt=37;45', 'P9K_SSH': '1', '_P9K_SSH_TTY': '/dev/pts/462', 'CONDA_EXE': '$HOME/miniconda/bin/conda', '_CE_M': '', '_CE_CONDA': '', 'CONDA_PYTHON_EXE': '$HOME/miniconda/bin/python', 'CONDA_SHLVL': '2', 'CONDA_PREFIX': '$HOME/miniconda/envs/ml3', 'CONDA_DEFAULT_ENV': 'ml3', 'CONDA_PROMPT_MODIFIER': '(ml3) ', 'PYTHONPATH': '$HOME/.python:', 'CONDA_PREFIX_1': '$HOME/miniconda', 'CONDA_PYTHONBREAKPOINT': '', 'PYTHONBREAKPOINT': 'ipdb.set_trace', 'CONDA_MKL_INTERFACE_LAYER_BACKUP': '', 'MKL_INTERFACE_LAYER': 'LP64,GNU', 'GSETTINGS_SCHEMA_DIR_CONDA_BACKUP': '', 'GSETTINGS_SCHEMA_DIR': '$HOME/miniconda/envs/ml3/share/glib-2.0/schemas', 'XML_CATALOG_FILES': 'file://$HOME/miniconda/envs/ml3/etc/xml/catalog file:///etc/xml/catalog', 'FZFZ_SUBDIR_LIMIT': '1000', 'FZFZ_EXTRA_DIRS': "'../../..'", 'FZFZ_EXCLUDE_PATTERN': '\\.git|venv', 'FZF_DEFAULT_COMMAND': 'fd --type f --hidden --follow --exclude .git', 'FZF_DEFAULT_OPTS': '--layout=reverse --inline-info', 'FZF_CTRL_T_COMMAND': "fd --type f --hidden --follow --exclude .git . '.' '$HOME/dev'", 'FZF_ALT_C_COMMAND': "fd -t d . '.' '$HOME/dev'", '_': '$HOME/miniconda/envs/ml3/bin/python'})q
 
 # 2023-09-26 15:50:32.103667
 +q
@@ -4608,7 +4608,7 @@
 +out.content
 
 # 2023-10-01 21:55:09.005030
-+import json 
++import json
 
 # 2023-10-01 21:55:14.310228
 +tmp = json.loads(out.content)
@@ -7899,7 +7899,7 @@
 +q
 
 # 2024-01-06 22:29:23.107234
-+y 
++y
 
 # 2024-01-06 22:29:25.293651
 +n
@@ -9050,7 +9050,7 @@
 +q
 
 # 2024-01-10 13:52:38.715762
-+from pprint import pprint 
++from pprint import pprint
 
 # 2024-01-10 13:52:43.904381
 +pprint(fields)
@@ -9920,7 +9920,7 @@
 +new_model = BertPassThrough(model.config, args)
 
 # 2024-01-12 19:35:06.481918
-+model.config 
++model.config
 
 # 2024-01-12 19:35:23.589629
 +model.config["num_hidden_layers"]
@@ -10060,7 +10060,7 @@
 # 2024-01-13 18:33:27.926460
 +for n, p in new_model.named_parameters():
 +        print(n)
-+        
++
 
 # 2024-01-13 18:34:25.794940
 +is_learnable
@@ -10393,7 +10393,7 @@
 +self.debug_size
 
 # 2024-01-15 23:42:04.422490
-+self.n 
++self.n
 
 # 2024-01-15 23:42:06.826124
 +n
@@ -11587,7 +11587,7 @@
 +c
 
 # 2024-01-26 21:06:20.036848
-+dataset 
++dataset
 
 # 2024-01-26 21:06:28.358293
 +q
@@ -11925,7 +11925,7 @@
 +tmp = tmp.assign(
 +            wacc = lambda x:x.preds_pkey == 1,
 +            wacc_fp = lambda x:x.preds_fp == 1,
-+      
++
 +        )
 
 # 2024-01-27 19:10:06.701886
@@ -12905,7 +12905,7 @@
 +p control
 
 # 2024-02-10 16:58:31.169987
-+p state 
++p state
 
 # 2024-02-10 16:58:48.351599
 +state.pred

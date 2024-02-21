@@ -189,13 +189,13 @@ $snl
 
 # Registers:
 "0	CHAR	0
-	 
+
 |3,0,0,0,1,0,1706504392," "
 "1	LINE	0
-	
+
 |3,0,1,1,1,0,1706665571,""
 "2	LINE	0
-	
+
 |3,0,2,1,1,0,1706665568,""
 "3	LINE	0
 	pull_from_roma "$remote_path" "$local_path" wandb
@@ -204,12 +204,12 @@ $snl
 	pull_from_roma "$remote_path" "$local_path" wandb
 |3,0,4,1,1,0,1706485992,"pull_from_roma \"$remote_path\" \"$local_path\" wandb"
 "5	LINE	0
-	
-	
+
+
 |3,0,5,1,2,0,1706483193,"",""
 "6	LINE	0
-	# LBUFFER="${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf-tmux -p80%,80% --preview '/home/vaden/deb/usr/bin/tree -C {}')"
-|3,0,6,1,1,0,1706483192,"# LBUFFER=\"${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf-tmux -p80%,80% --preview '/home/vaden/deb/usr/bin/tree -C {}')\""
+	# LBUFFER="${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf-tmux -p80%,80% --preview '$HOME/deb/usr/bin/tree -C {}')"
+|3,0,6,1,1,0,1706483192,"# LBUFFER=\"${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf-tmux -p80%,80% --preview '$HOME/deb/usr/bin/tree -C {}')\""
 "7	LINE	0
 	# LBUFFER="${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf +s --height 40%)"
 |3,0,7,1,1,0,1706483192,"# LBUFFER=\"${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf +s --height 40%)\""
@@ -217,14 +217,14 @@ $snl
 	# This pastes fasd directories into th# # most recent dirs and it's sorted by relevance
 |3,0,8,1,1,0,1706483192,"# This pastes fasd directories into th# # most recent dirs and it's sorted by relevance"
 "9	LINE	0
-	
+
 |3,0,9,1,1,0,1706483172,""
 "l	CHAR	0
 	w
 |3,0,21,0,1,0,1687898450,"w"
 "v	CHAR	0
-	€krwvv
-|3,0,31,0,1,0,0,"€krwvv"
+	ï¿½krwvv
+|3,0,31,0,1,0,0,"ï¿½krwvv"
 ""-	CHAR	0
 	l
 |3,1,36,0,1,0,1706691235,"l"

@@ -24,3 +24,8 @@ find ~/bin/$dir_name -type f -executable -exec ln -s {} ~/bin \;
 rm ~/$file_name
 
 echo "The tar file from $url has been successfully installed to ~/bin"
+
+
+
+
+

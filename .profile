@@ -18,15 +18,15 @@ fi
 
 # set PATH so it includes user's private bin directories
 export PATH="$HOME/bin:$HOME/bin/bin:$HOME/.local/bin:$PATH"
-export PATH=/home/vaden/local/texlive/2023/bin/x86_64-linux:$PATH
-# handle proxy BS
-http_proxy=http://127.0.0.1:3128
-ftp_proxy=http://127.0.0.1:3128
-https_proxy=http://127.0.0.1:3128
-no_proxy=127.0.0.*,*.huawei.com,localhost
-cntlm_proxy=127.0.0.1:3128
-SSL_CERT_DIR=/etc/ssl/certs
-REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export PATH=$HOME/local/texlive/2023/bin/x86_64-linux:$PATH
+# # handle proxy BS
+# http_proxy=http://127.0.0.1:3128
+# ftp_proxy=http://127.0.0.1:3128
+# https_proxy=http://127.0.0.1:3128
+# no_proxy=127.0.0.*,*.huawei.com,localhost
+# cntlm_proxy=127.0.0.1:3128
+# SSL_CERT_DIR=/etc/ssl/certs
+# REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 echo "hello from profile"
 

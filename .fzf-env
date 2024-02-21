@@ -20,7 +20,6 @@ export FZF_DEFAULT_FD_COMMAND="fd --hidden --follow --no-ignore"
 
 export FZF_DEFAULT_FILES_COMMAND="fd --type f --hidden --follow --no-ignore $FD_EXCLUDE"
 export FZF_DEFAULT_DIR_COMMAND="fd --type d --hidden --follow --no-ignore $FD_EXCLUDE"
-
 export FZF_DEFAULT_GLOBAL_DIRS="$HOME/dev $HOME/Downloads $HOME/.python $HOME/.roma_script $HOME/hypers"
 
 
