@@ -54,6 +54,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   chruby ruby-3.1.3
 fi
 
+
 # Customize to your needs...
 export DIRSTACKSIZE=20
 export EDITOR=vim
@@ -91,3 +92,9 @@ bindkey '^f' edit-command-line
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
