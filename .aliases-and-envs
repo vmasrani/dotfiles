@@ -68,3 +68,7 @@ alias bat='bat -n --color=always'
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach"
+
+
+# fzf
+export EXTENSION_PATH="/Users/vmasrani/.cursor/extensions/tomrijndorp.find-it-faster-0.0.30"
