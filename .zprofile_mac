@@ -22,7 +22,7 @@ function precmd () {
   z --add "$(pwd -P)"
 }
 
-export PATH="/Users/vmasrani/.local/share/solana/install/active_release/bin:$PATH"
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 
 # qt
 export PATH="/usr/local/opt/qt@5/bin:$PATH"
@@ -34,12 +34,12 @@ export PKG_CONFIG_PATH="/usr/local/opt/qt@5/lib/pkgconfig"
 # custom search api
 # https://developers.google.com/custom-search/v1/introduction#identify_your_application_to_google_with_api_key
 export CSAPI='AIzaSyA72ny90-5I_cqTVqxov2FmYf5-9vzMIBg'
-export PATH="/Users/vmasrani/bin:$PATH"
+export PATH="$HOME/bin:$PATH"
 
 export OPENAI_API_KEY=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
 
 # Python stuff
-export PYTHONPATH=/Users/vmasrani/.python:$PYTHONPATH
+export PYTHONPATH=$HOME/.python:$PYTHONPATH
 export PYTHONBREAKPOINT=ipdb.set_trace
 
 eval "$(/opt/homebrew/bin/brew shellenv)"

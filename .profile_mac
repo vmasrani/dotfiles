@@ -18,4 +18,4 @@ source ~/.iterm2_shell_integration.`basename $SHELL`
 #source ~/Dropbox/Private/Boxes/osx/.shellaliases
 source "$HOME/.cargo/env"
 
-export PATH="/Users/vmasrani/.local/share/solana/install/active_release/bin:$PATH"
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"

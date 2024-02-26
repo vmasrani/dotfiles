@@ -4,8 +4,6 @@ export PATH=$HOME/local/bin:$PATH
 export PATH=$HOME/local/texlive/2023/bin/x86_64-linux:$PATH
 
 
-export SHELL=~/bin/zsh
-
 # export http_proxy=http://127.0.0.1:3128
 # export ftp_proxy=http://127.0.0.1:3128
 # export https_proxy=http://127.0.0.1:3128
@@ -14,21 +12,20 @@ export SHELL=~/bin/zsh
 # export SSL_CERT_DIR=/etc/ssl/certs
 # #export REQUESTS_CA_BUNDLE=/etc/ssl/certs/my-custom-certificates.crt
 # export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-exec ~/bin/zsh -l
 
 
 
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/Users/vmasrani/miniconda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+__conda_setup="$('$HOME/miniconda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/Users/vmasrani/miniconda/etc/profile.d/conda.sh" ]; then
-        . "/Users/vmasrani/miniconda/etc/profile.d/conda.sh"
+    if [ -f "$HOME/miniconda/etc/profile.d/conda.sh" ]; then
+        . "$HOME/miniconda/etc/profile.d/conda.sh"
     else
-        export PATH="/Users/vmasrani/miniconda/bin:$PATH"
+        export PATH="$HOME/miniconda/bin:$PATH"
     fi
 fi
 unset __conda_setup
