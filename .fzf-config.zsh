@@ -10,6 +10,21 @@ fzf-fasd-widget(){
 zle     -N   fzf-fasd-widget
 bindkey '^G' fzf-fasd-widget
 
+# Use fd (https://github.com/sharkdp/fd) instead of the default find
+# command for listing path candidates.
+# - The first argument to the function ($1) is the base path to start traversal
+# - See the source code (completion.{bash,zsh}) for the details.
+
+_fzf_compgen_path() {
+  fd --hidden --follow --no-ignore -c always --exclude ".git" . "$1"
+}
+# Use fd to generate the list for directory completion
+_fzf_compgen_dir() {
+  fd --type d --hidden --follow --no-ignore -c always --exclude ".git" . "$1"
+}
+
+
+#export FZF_COMPLETION_TRIGGER=''
 source $HOME/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
 bindkey '^I' fzf-completion
 
@@ -20,6 +35,10 @@ rfz-command() {
 
 zle     -N   rfz-command
 bindkey '^X' 'rfz-command'
+
+
+
+# export FD_OPTIONS="--hidden --follow --no-ignore -c always"
 
 # press ctrl-r to repeat completion *without* accepting i.e. reload the completion
 # press right to accept the completion and retrigger it
@@ -54,18 +73,3 @@ eval set -- {+1}
 for arg in "$@"; do
     { git diff --color=always -- "$arg" | git log --color=always "$arg" } 2>/dev/null
 done'
-
-
-# Use fd (https://github.com/sharkdp/fd) instead of the default find
-# command for listing path candidates.
-# - The first argument to the function ($1) is the base path to start traversal
-# - See the source code (completion.{bash,zsh}) for the details.
-
-_fzf_compgen_path() {
-  fd --hidden --follow --no-ignore --exclude ".git" . "$1"
-}
-# Use fd to generate the list for directory completion
-_fzf_compgen_dir() {
-  fd --type d --hidden --follow --no-ignore --exclude ".git" . "$1"
-
-}

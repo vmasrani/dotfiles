@@ -1,13 +1,13 @@
 # Setup fzf
 # ---------
-if [[ ! "$PATH" == */Users/vmasrani/.fzf/bin* ]]; then
-  PATH="${PATH:+${PATH}:}/Users/vmasrani/.fzf/bin"
+if [[ ! "$PATH" == */home/vmasrani/.fzf/bin* ]]; then
+  PATH="${PATH:+${PATH}:}/home/vmasrani/.fzf/bin"
 fi
 
 # Auto-completion
 # ---------------
-source "/Users/vmasrani/.fzf/shell/completion.bash"
+source "/home/vmasrani/.fzf/shell/completion.bash"
 
 # Key bindings
 # ------------
-source "/Users/vmasrani/.fzf/shell/key-bindings.bash"
+source "/home/vmasrani/.fzf/shell/key-bindings.bash"

@@ -46,6 +46,13 @@ source ~/.aliases-and-envs
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
 
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  # ruby
+  source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
+  source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
+  source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
+  chruby ruby-3.1.3
+fi
 
 
 # Customize to your needs...
@@ -83,3 +90,11 @@ bindkey '^f' edit-command-line
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
+# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
+# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/path.zsh.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
