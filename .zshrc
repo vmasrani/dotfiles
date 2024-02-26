@@ -89,9 +89,8 @@ bindkey '^f' edit-command-line
 
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
-# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
-# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
+
+source ~/.iterm2_shell_integration.zsh
 
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/path.zsh.inc'; fi
