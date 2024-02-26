@@ -1,1 +1,6 @@
 
+.condarc
+.curlrc
+.wgetrc
+.zshrc
+.gitconfig

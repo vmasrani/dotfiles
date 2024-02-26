@@ -10,7 +10,6 @@ fzf-fasd-widget(){
 zle     -N   fzf-fasd-widget
 bindkey '^G' fzf-fasd-widget
 
-#export FZF_COMPLETION_TRIGGER=''
 source $HOME/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
 bindkey '^I' fzf-completion
 
@@ -68,4 +67,5 @@ _fzf_compgen_path() {
 # Use fd to generate the list for directory completion
 _fzf_compgen_dir() {
   fd --type d --hidden --follow --no-ignore --exclude ".git" . "$1"
+
 }
