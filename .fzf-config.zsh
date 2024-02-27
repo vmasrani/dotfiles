@@ -1,7 +1,7 @@
 source ~/.fzf-env
 
 fzf-fasd-widget(){
- LBUFFER="${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf-tmux -p80%,80% --preview "tree {}" --preview-window=right:50%:wrap --bind 'ctrl-/:change-preview-window(right|hidden|)')"
+ LBUFFER="${LBUFFER}$(fasd -d -R | awk '{print $2}' | fzf-tmux -p80%,80% --preview "fzf_preview {}" --preview-window=right:50%:wrap --bind 'ctrl-/:change-preview-window(right|down|hidden|)')"
  local ret=$?
  zle reset-prompt
  return $ret
