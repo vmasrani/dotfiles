@@ -97,6 +97,8 @@ fi
      [rg]="n0p.me/bin/rg"
      [fd]="n0p.me/bin/fd"
      [jq]="n0p.me/bin/jq"
+     [pq]="https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq"
+
  )
 for bin in "${!binaries[@]}"; do
      if ! command -v $bin &> /dev/null; then

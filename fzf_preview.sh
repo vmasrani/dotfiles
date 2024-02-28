@@ -5,6 +5,8 @@ if [[ -f $1 ]]; then
     parquet-tools cat --limit 1000  --format jsonl "$1" | jq -c -C
   elif [[ $1 == *.json ]]; then
     jq -C . "$1"
+  elif [[ $1 == *.pkl || $1 == *.pickle ]]; then
+    pq '' "$1"
   else
     if command -v "$1" &> /dev/null; then
       man "$1"

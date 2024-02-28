@@ -39,6 +39,7 @@ export ZSH_DISABLE_COMPFIX="true"
 
 
 source ~/.aliases-and-envs
+source ~/dotfiles/lscolors.sh
 
 # conda activate ml3
 
@@ -53,7 +54,6 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
   chruby ruby-3.1.3
 fi
-
 
 # Customize to your needs...
 export DIRSTACKSIZE=20

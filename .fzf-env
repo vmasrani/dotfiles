@@ -14,13 +14,20 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 --keep-right"
 # export FZF_DEFAULT_OPTS="--layout=reverse --inline-info --cycle -m --keep-right --pointer ▶"
 
+# export FZF_DEFAULT_COMMAND="fd --type f $FD_OPTIONS $FD_EXCLUDE"
 
-export FD_OPTIONS="--hidden --follow --no-ignore -c always"
-export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
-export FZF_DEFAULT_COMMAND="fd --type f $FD_OPTIONS $FD_EXCLUDE"
-export FZF_DEFAULT_FD_COMMAND="fd $FD_OPTIONS"
-export FZF_DEFAULT_FILES_COMMAND="fd --type f $FD_OPTIONS $FD_EXCLUDE"
-export FZF_DEFAULT_DIR_COMMAND="fd --type d $FD_OPTIONS $FD_EXCLUDE"
+
+
+# export FD_OPTIONS="--hidden --follow --no-ignore -c always"
+# export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
+# export FZF_DEFAULT_FD_COMMAND="fd $FD_OPTIONS"
+# export FZF_DEFAULT_FILES_COMMAND="fd --type f $FD_OPTIONS $FD_EXCLUDE"
+# export FZF_DEFAULT_DIR_COMMAND="fd --type d $FD_OPTIONS $FD_EXCLUDE"
+
+export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
+export FZF_DEFAULT_FILES_COMMAND="bfs -color $BFS_EXCLUDE -type f"
+export FZF_DEFAULT_DIR_COMMAND="bfs -color $BFS_EXCLUDE -type d"
+
 export FZF_DEFAULT_GLOBAL_DIRS="$HOME"
 
 
@@ -33,8 +40,6 @@ FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE="
     echo \"change-prompt(Dirs(.)> )+reload($FZF_DEFAULT_DIR_COMMAND .)\"
   elif [[ {fzf:prompt} =~ \"Dirs\(.\)\" ]]; then
     echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
-  elif [[ {fzf:prompt} =~ \"Dirs\(.\)\" ]]; then
-    echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . )\"
   fi
 "
 
