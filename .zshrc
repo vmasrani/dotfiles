@@ -53,6 +53,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
   source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
   chruby ruby-3.1.3
+  source ~/.iterm2_shell_integration.zsh
 fi
 
 # Customize to your needs...
@@ -89,8 +90,6 @@ bindkey '^f' edit-command-line
 
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
-source ~/.iterm2_shell_integration.zsh
 
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/path.zsh.inc'; fi
