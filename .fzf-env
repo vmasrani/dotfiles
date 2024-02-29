@@ -47,11 +47,11 @@ FZF_CTRL_T_FILES_DIRS_TOGGLE="
   if [[ {fzf:prompt} =~ \"Files\(~\)\" ]]; then
     echo \"change-prompt(Dirs(~)> )+reload($FZF_DEFAULT_DIR_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
   elif [[ {fzf:prompt} =~ \"Files\(.\)\" ]]; then
-    echo \"change-prompt(Dirs(.)> )+reload($FZF_DEFAULT_DIR_COMMAND . .)\"
+    echo \"change-prompt(Dirs(.)> )+reload($FZF_DEFAULT_DIR_COMMAND .)\"
   elif [[ {fzf:prompt} =~ \"Dirs\(~\)\" ]]; then
     echo \"change-prompt(Files(~)> )+reload($FZF_DEFAULT_FILES_COMMAND . $FZF_DEFAULT_GLOBAL_DIRS)\"
   elif [[ {fzf:prompt} =~ \"Dirs\(.\)\" ]]; then
-    echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND . .)\"
+    echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND .)\"
   fi
 "
 
