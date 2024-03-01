@@ -71,4 +71,4 @@ alias ta="tmux attach"
 
 
 # fzf
-export EXTENSION_PATH="/Users/vmasrani/.cursor/extensions/tomrijndorp.find-it-faster-0.0.30"
+export EXTENSION_PATH="$HOME/.cursor-server/extensions/tomrijndorp.find-it-faster-0.0.30"
