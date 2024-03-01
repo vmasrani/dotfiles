@@ -116,9 +116,14 @@ if ! shopt -oq posix; then
   fi
 fi
 
+
+source ~/dotfiles/lscolors.sh
+
 [ -f ~/.fzf.bash ] && source ~/.fzf.bash
 source ~/.fzf-env
 source ~/.aliases-and-envs
+
+
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
