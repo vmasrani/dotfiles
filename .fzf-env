@@ -61,7 +61,12 @@ export FZF_CTRL_T_OPTS="--preview 'fzf_preview {}' --prompt 'Files(.)> ' \
 --bind 'ctrl-r:transform:$FZF_CTRL_T_FILES_DIRS_TOGGLE'"
 
 
+# export FZF_CTRL_R_OPTS="
+# --preview 'echo {}' --preview-window up:3:hidden:wrap
+# --bind 'ctrl-/:toggle-preview'
+# "
+
 export FZF_CTRL_R_OPTS="
---preview 'echo {}' --preview-window up:3:hidden:wrap
---bind 'ctrl-/:toggle-preview'
-"
+  --preview 'echo {}' --preview-window up:3:hidden:wrap
+  --bind 'ctrl-/:toggle-preview'
+  --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'"
