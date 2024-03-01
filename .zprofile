@@ -79,6 +79,7 @@ export PATH=$HOME/local/bin:$PATH
 export PATH=$HOME/local/texlive/2023/bin/x86_64-linux:$PATH
 
 
+source ~/dotfiles/lscolors.sh
 
 # export http_proxy=http://127.0.0.1:3128
 # export ftp_proxy=http://127.0.0.1:3128
