@@ -154,7 +154,20 @@ for repo in "${!git_repos[@]}"; do
  echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
 
 
+# other
+# git fuzzy
+echo "Cloning git-fuzzy..."
+git clone https://github.com/bigH/git-fuzzy.git ~/bin/_git-fuzzy
+echo "Creating symbolic link for git-fuzzy..."
+ln -s ~/bin/_git-fuzzy/bin/git-fuzzy ~/bin/git-fuzzy
+echo "git-fuzzy setup completed."
 
-
-
-
+# diff-so-fancy
+echo "Cloning diff-so-fancy..."
+git clone https://github.com/so-fancy/diff-so-fancy.git ~/bin/_diff-so-fancy
+echo "Creating symbolic link for diff-so-fancy..."
+ln -s ~/bin/_diff-so-fancy/diff-so-fancy ~/bin/diff-so-fancy
+echo "Configuring diff-so-fancy..."
+git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
+git config --global interactive.diffFilter "diff-so-fancy --patch"
+echo "diff-so-fancy setup completed."

@@ -1,5 +1,3 @@
-
-
 ## FZF-Z
 export FZF_TMUX_OPTS='-p95%,95%'
 
@@ -12,17 +10,7 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 --preview-window=right:50%:wrap \
 --bind 'ctrl-/:change-preview-window(down|hidden|)' \
 --keep-right"
-# export FZF_DEFAULT_OPTS="--layout=reverse --inline-info --cycle -m --keep-right --pointer ▶"
 
-# export FZF_DEFAULT_COMMAND="fd --type f $FD_OPTIONS $FD_EXCLUDE"
-
-
-
-# export FD_OPTIONS="--hidden --follow --no-ignore -c always"
-# export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
-# export FZF_DEFAULT_FD_COMMAND="fd $FD_OPTIONS"
-# export FZF_DEFAULT_FILES_COMMAND="fd --type f $FD_OPTIONS $FD_EXCLUDE"
-# export FZF_DEFAULT_DIR_COMMAND="fd --type d $FD_OPTIONS $FD_EXCLUDE"
 
 export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
 export FZF_DEFAULT_FILES_COMMAND="bfs -color $BFS_EXCLUDE -type f"
@@ -60,11 +48,6 @@ export FZF_CTRL_T_OPTS="--preview 'fzf_preview {}' --prompt 'Files(.)> ' \
 --bind 'ctrl-t:transform:$FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE' \
 --bind 'ctrl-r:transform:$FZF_CTRL_T_FILES_DIRS_TOGGLE'"
 
-
-# export FZF_CTRL_R_OPTS="
-# --preview 'echo {}' --preview-window up:3:hidden:wrap
-# --bind 'ctrl-/:toggle-preview'
-# "
 
 export FZF_CTRL_R_OPTS="
   --preview 'echo {}' --preview-window up:3:hidden:wrap
