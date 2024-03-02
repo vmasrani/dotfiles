@@ -9,6 +9,13 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 --cycle -m  \
 --preview-window=right:50%:wrap \
 --bind 'ctrl-/:change-preview-window(down|hidden|)' \
+--bind 'ctrl-d:preview-half-page-down' \
+--bind 'ctrl-u:preview-half-page-up' \
+--bind 'ctrl-s:toggle-sort' \
+--bind 'ctrl-j:preview-down' \
+--bind 'ctrl-k:preview-up' \
+--bind 'ctrl-b:preview-bottom' \
+--bind 'ctrl-n:preview-top' \
 --keep-right"
 
 
@@ -42,6 +49,7 @@ FZF_CTRL_T_FILES_DIRS_TOGGLE="
     echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND .)\"
   fi
 "
+
 
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_FILES_COMMAND ."
 export FZF_CTRL_T_OPTS="--preview 'fzf_preview {}' --prompt 'Files(.)> ' \

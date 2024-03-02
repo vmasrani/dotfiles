@@ -9,3 +9,7 @@
 	default = simple
 [credential]
 	helper = cache --timeout=31536000
+[core]
+	pager = diff-so-fancy | less --tabs=4 -RF
+[interactive]
+	diffFilter = diff-so-fancy --patch
