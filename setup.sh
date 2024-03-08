@@ -15,6 +15,7 @@ declare -A links=(
     ["$HOME/dotfiles/fzf_preview.sh"]="$HOME/bin/fzf_preview"
     ["$HOME/dotfiles/rfz.sh"]="$HOME/bin/rfz"
     ["$HOME/dotfiles/copy.sh"]="$HOME/bin/copy"
+    ["$HOME/dotfiles/sshget"]="$HOME/bin/sshget"
 )
 
 for source in "${!links[@]}"; do
