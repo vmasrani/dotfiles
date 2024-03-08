@@ -10,8 +10,6 @@ INITIAL_QUERY="${*:-}"
 	--bind 'ctrl-t:transform:[[ ! $FZF_PROMPT =~ ripgrep ]] &&
       echo "rebind(change)+change-prompt(1. ripgrep> )+disable-search+transform-query:echo \{q} > /tmp/rg-fzf-f; cat /tmp/rg-fzf-r" ||
       echo "unbind(change)+change-prompt(2. fzf> )+enable-search+transform-query:echo \{q} > /tmp/rg-fzf-r; cat /tmp/rg-fzf-f"' \
-	--color "hl:-1:underline,hl+:-1:underline:reverse" \
-	--prompt '1. ripgrep> ' \
 	--delimiter : \
 	--header 'CTRL-T: Switch between ripgrep/fzf' \
 	--preview 'bat --color=always {1} --highlight-line {2}' \

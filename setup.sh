@@ -15,6 +15,7 @@ declare -A links=(
     ["$HOME/dotfiles/fzf_preview.sh"]="$HOME/bin/fzf_preview"
     ["$HOME/dotfiles/rfz.sh"]="$HOME/bin/rfz"
     ["$HOME/dotfiles/copy.sh"]="$HOME/bin/copy"
+    ["$HOME/dotfiles/sshget"]="$HOME/bin/sshget"
 )
 
 for source in "${!links[@]}"; do
@@ -153,6 +154,12 @@ for repo in "${!git_repos[@]}"; do
 
  echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
 
+# neovim
+curl -L https://github.com/neovim/neovim/releases/latest/download/nvim.appimage -o $HOME/bin/nvim
+chmod u+x ~/bin/nvim
+git clone https://github.com/LazyVim/starter ~/.config/nvim
+rm -rf ~/.config/nvim/.git
+
 
 # other
 # git fuzzy
@@ -171,3 +178,5 @@ echo "Configuring diff-so-fancy..."
 git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
 git config --global interactive.diffFilter "diff-so-fancy --patch"
 echo "diff-so-fancy setup completed."
+
+
