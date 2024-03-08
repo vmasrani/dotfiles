@@ -58,8 +58,8 @@ fi
 
 # Customize to your needs...
 export DIRSTACKSIZE=20
-export EDITOR=vim
-export VISUAL=vim
+export EDITOR=nvim
+export VISUAL=nvim
 
 #Allow group rename
 autoload -U zmv
