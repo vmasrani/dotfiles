@@ -39,7 +39,9 @@ alias .3='cd ../../../'                     # Go back 3 directory levels
 alias .4='cd ../../../../'                  # Go back 4 directory levels
 alias .5='cd ../../../../../'               # Go back 5 directory levels
 alias .6='cd ../../../../../../'            # Go back 6 directory levels
-alias .7='cd ../../../../../../../'            # Go back 6 directory levels
+alias .7='cd ../../../../../../../'         # Go back 7 directory levels
+alias .8='cd ../../../../../../../../'      # Go back 8 directory levels
+alias .9='cd ../../../../../../../../../'   # Go back 9 directory levels
 
 #tree alias's"
 alias t='eza -aHl --icons --tree --no-user --no-permissions'
@@ -76,3 +78,6 @@ alias ga="git fuzzy status"
 
 # nvim
 alias vim='nvim'
+
+# bfs
+alias bfs='bfs -L'
