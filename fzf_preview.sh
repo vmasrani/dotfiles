@@ -7,6 +7,8 @@ if [[ -f $1 ]]; then
     jq -C . "$1"
   elif [[ $1 == *.pkl || $1 == *.pickle ]]; then
     pq '' "$1"
+  elif [[ $1 == *.pt ]]; then
+    torch-preview "$1"
   else
     if command -v "$1" &> /dev/null; then
       man "$1"

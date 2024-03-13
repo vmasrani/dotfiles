@@ -84,6 +84,12 @@ autoload -U edit-command-line
 zle -N edit-command-line
 bindkey '^f' edit-command-line
 
+# hack to fix mac keyboard issues
+# note! can use cat -> enter -> keypress to find the key sequence
+bindkey '^[[1;3D' backward-word
+bindkey '^[[1;3C' forward-word
+
+
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
