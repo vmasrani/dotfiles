@@ -2,7 +2,7 @@
 
 # Switch between Ripgrep mode and fzf filtering mode (CTRL-T)
 rm -f /tmp/rg-fzf-{r,f}
-RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case --no-ignore-vcs"
+RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case --no-ignore-vcs  --hidden "
 INITIAL_QUERY="${*:-}"
 : | fzf --ansi --disabled --query "$INITIAL_QUERY" \
     --bind "start:reload:$RG_PREFIX {q}" \
@@ -17,3 +17,6 @@ INITIAL_QUERY="${*:-}"
     --preview 'bat --color=always {1} --highlight-line {2}' \
     --preview-window 'up,60%,border-bottom,+{2}+3/3,~3' \
     --bind 'enter:become(nvim {1} +{2})'
+
+
+

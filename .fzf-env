@@ -15,9 +15,9 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 --bind 'ctrl-j:preview-down' \
 --bind 'ctrl-k:preview-up' \
 --bind 'ctrl-b:preview-bottom' \
---bind 'ctrl-n:preview-top' \
---keep-right"
+--bind 'ctrl-n:preview-top'"
 
+# --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'
 
 export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
 export FZF_DEFAULT_FILES_COMMAND="bfs -color $BFS_EXCLUDE -type f"
@@ -54,10 +54,12 @@ FZF_CTRL_T_FILES_DIRS_TOGGLE="
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_FILES_COMMAND ."
 export FZF_CTRL_T_OPTS="--preview 'fzf_preview {}' --prompt 'Files(.)> ' \
 --bind 'ctrl-t:transform:$FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE' \
---bind 'ctrl-r:transform:$FZF_CTRL_T_FILES_DIRS_TOGGLE'"
+--bind 'ctrl-r:transform:$FZF_CTRL_T_FILES_DIRS_TOGGLE' \
+--bind 'ctrl-f:execute:nvim {} >/dev/tty' \
+--keep-right"
 
 
 export FZF_CTRL_R_OPTS="
-  --preview 'echo {}' --preview-window up:3:hidden:wrap
+  --preview 'echo {}' --preview-window up:3:wrap
   --bind 'ctrl-/:toggle-preview'
   --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'"
