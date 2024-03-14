@@ -58,8 +58,8 @@ fi
 
 # Customize to your needs...
 export DIRSTACKSIZE=20
-export EDITOR=vim
-export VISUAL=vim
+export EDITOR=nvim
+export VISUAL=nvim
 
 #Allow group rename
 autoload -U zmv
@@ -83,6 +83,12 @@ autoload -U edit-command-line
 # Emacs style
 zle -N edit-command-line
 bindkey '^f' edit-command-line
+
+# hack to fix mac keyboard issues
+# note! can use cat -> enter -> keypress to find the key sequence
+bindkey '^[[1;3D' backward-word
+bindkey '^[[1;3C' forward-word
+
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
