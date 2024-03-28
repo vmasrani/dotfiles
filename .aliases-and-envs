@@ -73,11 +73,19 @@ alias ta="tmux attach"
 
 
 # fzf
-export EXTENSION_PATH="$HOME/.cursor-server/extensions/tomrijndorp.find-it-faster-0.0.30"
+if [ -d "$HOME/.cursor-server" ]; then
+  export CURSOR_FOLDER=".cursor-server"
+else
+  export CURSOR_FOLDER=".cursor"
+fi
+
+export EXTENSION_PATH="$HOME/$CURSOR_FOLDER/extensions/tomrijndorp.find-it-faster-0.0.30"
+
+
 alias ga="git fuzzy status"
 
 # nvim
 alias vim='nvim'
 
 # bfs
-alias bfs='bfs -L'
+alias bfs='bfs -L '
