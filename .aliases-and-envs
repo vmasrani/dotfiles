@@ -70,7 +70,7 @@ alias bat='bat -n --color=always'
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach"
-
+alias brew="arch -x86_64 /usr/local/bin/brew"
 
 # fzf
 if [ -d "$HOME/.cursor-server" ]; then

@@ -20,8 +20,8 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 # --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'
 
 export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
-export FZF_DEFAULT_FILES_COMMAND="bfs -color $BFS_EXCLUDE -type f"
-export FZF_DEFAULT_DIR_COMMAND="bfs -color $BFS_EXCLUDE -type d"
+export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
+export FZF_DEFAULT_DIR_COMMAND="bfs -x -color $BFS_EXCLUDE -type d"
 
 export FZF_DEFAULT_GLOBAL_DIRS="$HOME"
 
