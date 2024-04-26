@@ -1,7 +1,7 @@
 #!/bin/bash
 NODE_DIR="$HOME/.local/lib/nodejs"
 
-VERSION=v22.0.0
+VERSION=v16.0.0
 
 # Automatically determine the distribution
 ARCH=$(uname -m)
@@ -13,7 +13,7 @@ esac
 
 
 
-wget "https://nodejs.org/dist/latest/node-$VERSION-$DISTRO.tar.xz" -O "$NODE_DIR/node-$VERSION-$DISTRO.tar.xz"
+wget "https://nodejs.org/dist/$VERSION/node-$VERSION-$DISTRO.tar.xz" -O "$NODE_DIR/node-$VERSION-$DISTRO.tar.xz"
 
 mkdir -p "$NODE_DIR"
 tar -xJf "$NODE_DIR/node-$VERSION-$DISTRO.tar.xz" -C "$NODE_DIR"
@@ -22,3 +22,6 @@ rm "$NODE_DIR/node-$VERSION-$DISTRO.tar.xz"
 ln -sf "$NODE_DIR/node-$VERSION-$DISTRO/bin/node" "$HOME/bin/node"
 ln -sf "$NODE_DIR/node-$VERSION-$DISTRO/bin/npm" "$HOME/bin/npm"
 ln -sf "$NODE_DIR/node-$VERSION-$DISTRO/bin/npx" "$HOME/bin/npx"
+
+npm config set registry http://registry.npmjs.org/
+npm set strict-ssl false
