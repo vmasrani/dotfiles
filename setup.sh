@@ -92,11 +92,12 @@ declare -A binaries=(
 	[fd]="n0p.me/bin/fd"
 	[jq]="n0p.me/bin/jq"
 	[pq]="https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq"
-
 )
+
 for bin in "${!binaries[@]}"; do
-	if ! command -v $bin &>/dev/null; then
+	if [ ! -f "$HOME/bin/$bin" ]; then
 		wget -O "$HOME/bin/$bin" "${binaries[$bin]}" && chmod +x "$HOME/bin/$bin"
+		echo "$bin installed successfully."
 	else
 		echo "$bin is already installed."
 	fi
