@@ -2,7 +2,6 @@
 # export WANDB_BASE_URL="http://localhost:8080"
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
-export PATH=~/bin:$PATH
 export BAT_THEME="Solarized (light)"
 
 alias vscode='cursor'
