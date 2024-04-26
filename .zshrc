@@ -38,7 +38,7 @@ unset __conda_setup
 export ZSH_DISABLE_COMPFIX="true"
 
 
-source ~/.aliases-and-envs
+source ~/.aliases-and-envs.zsh
 source ~/dotfiles/lscolors.sh
 
 # conda activate ml3
@@ -77,6 +77,16 @@ bindkey -M vicmd '/' history-incremental-search-forward
 # Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
 export KEYTIMEOUT=1
 
+
+# required for anything to work at all
+# https://medium.com/codex/using-wsl-2-in-enterprises-d9cef1f60c73
+# NOTE: https_proxy env variable should link to a url WITHOUT THE S!!! i.e
+# export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
+# DOESN"T WORK WITH THE S, SUPER SUBTLE AND ANNOYING AND COUNTERINTUITIVE BUG
+
+# Better vim mode
+
+
 # Enable Ctrl-x-e to edit command line
 autoload -U edit-command-line
 
@@ -85,7 +95,7 @@ zle -N edit-command-line
 bindkey '^f' edit-command-line
 
 # hack to fix mac keyboard issues
-# note! can use cat -> enter -> keypress to find the key sequence
+## note! can use cat -> enter -> keypress to find the key sequence
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
