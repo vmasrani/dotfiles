@@ -12,7 +12,6 @@ case "$ARCH" in
 esac
 
 
-
 wget "https://nodejs.org/dist/$VERSION/node-$VERSION-$DISTRO.tar.xz" -O "$NODE_DIR/node-$VERSION-$DISTRO.tar.xz"
 
 mkdir -p "$NODE_DIR"
