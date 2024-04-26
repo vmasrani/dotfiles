@@ -55,15 +55,15 @@ else
 	echo "Miniconda is already installed."
 fi
 
-# # cargo
-# if ! command -v cargo &> /dev/null
-# then
-#     echo "Cargo is not installed. Installing Cargo..."
-#     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-#     echo "Cargo installed successfully."
-# else
-#     echo "Cargo is already installed."
-# fi
+# cargo
+if ! command -v cargo &> /dev/null
+then
+    echo "Cargo is not installed. Installing Cargo..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    echo "Cargo installed successfully."
+else
+    echo "Cargo is already installed."
+fi
 
 # zprezto
 if [ ! -d "$HOME/.zprezto" ]; then
@@ -72,6 +72,15 @@ if [ ! -d "$HOME/.zprezto" ]; then
 	echo "zprezto installed successfully."
 else
 	echo "zprezto is already installed."
+fi
+
+# node
+if ! command -v npm &>/dev/null; then
+    echo "npm is not installed. Installing npm..."
+    bash install_npm.sh
+    echo "npm installed successfully."
+else
+    echo "npm is already installed."
 fi
 
 # fzf
