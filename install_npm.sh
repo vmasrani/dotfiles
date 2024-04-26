@@ -11,10 +11,10 @@ case "$ARCH" in
     *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
 
+mkdir -p "$NODE_DIR"
 
 wget "https://nodejs.org/dist/$VERSION/node-$VERSION-$DISTRO.tar.xz" -O "$NODE_DIR/node-$VERSION-$DISTRO.tar.xz"
 
-mkdir -p "$NODE_DIR"
 tar -xJf "$NODE_DIR/node-$VERSION-$DISTRO.tar.xz" -C "$NODE_DIR"
 rm "$NODE_DIR/node-$VERSION-$DISTRO.tar.xz"
 
