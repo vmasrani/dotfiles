@@ -142,28 +142,46 @@ for repo in "${!git_repos[@]}"; do
 	fi
 done
 
-echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
-
 # neovim
-curl -L https://github.com/neovim/neovim/releases/latest/download/nvim.appimage -o $HOME/bin/nvim
-chmod u+x ~/bin/nvim
-git clone https://github.com/LazyVim/starter ~/.config/nvim
-rm -rf ~/.config/nvim/.git
+if [ ! -f "$HOME/bin/nvim" ]; then
+    echo "Installing neovim..."
+    curl -L https://github.com/neovim/neovim/releases/latest/download/nvim.appimage -o $HOME/bin/nvim
+    chmod u+x $HOME/bin/nvim
+else
+    echo "neovim is already installed."
+fi
 
+if [ ! -d "$HOME/.config/nvim" ]; then
+    echo "Installing neovim configuration..."
+    git clone https://github.com/LazyVim/starter $HOME/.config/nvim
+    rm -rf $HOME/.config/nvim/.git
+else
+    echo "neovim configuration is already installed."
+fi
 # other
 # git fuzzy
-echo "Cloning git-fuzzy..."
-git clone https://github.com/bigH/git-fuzzy.git ~/bin/_git-fuzzy
-echo "Creating symbolic link for git-fuzzy..."
-ln -s ~/bin/_git-fuzzy/bin/git-fuzzy ~/bin/git-fuzzy
-echo "git-fuzzy setup completed."
+if [ ! -d "$HOME/bin/_git-fuzzy" ]; then
+    echo "Cloning git-fuzzy..."
+    git clone https://github.com/bigH/git-fuzzy.git ~/bin/_git-fuzzy
+    echo "Creating symbolic link for git-fuzzy..."
+    ln -s ~/bin/_git-fuzzy/bin/git-fuzzy ~/bin/git-fuzzy
+    echo "git-fuzzy setup completed."
+else
+    echo "git-fuzzy is already installed."
+fi
 
-# diff-so-fancy
-echo "Cloning diff-so-fancy..."
-git clone https://github.com/so-fancy/diff-so-fancy.git ~/bin/_diff-so-fancy
-echo "Creating symbolic link for diff-so-fancy..."
-ln -s ~/bin/_diff-so-fancy/diff-so-fancy ~/bin/diff-so-fancy
-echo "Configuring diff-so-fancy..."
-git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
-git config --global interactive.diffFilter "diff-so-fancy --patch"
-echo "diff-so-fancy setup completed."
+if [ ! -d "$HOME/bin/_diff-so-fancy" ]; then
+    echo "Cloning diff-so-fancy..."
+    git clone https://github.com/so-fancy/diff-so-fancy.git ~/bin/_diff-so-fancy
+    echo "Creating symbolic link for diff-so-fancy..."
+    ln -s ~/bin/_diff-so-fancy/diff-so-fancy ~/bin/diff-so-fancy
+    echo "Configuring diff-so-fancy..."
+    git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
+    git config --global interactive.diffFilter "diff-so-fancy --patch"
+    echo "diff-so-fancy setup completed."
+else
+    echo "diff-so-fancy is already installed."
+fi
+
+
+echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."

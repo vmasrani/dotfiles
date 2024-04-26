@@ -79,7 +79,7 @@ else
   export CURSOR_FOLDER=".cursor"
 fi
 
-export EXTENSION_PATH="$HOME/$CURSOR_FOLDER/extensions/tomrijndorp.find-it-faster-0.0.30"
+export EXTENSION_PATH="$HOME/$CURSOR_FOLDER/extensions/tomrijndorp.find-it-faster-0.0.32"
 
 
 alias ga="git fuzzy status"
