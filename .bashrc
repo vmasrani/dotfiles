@@ -120,8 +120,8 @@ fi
 source ~/dotfiles/lscolors.sh
 
 [ -f ~/.fzf.bash ] && source ~/.fzf.bash
-source ~/.fzf-env
-source ~/.aliases-and-envs
+source ~/.fzf-env.zsh
+source ~/.aliases-and-envs.zsh
 
 
 

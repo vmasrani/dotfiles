@@ -5,6 +5,7 @@ set -e
 # sudo chsh -s $(which zsh) $USER
 
 mkdir -p $HOME/bin
+mkdir -p dev/projects
 
 # remember my login for 1 yr
 git config --global credential.helper 'cache --timeout=31536000'

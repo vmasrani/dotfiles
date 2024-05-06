@@ -7,6 +7,10 @@ true-color = true
 mouse = false
 line-number = "relative"
 
+[editor.statusline]
+right = ["diagnostics", "selections", "position","position-percentage", "file-encoding"]
+left = ["mode","spinner", "file-name"]
+
 [editor.cursor-shape]
 insert = "bar"
 select = "underline"
@@ -20,14 +24,53 @@ C-v = [":clipboard-paste-before"]
 C-right = [":bn"]
 C-left = [":bp"]
 X = ["extend_line_up", "extend_to_line_bounds"]
+# make sure there is only one selection, select word under cursor, set search to selection, then switch to select mode
+"C-d" = ["keep_primary_selection", "move_prev_word_start", "move_next_word_end", "search_selection", "select_mode"]
+# https://www.reddit.com/r/HelixEditor/comments/10reh4p/post_your_best_tipstricks_workflow_hacks_and/
+V = ["goto_first_nonwhitespace", "extend_to_line_end"]
+D = ["ensure_selections_forward", "extend_to_line_end"]
+x = "extend_line"
+A-right = "move_next_word_start"
+A-left = "move_prev_word_start"
+S-right = "extend_char_right"
+S-left = "extend_char_left"
+S-A-right = "extend_next_word_start"
+S-A-left = "extend_prev_word_start"
+S-up = "extend_line_up"
+S-down = "extend_line_down"
+C-S-up = "copy_selection_on_prev_line"
+C-S-down = "copy_selection_on_next_line"
+# esc = 'keep_primary_selection'
+
+[keys.normal.space]
+q = ":quit"
 
 [keys.insert]
 C-s = [":w!","normal_mode"]
 C-w = [":buffer-close","normal_mode"]
 C-v = [":clipboard-paste-before"]
-C-right = [":bn"]
-C-left = [":bp"]
+A-right = "move_next_word_start"
+A-left = "move_prev_word_start"
+C-q = "collapse_selection"
+C-space = "signature_help"
+S-right = "extend_char_right"
+S-left = "extend_char_left"
+S-up = "extend_line_up"
+S-down = "extend_line_down"
+# esc = 'keep_primary_selection'
 
 [keys.select]
 y = [":clipboard-yank","yank"]
 X = ["extend_line_up", "extend_to_line_bounds"]
+# if already in select mode, just add new selection at next occurrence
+"C-d" = ["search_selection", "extend_search_next"]
+";" = ["collapse_selection", "normal_mode"]
+# Same behaviour as normal mode x
+x = "extend_line"
+# Counterpart for normal mode V
+V = "extend_to_line_end"
+A-right = "extend_next_word_start"
+A-left = "extend_prev_word_start"
+S-right = "extend_char_right"
+S-left = "extend_char_left"
+# esc = 'keep_primary_selection'
