@@ -13,7 +13,7 @@ if ! command -v hx &> /dev/null; then
     fi
 fi
 
-ln -sf ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
+ln -sfp ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
 
 if ! command -v ruff-lsp &> /dev/null; then
     pip install ruff-lsp
