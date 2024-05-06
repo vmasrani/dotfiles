@@ -1,4 +1,5 @@
-# !/bin/bash
+#!/bin/bash
+
 set -e
 
 if ! command -v hx &> /dev/null; then
@@ -12,7 +13,7 @@ if ! command -v hx &> /dev/null; then
     fi
 fi
 
-ln -s ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
+ln -sf ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
 
 pip install ruff-lsp
 pip install pylsp-mypy
@@ -21,5 +22,3 @@ npm install --location=global pyright --prefix ~/.npm-global
 npm i -g yaml-language-server@next --prefix ~/.npm-global
 npm i -g vscode-langservers-extracted --prefix ~/.npm-global
 npm i -g bash-language-server --prefix ~/.npm-global
-
-mypy --install-types
