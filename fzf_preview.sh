@@ -13,6 +13,8 @@ if [[ -f $1 ]]; then
     chafa --size=80x80 "$1"
   elif [[ $1 == *.pdf ]]; then
     pdftotext "$1" -
+  elif [[ $1 == *.md ]]; then
+    glow -p -w 80 -s dark "$1"
   else
     if command -v "$1" &> /dev/null; then
       man "$1"
@@ -21,7 +23,7 @@ if [[ -f $1 ]]; then
     fi
   fi
 elif [[ -d $1 ]]; then
-  eza -aHl --icons --tree --no-user --no-permissions -L 2 --color=always "$1"
+  eza -aHl --icons --tree --no-user --no-permissions -L 3 -I .git --color=always "$1"
 else
   echo "$1"
 fi
