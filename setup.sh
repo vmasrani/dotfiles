@@ -116,6 +116,7 @@ declare -A executables
 
 executables["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
 executables["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
+executables["glow"]="https://github.com/charmbracelet/glow/releases/download/v1.5.1/glow_Linux_x86_64.tar.gz"
 
 for command in "${!executables[@]}"; do
 	if ! command -v $command &>/dev/null; then
@@ -153,21 +154,13 @@ for repo in "${!git_repos[@]}"; do
 done
 
 # neovim
-if [ ! -f "$HOME/bin/nvim" ]; then
-    echo "Installing neovim..."
-    curl -L https://github.com/neovim/neovim/releases/latest/download/nvim.appimage -o $HOME/bin/nvim
-    chmod u+x $HOME/bin/nvim
+if [ ! -f "$HOME/bin/hx" ]; then
+    bash install_helix.sh
 else
-    echo "neovim is already installed."
+    echo "helix is already installed."
 fi
 
-if [ ! -d "$HOME/.config/nvim" ]; then
-    echo "Installing neovim configuration..."
-    git clone https://github.com/LazyVim/starter $HOME/.config/nvim
-    rm -rf $HOME/.config/nvim/.git
-else
-    echo "neovim configuration is already installed."
-fi
+
 # other
 # git fuzzy
 if [ ! -d "$HOME/bin/_git-fuzzy" ]; then

@@ -6,10 +6,9 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 export BAT_THEME="Solarized (light)"
 
 alias vscode='cursor'
-alias v='f -e vim'
 
 alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
-alias zshrc='vim ~/.zshrc'
+alias zshrc='hx ~/.zshrc'
 
 alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
 alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
@@ -84,9 +83,6 @@ export EXTENSION_PATH="$HOME/$CURSOR_FOLDER/extensions/tomrijndorp.find-it-faste
 
 
 alias ga="git fuzzy status"
-
-# nvim
-alias vim='nvim'
 
 # bfs
 alias bfs='bfs -L '

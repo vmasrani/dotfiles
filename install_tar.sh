@@ -26,7 +26,7 @@ wget "$url" -O ~/$file_name
 tar -xvf ~/$file_name -C ~/bin
 
 # Symlink the executables
-find ~/bin/$dir_name -type f -executable -exec ln -s {} ~/bin \;
+find ~/bin/$dir_name -maxdepth 1 -type f -executable -exec ln -s {} ~/bin \;
 
 # Remove the downloaded file
 rm ~/$file_name

@@ -15,10 +15,30 @@ fi
 
 ln -sf ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
 
-pip install ruff-lsp
-pip install pylsp-mypy
-pip install -U 'python-lsp-server[all]'
-npm install --location=global pyright --prefix ~/.npm-global
-npm i -g yaml-language-server@next --prefix ~/.npm-global
-npm i -g vscode-langservers-extracted --prefix ~/.npm-global
-npm i -g bash-language-server --prefix ~/.npm-global
+if ! command -v ruff-lsp &> /dev/null; then
+    pip install ruff-lsp
+fi
+
+if ! command -v pylsp-mypy &> /dev/null; then
+    pip install pylsp-mypy
+fi
+
+if ! command -v python-lsp-server &> /dev/null; then
+    pip install -U 'python-lsp-server[all]'
+fi
+
+if ! command -v pyright &> /dev/null; then
+    npm install --location=global pyright --prefix ~/.npm-global
+fi
+
+if ! command -v yaml-language-server &> /dev/null; then
+    npm i -g yaml-language-server@next --prefix ~/.npm-global
+fi
+
+if ! command -v vscode-langservers-extracted &> /dev/null; then
+    npm i -g vscode-langservers-extracted --prefix ~/.npm-global
+fi
+
+if ! command -v bash-language-server &> /dev/null; then
+    npm i -g bash-language-server --prefix ~/.npm-global
+fi

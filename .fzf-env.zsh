@@ -64,7 +64,7 @@ export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_FILES_COMMAND ."
 export FZF_CTRL_T_OPTS="--preview 'fzf_preview {}' --prompt 'Files(.)> ' \
 --bind 'ctrl-t:transform:$FZF_CTRL_T_LOCAL_GLOBAL_TOGGLE' \
 --bind 'ctrl-r:transform:$FZF_CTRL_T_FILES_DIRS_TOGGLE' \
---bind 'ctrl-f:execute:nvim {} >/dev/tty' \
+--bind 'ctrl-f:execute:hx {} >/dev/tty' \
 --keep-right"
 
 
