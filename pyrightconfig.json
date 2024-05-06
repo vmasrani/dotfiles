@@ -1,0 +1,29 @@
+{
+    "include": [
+        "."
+    ],
+    "exclude": [
+        "**/node_modules",
+        "**/cdk.out",
+        "**/.pytest_cache",
+        "**/build",
+        "**/dist",
+        "**/.vscode",
+        "**/__pycache__",
+        "**/artifacts",
+        "**/data",
+        "**/demo",
+        "**/experiments",
+        "**/nanoGPT",
+        "**/old_code",
+        "**/distilgpt2-squad",
+        "**/bkup",
+        "**/plots",
+        "**/out",
+        "**/results",
+        "**/src_nano_gpt",
+        "**/wandb",
+        "**/weights_output"
+    ],
+    "reportMissingImports": true
+}

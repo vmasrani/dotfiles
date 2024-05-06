@@ -24,3 +24,5 @@ ln -sf "$NODE_DIR/node-$VERSION-$DISTRO/bin/npx" "$HOME/bin/npx"
 
 npm config set registry http://registry.npmjs.org/
 npm set strict-ssl false
+
+

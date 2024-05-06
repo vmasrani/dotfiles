@@ -2,6 +2,7 @@
 # export WANDB_BASE_URL="http://localhost:8080"
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
+export PATH="$HOME/.npm-global/bin:$PATH"
 export BAT_THEME="Solarized (light)"
 
 alias vscode='cursor'
@@ -61,10 +62,11 @@ alias h="history"                           # h:            History
 alias path='echo -e ${PATH//:/\\n}'         # path:         Echo all executable Paths
 alias fix_stty='stty sane'                  # fix_stty:     Restore terminal settings when screwed up
 alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
-alias du='du -sh'                           # Show usage in human readable format and sum content of subdirectories
 alias fd='fd -HI'                           # fd all
 alias rg='rg --no-ignore'
 alias bat='bat -n --color=always'
+alias disk_usage='du -ahd1 . | sort -h'
+
 
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'

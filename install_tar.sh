@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 if [ -z "$1" ]; then
     echo "Usage: $0 <url>"
@@ -9,7 +10,14 @@ url="$1"
 
 # Determine the file name from the URL
 file_name=$(basename "$url")
-dir_name=$(basename -s .tar.gz "$url")
+if [[ $file_name == *".tar.gz" ]]; then
+    dir_name=$(basename -s .tar.gz "$file_name")
+elif [[ $file_name == *".tar.xz" ]]; then
+    dir_name=$(basename -s .tar.xz "$file_name")
+else
+    echo "Unsupported file extension" >&2
+    exit 1
+fi
 
 # Download the tar file
 wget "$url" -O ~/$file_name

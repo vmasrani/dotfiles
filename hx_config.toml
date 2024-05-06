@@ -1,9 +1,9 @@
 theme = "material_palenight"
 
-
 [editor]
 bufferline = "always"
 auto-format = true
+true-color = true
 mouse = false
 line-number = "relative"
 

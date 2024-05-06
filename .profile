@@ -20,7 +20,6 @@ fi
 
 # set PATH so it includes user's private bin directories
 export PATH="$HOME/bin:$HOME/bin/bin:$HOME/.local/bin:$PATH"
-export PATH=$HOME/local/texlive/2023/bin/x86_64-linux:$PATH
 # # handle proxy BS
 # http_proxy=http://127.0.0.1:3128
 # ftp_proxy=http://127.0.0.1:3128
@@ -32,3 +31,4 @@ export PATH=$HOME/local/texlive/2023/bin/x86_64-linux:$PATH
 
 echo "hello from profile"
 
+. "$HOME/.cargo/env"

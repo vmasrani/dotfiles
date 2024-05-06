@@ -1,7 +1,6 @@
 export POWERLEVEL9K_INSTALLATION_DIR=$HOME/.zprezto/modules/prompt/external/powerlevel10k
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
 export PATH=$HOME/local/bin:$PATH
-export PATH=$HOME/local/texlive/2023/bin/x86_64-linux:$PATH
 
 source ~/dotfiles/lscolors.sh
 
@@ -32,3 +31,4 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
+. "$HOME/.cargo/env"

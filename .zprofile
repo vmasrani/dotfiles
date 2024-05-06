@@ -76,7 +76,6 @@ fi
 export POWERLEVEL9K_INSTALLATION_DIR=$HOME/.zprezto/modules/prompt/external/powerlevel10k
 export PATH="$HOME/miniconda/bin:$PATH"
 export PATH=$HOME/local/bin:$PATH
-export PATH=$HOME/local/texlive/2023/bin/x86_64-linux:$PATH
 
 # for HW remote servers only
 export ftp_proxy=http://127.0.0.1:3128
