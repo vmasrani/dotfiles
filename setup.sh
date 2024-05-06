@@ -196,5 +196,9 @@ else
     echo "diff-so-fancy is already installed."
 fi
 
-
+# chmod bash files
+chmod +x *.sh
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
+
+
+
