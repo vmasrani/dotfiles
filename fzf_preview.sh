@@ -17,7 +17,7 @@ if [[ -f $1 ]]; then
     glow -p -w 80 -s dark "$1"
   else
     if command -v "$1" &> /dev/null; then
-      man "$1"
+      tldr "$1"
     else
       bat -n --color=always "$1"
     fi

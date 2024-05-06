@@ -65,6 +65,15 @@ else
     echo "Cargo is already installed."
 fi
 
+# tealdear
+if ! command -v tldr &> /dev/null
+then
+    cargo install tealdeer
+    tldr --update
+else
+    echo "tldr is already installed."
+fi
+
 # zprezto
 if [ ! -d "$HOME/.zprezto" ]; then
 	echo "zprezto is not installed. Installing zprezto..."
