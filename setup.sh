@@ -27,7 +27,7 @@ for source in "${!links[@]}"; do
 done
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
-files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .pdbhistory .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
+files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
 for file in "${files[@]}"; do
 	echo "Linking $file from dotfiles to home directory."
 	ln -sf $HOME/dotfiles/$file $HOME/$file
@@ -198,6 +198,10 @@ fi
 
 # chmod bash files
 chmod +x *.sh
+
+# 0.33 will have to change
+echo "Copying find_files.sh to .cursor-server extensions..."
+cp ~/dotfiles/find_files.sh $(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
 
 

@@ -7,6 +7,9 @@ true-color = true
 mouse = false
 line-number = "relative"
 
+[editor.soft-wrap]
+enable = true
+
 [editor.statusline]
 right = ["diagnostics", "selections", "position","position-percentage", "file-encoding"]
 left = ["mode","spinner", "file-name"]

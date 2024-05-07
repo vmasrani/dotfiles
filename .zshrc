@@ -90,12 +90,12 @@ export KEYTIMEOUT=1
 # export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
 # DOESN"T WORK WITH THE S, SUPER SUBTLE AND ANNOYING AND COUNTERINTUITIVE BUG
 
-export http_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-export SSL_CERT_DIR=/etc/ssl/certs
-export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-export no_proxy="localhost,127.0.0.1,172.20.176.0/20,127.0.0.1/23119"
+# export http_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
+# export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
+# export SSL_CERT_DIR=/etc/ssl/certs
+# export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+# export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+# export no_proxy="localhost,127.0.0.1,172.20.176.0/20,127.0.0.1/23119"
 
 # # # Better vim mode
 
