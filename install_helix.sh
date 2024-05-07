@@ -15,5 +15,5 @@ fi
 
 mkdir -p ~/.config/helix/
 ln -sf ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
-
+ln -sf ~/dotfiles/hx_language.toml  ~/.config/helix/language.toml
 bash install_helix_language
