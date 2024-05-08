@@ -1,46 +1,39 @@
 #!/bin/bash
 
-
-
+source ~/miniconda/etc/profile.d/conda.sh
 check_and_install_packages() {
-    if ! command -v $1 &> /dev/null
-    then
-        echo "$1 is not installed"
-        pip install $2
-    fi
-}
+     if ! command -v $1 &> /dev/null
+     then
+         echo "$1 is not installed"
+         eval $2
+     fi
+ }
 
 
-# Function to install packages in a given environment
-install_packages() {
-    # Activate the environment
-    conda init
-    if [ "$1" = "default_python_env" ]; then
-        conda deactivate
-    else
-        conda activate $1
-    fi
+ # Function to install packages in a given environment
+ install_packages() {
+     # Activate the environment
+     conda activate $1
+     # Install packages
+     
+     check_and_install_packages "ruff-lsp" "pip install ruff-lsp"
+     check_and_install_packages "pylsp" "pip install pylsp-mypy"
+     check_and_install_packages "pylsp" "pip install -U python-lsp-server[all]"
+     check_and_install_packages "shellcheck" "conda install -c conda-forge shellcheck"
 
-    # Install packages
+     # Deactivate the environment
+     conda deactivate
+ }
 
-    check_and_install_packages "ruff-lsp" "ruff-lsp"
-    check_and_install_packages "pylsp" "pylsp-mypy"
-    check_and_install_packages "pylsp" "-U python-lsp-server[all]"
-    check_and_install_packages "shellcheck" "shellcheck"
-    
-    
-    # Deactivate the environment
-    conda deactivate
-}
 
 # Install packages in the default Python environment
-install_packages default_python_env
+install_packages base
 
 # Install packages in the ml3 environment
-install_packages ml3_env
+install_packages ml3
 
 
-npm list -g yaml-language-server@next || npm i -g yaml-language-server@next
+npm list -g yaml-language-server || npm i -g yaml-language-server@next
 npm list -g vscode-langservers-extracted || npm i -g vscode-langservers-extracted
 npm list -g bash-language-server || npm i -g bash-language-server
 npm list -g pyright || npm i -g pyright
