@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 
 tldr --quiet $(tldr --quiet --list | shuf -n1)
 
@@ -66,7 +67,7 @@ fi
 export DIRSTACKSIZE=20
 export EDITOR=hx
 export VISUAL=hx
-
+export PAGER='less -r'
 #Allow group rename
 autoload -U zmv
 
@@ -125,3 +126,16 @@ if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasra
 
 # The next line enables shell command completion for gcloud.
 if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
+
+# DO NOT EDIT: installed by update-golang.sh
+
+if ! echo "$PATH" | grep -Eq "(^|:)/home/vaden/golang/go/bin($|:)"
+then
+    export PATH=/home/vaden/golang/go/bin:$PATH
+fi
+if ! echo "$PATH" | grep -Eq "(^|:)$HOME/go/bin($|:)"
+then
+    export PATH=$PATH:$HOME/go/bin
+fi
+export GOROOT=/home/vaden/golang/go
+# update-golang.sh: end

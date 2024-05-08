@@ -7,3 +7,6 @@
 [submodule ".zprezto"]
 	path = .zprezto
 	url = https://github.com/sorin-ionescu/prezto.git
+[submodule "update-golang"]
+	path = update-golang
+	url = https://github.com/udhos/update-golang

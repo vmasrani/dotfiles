@@ -4,7 +4,7 @@ theme = "material_palenight"
 bufferline = "always"
 auto-format = true
 true-color = true
-mouse = false
+# mouse = false
 line-number = "relative"
 
 [editor.soft-wrap]
