@@ -7,9 +7,13 @@
 	defaultBranch = master
 [push]
 	default = simple
-[credential]
-	helper = cache --timeout=31536000
 [core]
 	pager = diff-so-fancy | less --tabs=4 -RF
 [interactive]
 	diffFilter = diff-so-fancy --patch
+# [https]
+# 	proxy = https://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080
+# [http]
+# 	proxy = http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080
+[credential]
+	helper = cache --timeout=31536000

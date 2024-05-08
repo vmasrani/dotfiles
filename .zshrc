@@ -5,6 +5,7 @@
 # shellcheck source=.fzf-config.zsh
 # shellcheck source=.fzf.zsh
 
+
 tldr --quiet $(tldr --quiet --list | shuf -n1)
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
@@ -57,8 +58,13 @@ source ~/.aliases-and-envs.zsh
 source ~/dotfiles/lscolors.sh
 . "$HOME/.cargo/env"
 
-nvm use 16.0.0
-conda activate base
+
+# Check if Node.js version 16 is active
+if [[ $(node -v) != "v16.0.0" ]]; then
+    nvm use 16.0.0 --silent
+fi
+# conda init
+# conda activate base
 
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
@@ -101,14 +107,14 @@ export KEYTIMEOUT=1
 # export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
 # DOESN"T WORK WITH THE S, SUPER SUBTLE AND ANNOYING AND COUNTERINTUITIVE BUG
 
-# export http_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-# export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-# export SSL_CERT_DIR=/etc/ssl/certs
-# export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-# export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-# export no_proxy="localhost,127.0.0.1,172.20.176.0/20,127.0.0.1/23119"
+export http_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
+export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
+export SSL_CERT_DIR=/etc/ssl/certs
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export no_proxy="localhost,127.0.0.1,172.20.176.0/20,127.0.0.1/23119"
 
-# # # Better vim mode
+# Better vim mode
 
 
 # Enable Ctrl-x-e to edit command line
@@ -137,16 +143,6 @@ if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasra
 # The next line enables shell command completion for gcloud.
 if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
 
-# # DO NOT EDIT: installed by update-golang.sh
-
-# if ! echo "$PATH" | grep -Eq "(^|:)/home/vaden/golang/go/bin($|:)"
-# then
-#     export PATH=/home/vaden/golang/go/bin:$PATH
-# fi
-# if ! echo "$PATH" | grep -Eq "(^|:)$HOME/go/bin($|:)"
-# then
-#     export PATH=$PATH:$HOME/go/bin
-# fi
-# export GOROOT=/home/vaden/golang/go
-# # update-golang.sh: end
-
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
