@@ -7,6 +7,12 @@ set -e
 mkdir -p $HOME/bin
 mkdir -p dev/projects
 
+# chmod bash files
+chmod +x *.sh
+
+# update submodules
+git submodule update --init --recursive
+
 # remember my login for 1 yr
 git config --global credential.helper 'cache --timeout=31536000'
 
@@ -32,6 +38,12 @@ for file in "${files[@]}"; do
 	echo "Linking $file from dotfiles to home directory."
 	ln -sf $HOME/dotfiles/$file $HOME/$file
 done
+
+
+echo "Linking helix from dotfile to ~/.config/helix"
+mkdir -p ~/.config/helix/
+ln -sf ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
+ln -sf ~/dotfiles/hx_languages.toml  ~/.config/helix/languages.toml
 
 if ! command -v conda &>/dev/null; then
 	if [[ "$OSTYPE" == "linux-gnu"* ]]; then
@@ -93,6 +105,17 @@ else
     echo "npm is already installed."
 fi
 
+
+# go
+if ! command -v go &>/dev/null; then
+    echo "go is not installed. Installing go..."
+    bash update-golang/update-golang.sh
+    echo "go installed successfully."
+else
+    echo "go is already installed."
+fi
+
+
 # fzf
 if ! command -v fzf &>/dev/null; then
 	echo "fzf is not installed. Installing fzf..."
@@ -126,7 +149,6 @@ declare -A executables
 
 executables["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
 executables["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
-executables["glow"]="https://github.com/charmbracelet/glow/releases/download/v1.5.1/glow_Linux_x86_64.tar.gz"
 
 for command in "${!executables[@]}"; do
 	if ! command -v $command &>/dev/null; then
@@ -150,7 +172,7 @@ git_repos[".zprezto/contrib/fzf-tab-completion"]="https://github.com/lincheney/f
 git_repos[".python"]="https://github.com/vmasrani/machine_learning_helpers.git"
 git_repos["hypers"]="https://github.com/vmasrani/hypers.git"
 git_repos[".tmux/plugins/tpm"]="https://github.com/tmux-plugins/tpm"
-git_repos[".roma-scripts"]="https://rnd-gitlab-ca-g.huawei.com/EI/roma-scripts.git"
+# git_repos[".roma-scripts"]="https://rnd-gitlab-ca-g.huawei.com/EI/roma-scripts.git"
 
 for repo in "${!git_repos[@]}"; do
 	if [ ! -d ~/$repo ]; then
@@ -163,11 +185,30 @@ for repo in "${!git_repos[@]}"; do
 	fi
 done
 
-# neovim
+# helix
 if [ ! -f "$HOME/bin/hx" ]; then
     bash install_helix.sh
 else
     echo "helix is already installed."
+fi
+
+# glow
+
+if ! command -v glow &>/dev/null; then
+	echo "glow is not installed. Installing glow..."
+	go install github.com/charmbracelet/glow@latest
+	echo "glow installed successfully."
+else
+	echo "glow is already installed."
+fi
+
+
+if ! command -v lazygit &>/dev/null; then
+	echo "lazygit is not installed. Installing lazygit..."
+	go install github.com/jesseduffield/lazygit@latest
+	echo "lazygit installed successfully."
+else
+	echo "lazygit is already installed."
 fi
 
 
@@ -196,10 +237,7 @@ else
     echo "diff-so-fancy is already installed."
 fi
 
-# chmod bash files
-chmod +x *.sh
 
-# 0.33 will have to change
 echo "Copying find_files.sh to .cursor-server extensions..."
 cp ~/dotfiles/find_files.sh $(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."

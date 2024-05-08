@@ -3,7 +3,12 @@
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
+export PATH=$PATH:/usr/local/go/bin:/home/vadmas/go/bin
 export BAT_THEME="Solarized (light)"
+
+
+# REMOVE DUPLICATES
+export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 
 alias vscode='cursor'
 
@@ -64,13 +69,13 @@ alias cic='set completion-ignore-case On'   # cic:          Make tab-completion 
 alias fd='fd -HI'                           # fd all
 alias rg='rg --no-ignore'
 alias bat='bat -n --color=always'
-alias disk_usage='du -ahd1 . | sort -h'
-
+alias du='du -sh'
 
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach"
 alias brew="arch -x86_64 /usr/local/bin/brew"
+alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
 
 # fzf
 if [ -d "$HOME/.cursor-server" ]; then

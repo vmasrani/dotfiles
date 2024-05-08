@@ -1,8 +1,25 @@
 #!/bin/bash
 
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - &&\
-sudo apt-get install -y nodejs
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+
+sudo apt-get update
+sudo apt-get install nodejs -y
+sudo apt-get install npm -y
 npm config set prefix '~/.npm-global'
+
+
+# npm config set registry http://registry.npmjs.org/
+
+
+# npm set strict-ssl false
+# sudo npm cache clean -f
+# sudo npm install -g n
+# sudo n stable
+
 
 # NODE_DIR="$HOME/.local/lib/nodejs"
 
@@ -28,8 +45,6 @@ npm config set prefix '~/.npm-global'
 # ln -sf "$NODE_DIR/node-$VERSION-$DISTRO/bin/npm" "$HOME/bin/npm"
 # ln -sf "$NODE_DIR/node-$VERSION-$DISTRO/bin/npx" "$HOME/bin/npx"
 
-# npm config set registry http://registry.npmjs.org/
-# npm set strict-ssl false
 
 
 

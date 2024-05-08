@@ -34,6 +34,7 @@ file-types = [
   { glob = ".zshenv" },
   { glob = ".zlogin" },
   { glob = ".zlogout" },
+  { glob = ".zprezto" },
   { glob = ".zprofile" },
   { glob = ".zshrc" },
   { glob = ".zimrc" },
@@ -55,3 +56,14 @@ indent = { tab-width = 2, unit = "  " }
 [[grammar]]
 name = "bash"
 source = { git = "https://github.com/tree-sitter/tree-sitter-bash", rev = "275effdfc0edce774acf7d481f9ea195c6c403cd" }
+
+
+[[language]]
+name = "python"
+language-servers = [ "pyright", "ruff" ]
+
+[language-server.ruff]
+command = "ruff-lsp"
+
+[language-server.ruff.config.settings]
+args = ["--ignore", "E501"]
