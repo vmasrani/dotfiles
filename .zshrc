@@ -1,4 +1,9 @@
+
 # shellcheck shell=bash
+# shellcheck source=.aliases-and-envs.zsh
+# shellcheck source=dotfiles/lscolors.sh
+# shellcheck source=.fzf-config.zsh
+# shellcheck source=.fzf.zsh
 
 tldr --quiet $(tldr --quiet --list | shuf -n1)
 
