@@ -86,7 +86,7 @@ fi
 
 export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
 
-alias ga="git fuzzy status"
+alias ga="lazygit"
 
 # bfs
 alias bfs='bfs -L '
