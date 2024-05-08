@@ -20,6 +20,7 @@ select = "underline"
 
 [keys.normal]
 C-s = ":w!"
+C-g = ":sh tmux popup -d \"#{pane_current_path}\" -xC -yC -w80% -h80% -E '/home/vadmas/go/bin/lazygit'"
 C-w = ":buffer-close"
 C-a = ":reload-all"
 y = [":clipboard-yank","yank"]
