@@ -3,7 +3,7 @@
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
-export PATH=$PATH:/usr/local/go/bin:/home/vadmas/go/bin
+export PATH=$PATH:/home/vaden/go/bin:/usr/local/go/bin
 export BAT_THEME="Solarized (light)"
 
 
@@ -85,7 +85,7 @@ else
 fi
 
 export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
-
+export GOPROXY=proxy.golang.org
 alias ga="lazygit"
 
 # bfs
