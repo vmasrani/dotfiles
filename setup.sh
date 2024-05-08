@@ -109,7 +109,7 @@ fi
 # go
 if ! command -v go &>/dev/null; then
     echo "go is not installed. Installing go..."
-    bash update-golang/update-golang.sh
+    sudo bash update-golang/update-golang.sh
     echo "go installed successfully."
 else
     echo "go is already installed."
