@@ -77,7 +77,7 @@ alias brew="arch -x86_64 /usr/local/bin/brew"
 alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
-alias my-aliases='hx ~/.aliases-and-envs.zsh'
+alias alsenvs='hx ~/.aliases-and-envs.zsh'
 alias dots='hx ~/dotfiles/'
 alias hxconf='hx ~/dotfiles/hx_config.toml'
 
@@ -95,3 +95,20 @@ alias ga="lazygit"
 
 # bfs
 alias bfs='bfs -L '
+
+move_and_symlink() {
+    local source="$1"
+    local dest="$2"
+
+    if [ -e "$source" ]; then
+        local source_dir="$(dirname "$source")"
+        local source_name="$(basename "$source")"
+
+        mkdir -p "$dest"
+        mv "$source" "$dest/"
+        ln -si "$dest/$source_name" "$source_dir"
+    else
+        echo "Error: $source does not exist"
+        return 1
+    fi
+}
