@@ -13,7 +13,6 @@ export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 alias vscode='cursor'
 
 alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
-alias zshrc='hx ~/.zshrc'
 
 alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
 alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
@@ -76,8 +75,14 @@ alias refresh='source ~/.zshrc'
 alias ta="tmux attach"
 alias brew="arch -x86_64 /usr/local/bin/brew"
 alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
+alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
+alias zshrc='hx ~/.zshrc'
+alias my-aliases='hx ~/.aliases-and-envs.zsh'
+alias dots='hx ~/dotfiles/'
+alias hxconf='hx ~/dotfiles/hx_config.toml'
 
 # fzf
+
 if [ -d "$HOME/.cursor-server" ]; then
   export CURSOR_FOLDER=".cursor-server"
 else
