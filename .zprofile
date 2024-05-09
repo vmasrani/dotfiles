@@ -77,9 +77,4 @@ export POWERLEVEL9K_INSTALLATION_DIR=$HOME/.zprezto/modules/prompt/external/powe
 export PATH="$HOME/miniconda/bin:$PATH"
 export PATH=$HOME/local/bin:$PATH
 
-# for HW remote servers only
-# export ftp_proxy=http://127.0.0.1:3128
-# export http_proxy=http://127.0.0.1:3128
-# export https_proxy=http://127.0.0.1:3128
-
 source ~/dotfiles/lscolors.sh

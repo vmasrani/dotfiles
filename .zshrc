@@ -46,10 +46,6 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
 # source custom alias
 export ZSH_DISABLE_COMPFIX="true"
 
@@ -58,11 +54,6 @@ source ~/.aliases-and-envs.zsh
 source ~/dotfiles/lscolors.sh
 . "$HOME/.cargo/env"
 
-
-# Check if Node.js version 16 is active
-if [[ $(node -v) != "v16.0.0" ]]; then
-    nvm use 16.0.0 --silent
-fi
 # conda init
 # conda activate base
 
@@ -99,20 +90,6 @@ bindkey -M vicmd '/' history-incremental-search-forward
 
 # Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
 export KEYTIMEOUT=1
-
-
-# required for anything to work at all
-# https://medium.com/codex/using-wsl-2-in-enterprises-d9cef1f60c73
-# NOTE: https_proxy env variable should link to a url WITHOUT THE S!!! i.e
-# export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-# DOESN"T WORK WITH THE S, SUPER SUBTLE AND ANNOYING AND COUNTERINTUITIVE BUG
-
-export http_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-export SSL_CERT_DIR=/etc/ssl/certs
-export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-export no_proxy="localhost,127.0.0.1,172.20.176.0/20,127.0.0.1/23119"
 
 # Better vim mode
 
@@ -155,7 +132,3 @@ if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasra
 
 # The next line enables shell command completion for gcloud.
 if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
-
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion

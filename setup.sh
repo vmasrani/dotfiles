@@ -72,7 +72,7 @@ fi
 if ! command -v cargo &> /dev/null
 then
     echo "Cargo is not installed. Installing Cargo..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    brew install cargo
     echo "Cargo installed successfully."
 else
     echo "Cargo is already installed."
@@ -99,7 +99,7 @@ fi
 # node
 if ! command -v npm &>/dev/null; then
     echo "npm is not installed. Installing npm..."
-    bash install_npm.sh
+    brew install npm
     echo "npm installed successfully."
 else
     echo "npm is already installed."
@@ -109,8 +109,7 @@ fi
 # go
 if ! command -v go &>/dev/null; then
     echo "go is not installed. Installing go..."
-    sudo bash update-golang/update-golang.sh
-    source /etc/profile.d/golang_path.sh
+    brew install go
     echo "go installed successfully."
 else
     echo "go is already installed."
@@ -188,7 +187,7 @@ done
 
 # helix
 if [ ! -f "$HOME/bin/hx" ]; then
-    bash install_helix.sh
+    brew install helix
 else
     echo "helix is already installed."
 fi
@@ -197,7 +196,7 @@ fi
 
 if ! command -v glow &>/dev/null; then
 	echo "glow is not installed. Installing glow..."
-	go install github.com/charmbracelet/glow@latest
+	brew install glow
 	echo "glow installed successfully."
 else
 	echo "glow is already installed."
@@ -206,23 +205,10 @@ fi
 
 if ! command -v lazygit &>/dev/null; then
 	echo "lazygit is not installed. Installing lazygit..."
-	go install github.com/jesseduffield/lazygit@latest
+	brew install lazygit
 	echo "lazygit installed successfully."
 else
 	echo "lazygit is already installed."
-fi
-
-
-# other
-# git fuzzy
-if [ ! -d "$HOME/bin/_git-fuzzy" ]; then
-    echo "Cloning git-fuzzy..."
-    git clone https://github.com/bigH/git-fuzzy.git ~/bin/_git-fuzzy
-    echo "Creating symbolic link for git-fuzzy..."
-    ln -s ~/bin/_git-fuzzy/bin/git-fuzzy ~/bin/git-fuzzy
-    echo "git-fuzzy setup completed."
-else
-    echo "git-fuzzy is already installed."
 fi
 
 if [ ! -d "$HOME/bin/_diff-so-fancy" ]; then
@@ -239,8 +225,8 @@ else
 fi
 
 
-echo "Copying find_files.sh to .cursor-server extensions..."
-cp ~/dotfiles/find_files.sh $(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+echo "Copying find_files.sh to .cursor extensions..."
+cp ~/dotfiles/find_files.sh $(find ~/.cursor/extensions  -type d -name 'tomrijndorp*')
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
 
 

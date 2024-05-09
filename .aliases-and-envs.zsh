@@ -84,14 +84,7 @@ alias hxconf='hx ~/dotfiles/hx_config.toml'
 
 # fzf
 
-if [ -d "$HOME/.cursor-server" ]; then
-  export CURSOR_FOLDER=".cursor-server"
-else
-  export CURSOR_FOLDER=".cursor"
-fi
-
-export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
-export GOPROXY=proxy.golang.org
+export EXTENSION_PATH=$(find ~/.cursor/extensions  -type d -name 'tomrijndorp*')
 alias ga="lazygit"
 
 # bfs

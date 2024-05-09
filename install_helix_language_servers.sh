@@ -15,7 +15,7 @@ check_and_install_packages() {
      # Activate the environment
      conda activate $1
      # Install packages
-     
+
      check_and_install_packages "ruff-lsp" "pip install ruff-lsp"
      check_and_install_packages "pylsp" "pip install pylsp-mypy"
      check_and_install_packages "pylsp" "pip install -U python-lsp-server[all]"
