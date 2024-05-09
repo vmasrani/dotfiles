@@ -3,7 +3,7 @@
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
-export PATH=$PATH:/home/vaden/go/bin:/usr/local/go/bin
+export PATH=$PATH:/home/vadmas/go/bin:/usr/local/go/bin
 export BAT_THEME="Solarized (light)"
 
 
