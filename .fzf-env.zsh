@@ -23,14 +23,17 @@ export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
 export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
 
 
-if ! command -v bfs >/dev/null 2>&1; then
-    export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
-    export FZF_DEFAULT_DIR_COMMAND="bfs -x -color $BFS_EXCLUDE -type d"
-else
-    export FZF_DEFAULT_FILES_COMMAND="fd --type f --hidden --follow --no-ignore $FD_EXCLUDE"
-    export FZF_DEFAULT_DIR_COMMAND="fd --type d --hidden --follow --no-ignore $FD_EXCLUDE"
-fi
+# if ! command -v bfs >/dev/null 2>&1; then
+#     export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
+#     export FZF_DEFAULT_DIR_COMMAND="bfs -x -color $BFS_EXCLUDE -type d"
+# else
+#     export FZF_DEFAULT_FILES_COMMAND="fd --type f --hidden --follow --no-ignore $FD_EXCLUDE"
+#     export FZF_DEFAULT_DIR_COMMAND="fd --type d --hidden --follow --no-ignore $FD_EXCLUDE"
+# fi
 
+
+export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
+export FZF_DEFAULT_DIR_COMMAND="bfs -x -color $BFS_EXCLUDE -type d"
 
 export FZF_DEFAULT_GLOBAL_DIRS="$HOME"
 

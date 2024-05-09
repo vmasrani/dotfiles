@@ -90,8 +90,8 @@ autoload -U zmv
 #Numeric sort
 setopt numeric_glob_sort
 
-
 # Better vim mode
+eval "$(/usr/local/bin/brew shellenv)"
 
 # Better searching in command mode
 bindkey -M vicmd '?' history-incremental-search-backward
@@ -128,6 +128,19 @@ bindkey '^f' edit-command-line
 ## note! can use cat -> enter -> keypress to find the key sequence
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
+
+
+_aichat_zsh() {
+    if [[ -n "$BUFFER" ]]; then
+        local _old=$BUFFER
+        BUFFER+="⌛"
+        zle -I && zle redisplay
+        BUFFER=$(aichat -e "$_old")
+        zle end-of-line
+    fi
+}
+zle -N _aichat_zsh
+bindkey '\ee' _aichat_zsh
 
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
