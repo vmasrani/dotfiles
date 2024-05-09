@@ -95,20 +95,3 @@ alias ga="lazygit"
 
 # bfs
 alias bfs='bfs -L '
-
-move_and_symlink() {
-    local source="$1"
-    local dest="$2"
-
-    if [ -e "$source" ]; then
-        local source_dir="$(dirname "$source")"
-        local source_name="$(basename "$source")"
-
-        mkdir -p "$dest"
-        mv "$source" "$dest/"
-        ln -si "$dest/$source_name" "$source_dir"
-    else
-        echo "Error: $source does not exist"
-        return 1
-    fi
-}

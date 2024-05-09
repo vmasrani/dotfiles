@@ -239,8 +239,12 @@ else
 fi
 
 
-echo "Copying find_files.sh to .cursor-server extensions..."
-cp ~/dotfiles/find_files.sh $(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+
+if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
+		echo "Copying find_files.sh to .cursor-server extensions..."
+		cp ~/dotfiles/find_files.sh $(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+fi
+
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
 
 
