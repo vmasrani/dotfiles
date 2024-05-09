@@ -6,13 +6,31 @@ auto-format = true
 true-color = true
 # mouse = false
 line-number = "relative"
+completion-timeout = 5
+popup-border = 'all'
 
 [editor.soft-wrap]
 enable = true
 
 [editor.statusline]
-right = ["diagnostics", "selections", "position","position-percentage", "file-encoding"]
-left = ["mode","spinner", "file-name"]
+left = ["mode", "spinner"]
+center = ["file-name"]
+right = ["diagnostics", "selections", "position", "file-encoding", "file-line-ending", "file-type",  "version-control"]
+separator = "│"
+mode.normal = "NORMAL"
+mode.insert = "INSERT"
+mode.select = "SELECT"
+
+# right = ["diagnostics", "selections", "position", "position-percentage", "file-encoding"]
+# left = ["mode", "spinner", "file-name",]
+
+[editor.lsp]
+display-messages = true
+display-inlay-hints = true
+
+[editor.file-picker]
+hidden = false
+
 
 [editor.cursor-shape]
 insert = "bar"
@@ -23,7 +41,7 @@ C-s = ":w!"
 C-g = ":sh tmux popup -d \"#{pane_current_path}\" -xC -yC -w80% -h80% -E '/home/vadmas/go/bin/lazygit'"
 C-w = ":buffer-close"
 C-a = ":reload-all"
-y = [":clipboard-yank","yank"]
+# y = [":clipboard-yank","yank"]
 C-v = [":clipboard-paste-before"]
 C-right = [":bn"]
 C-left = [":bp"]
@@ -64,7 +82,7 @@ S-down = "extend_line_down"
 # esc = 'keep_primary_selection'
 
 [keys.select]
-y = [":clipboard-yank","yank"]
+# y = [":clipboard-yank","yank"]
 X = ["extend_line_up", "extend_to_line_bounds"]
 # if already in select mode, just add new selection at next occurrence
 "C-d" = ["search_selection", "extend_search_next"]
