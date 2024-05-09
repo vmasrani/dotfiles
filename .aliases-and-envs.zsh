@@ -89,7 +89,10 @@ else
   export CURSOR_FOLDER=".cursor"
 fi
 
-export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
+    export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+fi
+
 export GOPROXY=proxy.golang.org
 alias ga="lazygit"
 
