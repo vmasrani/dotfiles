@@ -22,7 +22,7 @@ remove_broken_symlinks() {
     # Find all broken symbolic links in the directory
     while IFS= read -r -d '' link; do
         broken_links+=("$link")
-    done < <(find "$dir" -xtype l -print0)
+    done < <(find "$dir"  -maxdepth 1 -xtype l -print0)
 
     # Check if there are any broken symbolic links
     if [ "${#broken_links[@]}" -gt 0 ]; then
