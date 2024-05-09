@@ -66,6 +66,21 @@ fi
 # conda init
 # conda activate base
 
+
+# for HW remote servers only
+export ftp_proxy=http://127.0.0.1:3128
+export http_proxy=http://127.0.0.1:3128
+export https_proxy=http://127.0.0.1:3128
+
+# # handle proxy BS
+# http_proxy=http://127.0.0.1:3128
+# ftp_proxy=http://127.0.0.1:3128
+# https_proxy=http://127.0.0.1:3128
+# no_proxy=127.0.0.*,*.huawei.com,localhost
+# cntlm_proxy=127.0.0.1:3128
+# SSL_CERT_DIR=/etc/ssl/certs
+# REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
@@ -99,20 +114,6 @@ bindkey -M vicmd '/' history-incremental-search-forward
 
 # Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
 export KEYTIMEOUT=1
-
-
-# required for anything to work at all
-# https://medium.com/codex/using-wsl-2-in-enterprises-d9cef1f60c73
-# NOTE: https_proxy env variable should link to a url WITHOUT THE S!!! i.e
-# export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-# DOESN"T WORK WITH THE S, SUPER SUBTLE AND ANNOYING AND COUNTERINTUITIVE BUG
-
-export http_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-export SSL_CERT_DIR=/etc/ssl/certs
-export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-export no_proxy="localhost,127.0.0.1,172.20.176.0/20,127.0.0.1/23119"
 
 # Better vim mode
 

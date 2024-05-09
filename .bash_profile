@@ -4,18 +4,6 @@ export PATH=$HOME/local/bin:$PATH
 
 source ~/dotfiles/lscolors.sh
 
-# export http_proxy=http://127.0.0.1:3128
-# export ftp_proxy=http://127.0.0.1:3128
-# export https_proxy=http://127.0.0.1:3128
-# export no_proxy=127.0.0.*,*.huawei.com,localhost
-# export cntlm_proxy=127.0.0.1:3128
-# export SSL_CERT_DIR=/etc/ssl/certs
-# #export REQUESTS_CA_BUNDLE=/etc/ssl/certs/my-custom-certificates.crt
-# export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-
-
-
-
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
 __conda_setup="$('$HOME/miniconda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
