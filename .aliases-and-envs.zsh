@@ -54,12 +54,11 @@ alias ta="tmux attach"
 alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
-alias alsenvs='hx ~/.aliases-and-envs.zsh'
 alias dots='hx ~/dotfiles/'
-alias hxconf='hx ~/dotfiles/hx_config.toml'
 alias rsync='rsync -avz --compress --verbose --human-readable --partial --progress'
 alias ga="lazygit"
 alias bfs='bfs -L '
+alias chals='alias | grep'
 
 if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
     export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
