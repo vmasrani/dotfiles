@@ -21,9 +21,6 @@ mode.normal = "NORMAL"
 mode.insert = "INSERT"
 mode.select = "SELECT"
 
-# right = ["diagnostics", "selections", "position", "position-percentage", "file-encoding"]
-# left = ["mode", "spinner", "file-name",]
-
 [editor.lsp]
 display-messages = true
 display-inlay-hints = true
@@ -50,7 +47,7 @@ X = ["extend_line_up", "extend_to_line_bounds"]
 "C-d" = ["keep_primary_selection", "move_prev_word_start", "move_next_word_end", "search_selection", "select_mode"]
 # https://www.reddit.com/r/HelixEditor/comments/10reh4p/post_your_best_tipstricks_workflow_hacks_and/
 V = ["goto_first_nonwhitespace", "extend_to_line_end"]
-D = ["ensure_selections_forward", "extend_to_line_end"]
+# D = ["ensure_selections_forward", "extend_to_line_end"]
 x = "extend_line"
 A-right = "move_next_word_start"
 A-left = "move_prev_word_start"
