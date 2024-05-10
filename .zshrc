@@ -56,6 +56,7 @@ export ZSH_DISABLE_COMPFIX="true"
 
 source ~/.aliases-and-envs.zsh
 source ~/dotfiles/lscolors.sh
+source ~/dotfiles/helper_functions.sh
 . "$HOME/.cargo/env"
 
 
