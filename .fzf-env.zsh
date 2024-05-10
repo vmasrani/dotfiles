@@ -27,8 +27,8 @@ if ! command -v bfs >/dev/null 2>&1; then
     export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
     export FZF_DEFAULT_DIR_COMMAND="bfs -x -color $BFS_EXCLUDE -type d"
 else
-    export FZF_DEFAULT_FILES_COMMAND="fd --type f --hidden --follow --no-ignore $FD_EXCLUDE"
-    export FZF_DEFAULT_DIR_COMMAND="fd --type d --hidden --follow --no-ignore $FD_EXCLUDE"
+    export FZF_DEFAULT_FILES_COMMAND="fd --color='always' --type f --hidden --follow --no-ignore $FD_EXCLUDE"
+    export FZF_DEFAULT_DIR_COMMAND="fd --color='always' --type d --hidden --follow --no-ignore $FD_EXCLUDE"
 fi
 
 
