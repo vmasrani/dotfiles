@@ -1,3 +1,5 @@
+#!/bin/bash
+
 ## FZF-Z
 export FZF_TMUX_OPTS='-p95%,95%'
 
@@ -22,8 +24,7 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
 export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
 
-
-if ! command -v bfs >/dev/null 2>&1; then
+if type -p bfs >/dev/null; then
     export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
     export FZF_DEFAULT_DIR_COMMAND="bfs -x -color $BFS_EXCLUDE -type d"
 else
