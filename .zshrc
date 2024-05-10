@@ -73,15 +73,6 @@ export ftp_proxy=http://127.0.0.1:3128
 export http_proxy=http://127.0.0.1:3128
 export https_proxy=http://127.0.0.1:3128
 
-# # handle proxy BS
-# http_proxy=http://127.0.0.1:3128
-# ftp_proxy=http://127.0.0.1:3128
-# https_proxy=http://127.0.0.1:3128
-# no_proxy=127.0.0.*,*.huawei.com,localhost
-# cntlm_proxy=127.0.0.1:3128
-# SSL_CERT_DIR=/etc/ssl/certs
-# REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
@@ -116,9 +107,6 @@ bindkey -M vicmd '/' history-incremental-search-forward
 # Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
 export KEYTIMEOUT=1
 
-# Better vim mode
-
-
 # Enable Ctrl-x-e to edit command line
 autoload -U edit-command-line
 
@@ -136,15 +124,4 @@ bindkey '^[[1;3C' forward-word
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
 
-
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/path.zsh.inc'; fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
-
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
