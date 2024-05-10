@@ -115,8 +115,6 @@ bindkey -M vicmd '/' history-incremental-search-forward
 # Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
 export KEYTIMEOUT=1
 
-# Better vim mode
-
 
 # Enable Ctrl-x-e to edit command line
 autoload -U edit-command-line

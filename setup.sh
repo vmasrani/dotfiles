@@ -16,6 +16,8 @@ git submodule update --init --recursive
 # remember my login for 1 yr
 git config --global credential.helper 'cache --timeout=31536000'
 
+
+
 echo "Creating symbolic links for custom scripts and zsh in $HOME/bin..."
 declare -A links=(
 	["$HOME/dotfiles/fzf_preview.sh"]="$HOME/bin/fzf_preview"
@@ -33,7 +35,7 @@ for source in "${!links[@]}"; do
 done
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
-files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
+files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc .curlrc)
 for file in "${files[@]}"; do
 	echo "Linking $file from dotfiles to home directory."
 	ln -sf $HOME/dotfiles/$file $HOME/$file
@@ -49,11 +51,6 @@ if ! command -v conda &>/dev/null; then
 	if [[ "$OSTYPE" == "linux-gnu"* ]]; then
 		mkdir -p ~/miniconda
 		wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda/miniconda.sh
-		bash ~/miniconda/miniconda.sh -b -u -p ~/miniconda
-		rm -rf ~/miniconda/miniconda.sh
-	elif [[ "$OSTYPE" == "darwin"* ]]; then
-		mkdir -p ~/miniconda
-		curl https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh -o ~/miniconda/miniconda.sh
 		bash ~/miniconda/miniconda.sh -b -u -p ~/miniconda
 		rm -rf ~/miniconda/miniconda.sh
 	else
