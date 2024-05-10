@@ -81,7 +81,7 @@ alias dots='hx ~/dotfiles/'
 alias rsync='rsync -avz --compress --verbose --human-readable --partial --progress'
 alias ga="lazygit"
 alias bfs='bfs -L '
-alias chals='alias | grep'
+alias chals='alias | grep' #check aliases
 
 
 if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
