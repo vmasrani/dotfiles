@@ -81,7 +81,7 @@ alias zshrc='hx ~/.zshrc'
 alias dots='hx ~/dotfiles/'
 alias rsync='rsync -avz --compress --verbose --human-readable --partial --progress'
 alias ga="lazygit"
-alias bfs='bfs -L '
+alias bfs='bfs -L'
 alias chals='alias | grep' #check aliases
 
 
