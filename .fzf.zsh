@@ -1,7 +1,13 @@
 # Setup fzf
 # ---------
-if [[ ! "$PATH" == */home/vadmas/.fzf/bin* ]]; then
-  PATH="${PATH:+${PATH}:}/home/vadmas/.fzf/bin"
+if [[ ! "$PATH" == *$HOME/.fzf/bin* ]]; then
+  PATH="${PATH:+${PATH}:}$HOME/.fzf/bin"
 fi
 
-eval "$(fzf --zsh)"
+# Auto-completion
+# ---------------
+source "$HOME/.fzf/shell/completion.zsh"
+
+# Key bindings
+# ------------
+source "$HOME/.fzf/shell/key-bindings.zsh"
