@@ -88,7 +88,7 @@ export EXTENSION_PATH=$(find ~/.cursor/extensions  -type d -name 'tomrijndorp*')
 alias ga="lazygit"
 
 # bfs
-alias bfs='bfs -L '
+# alias bfs='bfs -L '
 
 move_and_symlink() {
     local source="$1"
