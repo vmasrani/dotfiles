@@ -33,10 +33,19 @@ install_packages base
 install_packages ml3
 
 
-npm list -g yaml-language-server || npm i -g yaml-language-server@next
-npm list -g vscode-langservers-extracted || npm i -g vscode-langservers-extracted
-npm list -g bash-language-server || npm i -g bash-language-server
-npm list -g pyright || npm i -g pyright
+
+
+
+
+
+
+
+
+
+brew install yaml-language-server
+brew install vscode-langservers-extracted
+brew install bash-language-server
+brew install pyright
 
 cargo install --locked --git https://github.com/Feel-ix-343/markdown-oxide.git markdown-oxide
 cargo install --git https://github.com/estin/simple-completion-language-server.git
