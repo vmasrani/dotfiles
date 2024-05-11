@@ -23,6 +23,7 @@ declare -A links=(
 	["$HOME/dotfiles/copy.sh"]="$HOME/bin/copy"
 	["$HOME/dotfiles/sshget"]="$HOME/bin/sshget"
 	["$HOME/dotfiles/show-tmux-popup.sh"]="$HOME/bin/show-tmux-popup.sh"
+	["$HOME/dotfiles/fzf-helix.sh"]="$HOME/bin/fzf-helix"
 )
 
 for source in "${!links[@]}"; do
