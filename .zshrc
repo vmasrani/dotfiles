@@ -31,20 +31,6 @@ if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
 fi
 
 
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/home/vaden/miniconda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/home/vaden/miniconda/etc/profile.d/conda.sh" ]; then
-        . "/home/vaden/miniconda/etc/profile.d/conda.sh"
-    else
-        export PATH="/home/vaden/miniconda/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -107,12 +93,12 @@ export KEYTIMEOUT=1
 # export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
 # DOESN"T WORK WITH THE S, SUPER SUBTLE AND ANNOYING AND COUNTERINTUITIVE BUG
 
-export http_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
-export SSL_CERT_DIR=/etc/ssl/certs
-export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
-export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
-export no_proxy="localhost,127.0.0.1,172.20.176.0/20,127.0.0.1/23119"
+# export http_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
+# export https_proxy='http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080'
+# export SSL_CERT_DIR=/etc/ssl/certs
+# export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+# export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+# export no_proxy="localhost,127.0.0.1,172.20.176.0/20,127.0.0.1/23119"
 
 # Better vim mode
 
@@ -146,3 +132,19 @@ if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/home/vadmas/miniconda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/home/vadmas/miniconda/etc/profile.d/conda.sh" ]; then
+        . "/home/vadmas/miniconda/etc/profile.d/conda.sh"
+    else
+        export PATH="/home/vadmas/miniconda/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
+

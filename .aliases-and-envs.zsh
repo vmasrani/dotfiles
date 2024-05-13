@@ -9,6 +9,7 @@ export BAT_THEME="Solarized (light)"
 
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
+export PYTHONPATH=$(echo -n $PYTHONPATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 
 alias vscode='cursor'
 
