@@ -27,6 +27,7 @@ declare -A links=(
 	["$HOME/dotfiles/show-tmux-popup.sh"]="$HOME/bin/show-tmux-popup.sh"
 	["$HOME/dotfiles/fzf-helix.sh"]="$HOME/bin/fzf-helix"
 	["$HOME/dotfiles/torch-preview.sh"]="$HOME/bin/torch-preview"
+	["$HOME/dotfiles/rsync-all.sh"]="$HOME/bin/rsync-all"
 )
 
 for source in "${!links[@]}"; do

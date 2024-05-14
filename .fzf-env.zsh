@@ -18,6 +18,15 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 --bind 'ctrl-k:preview-up' \
 --bind 'ctrl-b:preview-bottom' \
 --bind 'ctrl-n:preview-top'"
+# --bind 'ctrl-r:repeat-fzf-completion' \
+# --bind 'right:accept:repeat-fzf-completion'"
+
+
+
+#     ctrl-r:'repeat-fzf-completion'
+#     right:accept:'repeat-fzf-completion'
+#     alt-enter:accept:'zle accept-line'
+# )
 
 # --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'
 

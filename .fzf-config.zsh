@@ -1,4 +1,3 @@
-source ~/.fzf-env.zsh
 
 fasd_fzf_preview() {
     fasd -d -R | \
@@ -32,23 +31,6 @@ _fzf_compgen_path() {
 _fzf_compgen_dir() {
   fd --type d --hidden --follow --no-ignore -c always --exclude ".git" . "$1"
 }
-
-
-# bfs_fzf_preview() {
-#     eval $FZF_CTRL_T_COMMAND . | \
-#         fzf-tmux -p80%,80% \
-#             --preview "fzf_preview {}" \
-#             --preview-window=right:50%:wrap \
-#             --bind 'ctrl-/:change-preview-window(right|down|hidden|)'
-# }
-
-
-
-# bfs_fzf_preview2() {
-#     eval $FZF_CTRL_T_COMMAND . | \
-#         fzf-tmux -p80%,80% \
-#             $FZF_CTRL_T_OPTS
-# }
 
 
 bfs_fzf_preview() {
@@ -112,7 +94,4 @@ for arg in "$@"; do
     { git diff --color=always -- "$arg" | git log --color=always "$arg" } 2>/dev/null
 done'
 
-
-
-
-
+source ~/.fzf-env.zsh
