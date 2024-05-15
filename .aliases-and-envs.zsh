@@ -55,7 +55,7 @@ alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
 alias dots='hx ~/dotfiles/'
-alias rsync='rsync -avz --compress --verbose --human-readable --partial --progress'
+alias rsync 'rsync -avz --no-owner --no-group --no-perms --human-readable --partial --progress'
 alias ga="lazygit"
 alias bfs='bfs -L'
 alias chals='alias | grep' #check aliases
