@@ -15,6 +15,8 @@ if [[ -f $1 ]]; then
     pdftotext "$1" -
   elif [[ $1 == *.md ]]; then
     glow -p -w 80 -s dark "$1"
+  elif [[ $1 == *.ipynb ]]; then
+    nbp -c --color-system truecolor -n -w 60 "$1"
   elif tldr "$1" &> /dev/null; then
      tldr  --color=always "$1"
   else
