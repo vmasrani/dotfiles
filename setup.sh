@@ -213,6 +213,18 @@ else
 fi
 
 
+if ! command -v pipx &>/dev/null; then
+	echo "pipx and nbpreview are not installed. Installing pipx..."
+	python3 -m pip install --user pipx
+	python3 -m pipx ensurepath
+	echo "install nbpreview "
+	pipx install nbpreview
+	echo "pipx and nbpreview installed successfully."
+else
+	echo "pipx and nbpreview is already installed."
+fi
+
+
 # other
 # git fuzzy
 if [ ! -d "$HOME/bin/_git-fuzzy" ]; then
