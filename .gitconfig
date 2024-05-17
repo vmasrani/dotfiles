@@ -13,3 +13,5 @@
 	diffFilter = diff-so-fancy --patch
 [credential]
 	helper = cache --timeout=31536000
+[pull]
+	rebase = false
