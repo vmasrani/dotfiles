@@ -17,3 +17,5 @@
 # 	proxy = http://v00838380:mwg1uhz3YHP!wqa5ekz@proxy.huawei.com:8080
 [credential]
 	helper = cache --timeout=31536000
+[pull]
+	rebase = false
