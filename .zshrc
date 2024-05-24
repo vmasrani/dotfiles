@@ -135,6 +135,12 @@ bindkey '^f' edit-command-line
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
+# Automatically attach to an existing tmux session or create a new one
+if command -v tmux &> /dev/null; then
+  if [[ -z "$TMUX" ]]; then
+    tmux attach-session -t default || tmux new-session -s default
+  fi
+fi
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
