@@ -42,6 +42,9 @@ export ZSH_DISABLE_COMPFIX="true"
 
 source ~/.aliases-and-envs.zsh
 source ~/dotfiles/lscolors.sh
+source ~/dotfiles/helper_functions.sh
+
+
 . "$HOME/.cargo/env"
 
 
@@ -55,15 +58,6 @@ fi
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
-
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  # ruby
-  source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
-  source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
-  source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
-  chruby ruby-3.1.3
-  source ~/.iterm2_shell_integration.zsh
-fi
 
 # Customize to your needs...
 export DIRSTACKSIZE=20
