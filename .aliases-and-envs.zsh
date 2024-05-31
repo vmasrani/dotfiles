@@ -3,7 +3,8 @@ export PATH=~/.local/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH=$PATH:/home/vaden/go/bin:/usr/local/go/bin:/home/vaden/golang/go/bin
 export BAT_THEME="Solarized (light)"
-
+export SSL_CERT_DIR='/etc/ssl/certs'
+export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
 
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')

@@ -77,7 +77,9 @@ S-right = "extend_char_right"
 S-left = "extend_char_left"
 S-up = "extend_line_up"
 S-down = "extend_line_down"
-# esc = 'keep_primary_selection'
+C-t = [":insert-output fzf-helix" ]
+#
+
 
 [keys.select]
 # y = [":clipboard-yank","yank"]

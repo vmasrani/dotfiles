@@ -9,6 +9,8 @@ if [[ -f $1 ]]; then
     pq '' "$1"
   elif [[ $1 == *.pt ]]; then
     torch-preview "$1"
+  elif [[ $1 == *.npy ]]; then
+    npy-preview "$1"
   elif [[ $1 == *.jpg || $1 == *.jpeg || $1 == *.png || $1 == *.gif ]]; then
     chafa --size=80x80 "$1"
   elif [[ $1 == *.pdf ]]; then
@@ -18,9 +20,9 @@ if [[ -f $1 ]]; then
   elif [[ $1 == *.ipynb ]]; then
     nbp -c --color-system truecolor -n -w 60 "$1"
   elif tldr "$1" &> /dev/null; then
-     tldr  --color=always "$1"
+    tldr  --color=always "$1"
   else
-     bat -n --color=always "$1"
+    bat -n --color=always "$1"
   fi
 elif [[ -d $1 ]]; then
   eza -aHl --icons --tree --no-user --no-permissions -L 3 -I .git --color=always "$1"

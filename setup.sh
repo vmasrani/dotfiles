@@ -18,24 +18,18 @@ git config --global credential.helper 'cache --timeout=31536000'
 
 
 
-echo "Creating symbolic links for custom scripts and zsh in $HOME/bin..."
-declare -A links=(
-	["$HOME/dotfiles/fzf_preview.sh"]="$HOME/bin/fzf_preview"
-	["$HOME/dotfiles/rfz.sh"]="$HOME/bin/rfz"
-	["$HOME/dotfiles/copy.sh"]="$HOME/bin/copy"
-	["$HOME/dotfiles/sshget"]="$HOME/bin/sshget"
-	["$HOME/dotfiles/show-tmux-popup.sh"]="$HOME/bin/show-tmux-popup.sh"
-	["$HOME/dotfiles/fzf-helix.sh"]="$HOME/bin/fzf-helix"
-	["$HOME/dotfiles/torch-preview.sh"]="$HOME/bin/torch-preview"
-	["$HOME/dotfiles/rsync-all.sh"]="$HOME/bin/rsync-all"
-)
+echo "Creating symbolic links for custom scripts in $HOME/bin..."
 
-for source in "${!links[@]}"; do
-	target=${links[$source]}
+scripts=("fzf_preview.sh" "rfz.sh" "copy.sh" "sshget" "show-tmux-popup.sh" "fzf-helix.sh" "torch-preview.sh" "npy-preview.py" "rsync-all.sh")
+
+for script in "${scripts[@]}"; do
+	source="$HOME/dotfiles/$script"
+	target="$HOME/bin/${script%.*}"
 	ln -sf "$source" "$target"
 	echo "Linked $(basename "$source") to $target"
 	chmod +x "$source"
 done
+
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
 files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc .curlrc)
