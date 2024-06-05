@@ -15,7 +15,7 @@ check_and_install_packages() {
      # Activate the environment
      conda activate $1
      # Install packages
-     
+
      check_and_install_packages "ruff-lsp" "pip install ruff-lsp"
      check_and_install_packages "pylsp" "pip install pylsp-mypy"
      check_and_install_packages "pylsp" "pip install -U python-lsp-server[all]"
@@ -34,18 +34,10 @@ install_packages ml3
 
 
 
-
-
-
-
-
-
-
-
-brew install yaml-language-server
-brew install vscode-langservers-extracted
-brew install bash-language-server
-brew install pyright
+sudo -E npm install -g yaml-language-server
+sudo -E npm install -g vscode-langservers-extracted
+sudo -E npm install -g bash-language-server
+sudo -E npm install -g pyright
 
 cargo install --locked --git https://github.com/Feel-ix-343/markdown-oxide.git markdown-oxide
 cargo install --git https://github.com/estin/simple-completion-language-server.git
