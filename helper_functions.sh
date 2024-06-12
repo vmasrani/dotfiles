@@ -15,6 +15,26 @@ move_and_symlink() {
     fi
 }
 
+file_count() {
+
+    # Calculate the maximum width for directory names
+    max_dir_length=$(find . -mindepth 1 -maxdepth 1 -type d 2>/dev/null | awk '{print length}' | sort -nr | head -1)
+
+    # Print the header
+    printf "\033[1;34m%-*s\033[0m  \033[1;32m%10s\033[0m  \033[1;33m%10s\033[0m\n" "$max_dir_length" "Directory" "Files" "Size"
+
+    # Iterate over directories and print their details
+    find . -mindepth 1 -maxdepth 1 -type d 2>/dev/null | while read -r dir; do
+        file_count=$(find -L "$dir" -type f 2>/dev/null | wc -l)
+        total_size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+        printf "\033[1;34m%-*s\033[0m  \033[1;32m%10s\033[0m  \033[1;33m%10s\033[0m\n" "$max_dir_length" "$dir" "$file_count" "$total_size"
+    done
+
+
+
+}
+
+
 remove_broken_symlinks() {
     local dir="${1:-.}"  # Default to the current directory if no argument is provided
     local broken_links=()
