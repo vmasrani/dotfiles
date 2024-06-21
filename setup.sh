@@ -215,6 +215,31 @@ else
 fi
 
 
+if ! command -v pipx &>/dev/null; then
+	echo "pipx is not installed. Installing pipx..."
+	python3 -m pip install --user pipx
+	python3 -m pipx ensurepath
+	echo "pipx installed successfully."
+else
+	echo "pipx is already installed."
+fi
+
+if ! command -v nbpreview &>/dev/null; then
+	echo "nbpreview is not installed. Installing nbpreview..."
+	pipx install nbpreview
+	echo "nbpreview installed successfully."
+else
+	echo "nbpreview is already installed."
+fi
+
+if ! command -v ttx &>/dev/null; then
+	echo "terminaltexteffects is not installed. Installing terminaltexteffects..."
+	pipx install terminaltexteffects
+	echo "terminaltexteffects installed successfully."
+else
+	echo "terminaltexteffects is already installed."
+fi
+
 # other
 # git fuzzy
 if [ ! -d "$HOME/bin/_git-fuzzy" ]; then
