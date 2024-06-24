@@ -232,7 +232,7 @@ else
 	echo "nbpreview is already installed."
 fi
 
-if ! command -v ttx &>/dev/null; then
+if ! command -v tte &>/dev/null; then
 	echo "terminaltexteffects is not installed. Installing terminaltexteffects..."
 	pipx install terminaltexteffects
 	echo "terminaltexteffects installed successfully."
