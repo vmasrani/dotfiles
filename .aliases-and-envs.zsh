@@ -1,11 +1,10 @@
-# export WANDB_API_KEY="local-1cb84cdb8818ab552fb57da6b591af732d4ba09d"
-# export WANDB_BASE_URL="http://localhost:8080"
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH=$PATH:/home/vadmas/go/bin:/usr/local/go/bin
 export BAT_THEME="Solarized (light)"
-
+export SSL_CERT_DIR='/etc/ssl/certs'
+export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
 
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
@@ -57,12 +56,10 @@ alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4'
 alias mv='mv -iv'                           # Preferred 'mv' implementation
 alias mkdir='mkdir -pv'                     # Preferred 'mkdir' implementation
 alias ll='ls -FGlAhp'                       # Preferred 'ls' implementation
-alias less='less -FSRXc'                    # Preferred 'less' implementation
+alias less='less -FSRXc -M -g -i -J --underline-special --SILENT'
 alias rm='rm -v'                            # Show what has been removed
 alias cp='cp -v'                            # Show what has been copied
-alias fr='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
 alias ~="cd ~"                              # ~:            Go Home
-alias h="history"                           # h:            History
 alias path='echo -e ${PATH//:/\\n}'         # path:         Echo all executable Paths
 alias fix_stty='stty sane'                  # fix_stty:     Restore terminal settings when screwed up
 alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
@@ -74,7 +71,6 @@ alias du='du -sh'
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach"
-alias brew="arch -x86_64 /usr/local/bin/brew"
 alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'

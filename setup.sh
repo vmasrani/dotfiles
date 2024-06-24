@@ -16,26 +16,23 @@ git submodule update --init --recursive
 # remember my login for 1 yr
 git config --global credential.helper 'cache --timeout=31536000'
 
-echo "Creating symbolic links for custom scripts and zsh in $HOME/bin..."
-declare -A links=(
-	["$HOME/dotfiles/fzf_preview.sh"]="$HOME/bin/fzf_preview"
-	["$HOME/dotfiles/rfz.sh"]="$HOME/bin/rfz"
-	["$HOME/dotfiles/copy.sh"]="$HOME/bin/copy"
-	["$HOME/dotfiles/sshget"]="$HOME/bin/sshget"
-	["$HOME/dotfiles/show-tmux-popup.sh"]="$HOME/bin/show-tmux-popup.sh"
-	["$HOME/dotfiles/fzf-helix.sh"]="$HOME/bin/fzf-helix"
-	["$HOME/dotfiles/torch-preview.sh"]="$HOME/bin/torch-preview"
-)
 
-for source in "${!links[@]}"; do
-	target=${links[$source]}
+
+echo "Creating symbolic links for custom scripts in $HOME/bin..."
+
+scripts=("fzf_preview.sh" "rfz.sh" "copy.sh" "sshget" "show-tmux-popup.sh" "fzf-helix.sh" "torch-preview.sh" "npy-preview.py" "rsync-all.sh")
+
+for script in "${scripts[@]}"; do
+	source="$HOME/dotfiles/$script"
+	target="$HOME/bin/${script%.*}"
 	ln -sf "$source" "$target"
 	echo "Linked $(basename "$source") to $target"
 	chmod +x "$source"
 done
+
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
-files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
+files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc .curlrc)
 for file in "${files[@]}"; do
 	echo "Linking $file from dotfiles to home directory."
 	ln -sf $HOME/dotfiles/$file $HOME/$file
@@ -51,11 +48,6 @@ if ! command -v conda &>/dev/null; then
 	if [[ "$OSTYPE" == "linux-gnu"* ]]; then
 		mkdir -p ~/miniconda
 		wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda/miniconda.sh
-		bash ~/miniconda/miniconda.sh -b -u -p ~/miniconda
-		rm -rf ~/miniconda/miniconda.sh
-	elif [[ "$OSTYPE" == "darwin"* ]]; then
-		mkdir -p ~/miniconda
-		curl https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh -o ~/miniconda/miniconda.sh
 		bash ~/miniconda/miniconda.sh -b -u -p ~/miniconda
 		rm -rf ~/miniconda/miniconda.sh
 	else
@@ -215,6 +207,31 @@ else
 fi
 
 
+if ! command -v pipx &>/dev/null; then
+	echo "pipx is not installed. Installing pipx..."
+	python3 -m pip install --user pipx
+	python3 -m pipx ensurepath
+	echo "pipx installed successfully."
+else
+	echo "pipx is already installed."
+fi
+
+if ! command -v nbpreview &>/dev/null; then
+	echo "nbpreview is not installed. Installing nbpreview..."
+	pipx install nbpreview
+	echo "nbpreview installed successfully."
+else
+	echo "nbpreview is already installed."
+fi
+
+if ! command -v tte &>/dev/null; then
+	echo "terminaltexteffects is not installed. Installing terminaltexteffects..."
+	pipx install terminaltexteffects
+	echo "terminaltexteffects installed successfully."
+else
+	echo "terminaltexteffects is already installed."
+fi
+
 # other
 # git fuzzy
 if [ ! -d "$HOME/bin/_git-fuzzy" ]; then
@@ -241,8 +258,12 @@ else
 fi
 
 
-echo "Copying find_files.sh to .cursor-server extensions..."
-cp ~/dotfiles/find_files.sh $(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+
+if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
+		echo "Copying find_files.sh to .cursor-server extensions..."
+		cp ~/dotfiles/find_files.sh $(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+fi
+
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
 
 

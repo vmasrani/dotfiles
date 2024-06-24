@@ -17,6 +17,7 @@ fzf-fasd-widget(){
 }
 
 
+
 zle     -N   fzf-fasd-widget
 bindkey '^G' fzf-fasd-widget
 
@@ -112,7 +113,4 @@ for arg in "$@"; do
     { git diff --color=always -- "$arg" | git log --color=always "$arg" } 2>/dev/null
 done'
 
-
-
-
-
+source ~/.fzf-env.zsh

@@ -18,6 +18,15 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 --bind 'ctrl-k:preview-up' \
 --bind 'ctrl-b:preview-bottom' \
 --bind 'ctrl-n:preview-top'"
+# --bind 'ctrl-r:repeat-fzf-completion' \
+# --bind 'right:accept:repeat-fzf-completion'"
+
+
+
+#     ctrl-r:'repeat-fzf-completion'
+#     right:accept:'repeat-fzf-completion'
+#     alt-enter:accept:'zle accept-line'
+# )
 
 # --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'
 
@@ -28,8 +37,8 @@ if type -p bfs >/dev/null; then
     export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
     export FZF_DEFAULT_DIR_COMMAND="bfs -x -color $BFS_EXCLUDE -type d"
 else
-    export FZF_DEFAULT_FILES_COMMAND="fd --type f --hidden --follow --no-ignore $FD_EXCLUDE"
-    export FZF_DEFAULT_DIR_COMMAND="fd --type d --hidden --follow --no-ignore $FD_EXCLUDE"
+    export FZF_DEFAULT_FILES_COMMAND="fd --color='always' --type f --hidden --follow --no-ignore $FD_EXCLUDE"
+    export FZF_DEFAULT_DIR_COMMAND="fd --color='always' --type d --hidden --follow --no-ignore $FD_EXCLUDE"
 fi
 
 

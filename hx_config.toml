@@ -21,9 +21,6 @@ mode.normal = "NORMAL"
 mode.insert = "INSERT"
 mode.select = "SELECT"
 
-# right = ["diagnostics", "selections", "position", "position-percentage", "file-encoding"]
-# left = ["mode", "spinner", "file-name",]
-
 [editor.lsp]
 display-messages = true
 display-inlay-hints = true
@@ -50,7 +47,7 @@ X = ["extend_line_up", "extend_to_line_bounds"]
 "C-d" = ["keep_primary_selection", "move_prev_word_start", "move_next_word_end", "search_selection", "select_mode"]
 # https://www.reddit.com/r/HelixEditor/comments/10reh4p/post_your_best_tipstricks_workflow_hacks_and/
 V = ["goto_first_nonwhitespace", "extend_to_line_end"]
-D = ["ensure_selections_forward", "extend_to_line_end"]
+# D = ["ensure_selections_forward", "extend_to_line_end"]
 x = "extend_line"
 A-right = "move_next_word_start"
 A-left = "move_prev_word_start"
@@ -63,6 +60,7 @@ S-down = "extend_line_down"
 C-S-up = "copy_selection_on_prev_line"
 C-S-down = "copy_selection_on_next_line"
 C-t = [":new", ":insert-output fzf-helix", ":theme default", "select_all", "split_selection_on_newline","goto_file", "goto_last_modified_file", ":buffer-close!", ":theme material_palenight"]
+# esc = 'keep_primary_selection'
 
 [keys.normal.space]
 q = ":quit"
@@ -79,8 +77,9 @@ S-right = "extend_char_right"
 S-left = "extend_char_left"
 S-up = "extend_line_up"
 S-down = "extend_line_down"
-C-t = [":insert-output fzf-helix"]
-# esc = 'keep_primary_selection'
+C-t = [":insert-output fzf-helix" ]
+#
+
 
 [keys.select]
 # y = [":clipboard-yank","yank"]

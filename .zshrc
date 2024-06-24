@@ -6,7 +6,7 @@
 # shellcheck source=.fzf.zsh
 
 
-tldr --quiet $(tldr --quiet --list | shuf -n1)
+tldr --quiet $(tldr --quiet --list | shuf -n1) | /home/vaden/.local/bin/tte expand
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
@@ -14,7 +14,6 @@ tldr --quiet $(tldr --quiet --list | shuf -n1)
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
-
 
 
 # [[ "$TERM_PROGRAM" == "vscode" ]] && . "$(code --locate-shell-integration-path zsh)"
@@ -54,6 +53,12 @@ if [[ $(node -v) != "v16.0.0" ]]; then
 fi
 # conda init
 # conda activate base
+
+
+# for HW remote servers only
+export ftp_proxy=http://127.0.0.1:3128
+export http_proxy=http://127.0.0.1:3128
+export https_proxy=http://127.0.0.1:3128
 
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
@@ -139,7 +144,6 @@ fi
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
-
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
