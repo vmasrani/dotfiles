@@ -1,7 +1,7 @@
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
-export PATH=$PATH:/home/vadmas/go/bin:/usr/local/go/bin
+export PATH=$PATH:/home/vaden/go/bin:/usr/local/go/bin
 export BAT_THEME="Solarized (light)"
 export SSL_CERT_DIR='/etc/ssl/certs'
 export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
@@ -71,7 +71,7 @@ alias du='du -sh'
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach"
-alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
+alias hxlog="hx /home/vaden/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
 alias dots='hx ~/dotfiles/'
