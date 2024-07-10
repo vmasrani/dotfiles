@@ -61,14 +61,12 @@ source ~/dotfiles/lscolors.sh
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
 
-if [[ "$OSTYPE" == "darwin"* ]]; then
   # ruby
-  source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
-  source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
-  source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
-  chruby ruby-3.1.3
-  source ~/.iterm2_shell_integration.zsh
-fi
+source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
+source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
+source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
+chruby ruby-3.3.4
+source ~/.iterm2_shell_integration.zsh
 
 # Customize to your needs...
 export DIRSTACKSIZE=20

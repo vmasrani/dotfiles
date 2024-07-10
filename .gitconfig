@@ -13,3 +13,8 @@
 	diffFilter = diff-so-fancy --patch
 [credential]
 	helper = cache --timeout=31536000
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
