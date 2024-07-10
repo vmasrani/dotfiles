@@ -78,3 +78,6 @@ export PATH="$HOME/miniconda/bin:$PATH"
 export PATH=$HOME/local/bin:$PATH
 
 source ~/dotfiles/lscolors.sh
+
+# Created by `pipx` on 2024-07-10 03:49:22
+export PATH="$PATH:/Users/vmasrani/Library/Python/3.11/bin"

@@ -130,3 +130,6 @@ if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasra
 
 # The next line enables shell command completion for gcloud.
 if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
+
+# Created by `pipx` on 2024-07-10 03:49:22
+export PATH="$PATH:/Users/vmasrani/Library/Python/3.11/bin"
