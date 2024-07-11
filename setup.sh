@@ -4,11 +4,11 @@ set -e
 
 # sudo chsh -s $(which zsh) $USER
 
-mkdir -p $HOME/bin
+mkdir -p "$HOME"/bin
 mkdir -p dev/projects
 
 # chmod bash files
-chmod +x *.sh
+chmod +x ./*.sh
 
 # update submodules
 git submodule update --init --recursive
@@ -35,7 +35,7 @@ done
 files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc .curlrc)
 for file in "${files[@]}"; do
 	echo "Linking $file from dotfiles to home directory."
-	ln -sf $HOME/dotfiles/$file $HOME/$file
+	ln -sf "$HOME"/dotfiles/"$file" "$HOME"/"$file"
 done
 
 
@@ -55,7 +55,7 @@ if ! command -v conda &>/dev/null; then
 		exit 1
 	fi
 	export PATH="$HOME/miniconda/bin:$PATH"
-	echo 'export PATH="$HOME/miniconda/bin:$PATH"' >>~/.zshrc
+	echo "export PATH=\"\$HOME/miniconda/bin:\$PATH\"" >>~/.zshrc
 	conda init zsh
 	echo "Miniconda installed successfully."
 else
@@ -146,9 +146,9 @@ executables["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat
 executables["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
 
 for command in "${!executables[@]}"; do
-	if ! command -v $command &>/dev/null; then
+	if ! command -v "$command" &>/dev/null; then
 		echo "$command is not installed. Installing $command..."
-		bash install_tar.sh ${executables[$command]}
+		bash install_tar.sh "${executables[$command]}"
 		echo "$command installed successfully."
 	else
 		echo "$command is already installed."
@@ -170,13 +170,13 @@ git_repos[".tmux/plugins/tpm"]="https://github.com/tmux-plugins/tpm"
 # git_repos[".roma-scripts"]="https://rnd-gitlab-ca-g.huawei.com/EI/roma-scripts.git"
 
 for repo in "${!git_repos[@]}"; do
-	if [ ! -d ~/$repo ]; then
-		if ! git clone ${git_repos[$repo]} ~/$repo; then
+	if [ ! -d ~/"$repo" ]; then
+		if ! git clone "${git_repos[$repo]}" ~/"$repo"; then
 			echo "Error: Could not clone the repository ${git_repos[$repo]}."
 			continue
 		fi
 	else
-		echo "~/$repo is already installed."
+		echo "$HOME/$repo is already installed."
 	fi
 done
 
@@ -261,7 +261,7 @@ fi
 
 if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
 		echo "Copying find_files.sh to .cursor-server extensions..."
-		cp ~/dotfiles/find_files.sh $(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+		cp ~/dotfiles/find_files.sh "$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')"
 fi
 
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
