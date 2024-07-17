@@ -5,17 +5,16 @@ set -e
 # sudo chsh -s $(which zsh) $USER
 
 mkdir -p "$HOME"/bin
-mkdir -p dev/projects
+mkdir -p "$HOME/dev/projects"
 
 # chmod bash files
-chmod +x ./*.sh
+chmod +x "$HOME/dotfiles/*.sh"
 
 # update submodules
 git submodule update --init --recursive
 
 # remember my login for 1 yr
 git config --global credential.helper 'cache --timeout=31536000'
-
 
 
 echo "Creating symbolic links for custom scripts in $HOME/bin..."
@@ -44,82 +43,22 @@ mkdir -p ~/.config/helix/
 ln -sf ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
 ln -sf ~/dotfiles/hx_languages.toml  ~/.config/helix/languages.toml
 
-if ! command -v conda &>/dev/null; then
-	if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-		mkdir -p ~/miniconda
-		wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda/miniconda.sh
-		bash ~/miniconda/miniconda.sh -b -u -p ~/miniconda
-		rm -rf ~/miniconda/miniconda.sh
-	else
-		echo "Unsupported OS. Please install Miniconda manually."
-		exit 1
-	fi
-	export PATH="$HOME/miniconda/bin:$PATH"
-	echo "export PATH=\"\$HOME/miniconda/bin:\$PATH\"" >>~/.zshrc
-	conda init zsh
-	echo "Miniconda installed successfully."
-else
-	echo "Miniconda is already installed."
-fi
+# Source the installation functions
+source "$(dirname "$0")/install_functions.sh"
 
-# cargo
-if ! command -v cargo &> /dev/null
-then
-    echo "Cargo is not installed. Installing Cargo..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    echo "Cargo installed successfully."
-else
-    echo "Cargo is already installed."
-fi
-
-# tealdear
-if ! command -v tldr &> /dev/null
-then
-    cargo install tealdeer
-    tldr --update
-else
-    echo "tldr is already installed."
-fi
-
-# zprezto
-if [ ! -d "$HOME/.zprezto" ]; then
-	echo "zprezto is not installed. Installing zprezto..."
-	git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
-	echo "zprezto installed successfully."
-else
-	echo "zprezto is already installed."
-fi
-
-# node
-if ! command -v npm &>/dev/null; then
-    echo "npm is not installed. Installing npm..."
-    bash install_npm.sh
-    echo "npm installed successfully."
-else
-    echo "npm is already installed."
-fi
-
-
-# go
-if ! command -v go &>/dev/null; then
-    echo "go is not installed. Installing go..."
-    sudo bash update-golang/update-golang.sh
-    source /etc/profile.d/golang_path.sh
-    echo "go installed successfully."
-else
-    echo "go is already installed."
-fi
-
-
-# fzf
-if ! command -v fzf &>/dev/null; then
-	echo "fzf is not installed. Installing fzf..."
-	git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
-	"$HOME/.fzf/install"
-	echo "fzf installed successfully."
-else
-	echo "fzf is already installed."
-fi
+install_if_missing conda install_miniconda
+install_if_missing cargo install_cargo
+install_if_missing tldr install_tealdeer
+install_if_missing zprezto-update install_zprezto
+install_if_missing npm install_npm
+install_if_missing go install_go
+install_if_missing fzf install_fzf
+install_if_missing hx install_helix
+install_if_missing glow install_glow
+install_if_missing lazygit install_lazygit
+install_if_missing pipx install_pipx
+install_if_missing nbpreview install_nbpreview
+install_if_missing tte install_terminaltexteffects
 
 # statically linked binaries from
 # https://github.com/mosajjal/binary-tools
@@ -180,57 +119,6 @@ for repo in "${!git_repos[@]}"; do
 	fi
 done
 
-# helix
-if [ ! -f "$HOME/bin/hx" ]; then
-    bash install_helix.sh
-else
-    echo "helix is already installed."
-fi
-
-# glow
-
-if ! command -v glow &>/dev/null; then
-	echo "glow is not installed. Installing glow..."
-	go install github.com/charmbracelet/glow@latest
-	echo "glow installed successfully."
-else
-	echo "glow is already installed."
-fi
-
-
-if ! command -v lazygit &>/dev/null; then
-	echo "lazygit is not installed. Installing lazygit..."
-	go install github.com/jesseduffield/lazygit@latest
-	echo "lazygit installed successfully."
-else
-	echo "lazygit is already installed."
-fi
-
-
-if ! command -v pipx &>/dev/null; then
-	echo "pipx is not installed. Installing pipx..."
-	python3 -m pip install --user pipx
-	python3 -m pipx ensurepath
-	echo "pipx installed successfully."
-else
-	echo "pipx is already installed."
-fi
-
-if ! command -v nbpreview &>/dev/null; then
-	echo "nbpreview is not installed. Installing nbpreview..."
-	pipx install nbpreview
-	echo "nbpreview installed successfully."
-else
-	echo "nbpreview is already installed."
-fi
-
-if ! command -v tte &>/dev/null; then
-	echo "terminaltexteffects is not installed. Installing terminaltexteffects..."
-	pipx install terminaltexteffects
-	echo "terminaltexteffects installed successfully."
-else
-	echo "terminaltexteffects is already installed."
-fi
 
 # other
 # git fuzzy
