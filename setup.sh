@@ -43,16 +43,23 @@ mkdir -p ~/.config/helix/
 ln -sf ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
 ln -sf ~/dotfiles/hx_languages.toml  ~/.config/helix/languages.toml
 
+# zprezto
+if [ ! -d "$HOME/.zprezto" ]; then
+	echo "zprezto is not installed. Installing zprezto..."
+	git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
+	echo "zprezto installed successfully."
+else
+	echo "zprezto is already installed."
+fi
+
 # Source the installation functions
 source "$(dirname "$0")/install_functions.sh"
-
+install_if_missing fzf install_fzf
 install_if_missing conda install_miniconda
 install_if_missing cargo install_cargo
 install_if_missing tldr install_tealdeer
-install_if_missing zprezto-update install_zprezto
 install_if_missing npm install_npm
 install_if_missing go install_go
-install_if_missing fzf install_fzf
 install_if_missing hx install_helix
 install_if_missing glow install_glow
 install_if_missing lazygit install_lazygit
