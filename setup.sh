@@ -8,7 +8,7 @@ mkdir -p "$HOME"/bin
 mkdir -p "$HOME/dev/projects"
 
 # chmod bash files
-chmod +x "$HOME/dotfiles/*.sh"
+chmod +x $HOME/dotfiles/*.sh
 
 # update submodules
 git submodule update --init --recursive
