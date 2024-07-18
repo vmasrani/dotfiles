@@ -14,19 +14,6 @@ install_if_missing() {
 }
 
 
-install_if_missing() {
-    local command_name=$1
-    local install_function=$2
-
-    if ! command -v "$command_name" &>/dev/null; then
-        echo "$command_name is not installed. Installing $command_name..."
-        $install_function
-        echo "$command_name installed successfully."
-    else
-        echo "$command_name is already installed."
-    fi
-}
-
 install_miniconda() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         mkdir -p ~/miniconda

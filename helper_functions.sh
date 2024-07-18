@@ -34,56 +34,6 @@ file_count() {
 
 }
 
-
-remove_broken_symlinks() {
-    local dir="${1:-.}"  # Default to the current directory if no argument is provided
-    local broken_links=()
-
-    # Find all broken symbolic links in the directory
-    while IFS= read -r -d '' link; do
-        broken_links+=("$link")
-    done < <(find "$dir"  -maxdepth 1 -xtype l -print0)
-
-    # Check if there are any broken symbolic links
-    if [ "${#broken_links[@]}" -gt 0 ]; then
-        echo "The following broken symbolic links were found in $dir:"
-        for link in "${broken_links[@]}"; do
-            echo "- $link"
-        done
-
-        # Prompt the user for confirmation
-        echo -n "Do you want to delete these broken symbolic links? (y/n) "
-        read -r answer
-        if [[ $answer =~ ^[Yy]$ ]]; then
-            echo "Deleting broken symbolic links..."
-            for link in "${broken_links[@]}"; do
-                echo "Removing $link"
-                rm "$link"
-            done
-        else
-            echo "Skipping deletion of broken symbolic links."
-        fi
-    else
-        echo "No broken symbolic links found in $dir."
-    fi
-}
-move_and_symlink() {
-    local source="$1"
-    local dest="$2"
-
-    if [ -e "$source" ]; then
-        local source_dir="$(dirname "$source")"
-        local source_name="$(basename "$source")"
-
-        mkdir -p "$dest"
-        mv "$source" "$dest/"
-        ln -si "$dest/$source_name" "$source_dir"
-    else
-        echo "Error: $source does not exist"
-        return 1
-    fi
-}
-
 remove_broken_symlinks() {
     local dir="${1:-.}"  # Default to the current directory if no argument is provided
     local broken_links=()
