@@ -114,5 +114,3 @@ bindkey '^[[1;3C' forward-word
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
 
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-# export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
