@@ -15,5 +15,3 @@
 	helper = cache --timeout=31536000
 [pull]
 	rebase = false
-[url "git@rnd-gitlab-ca-g.huawei.com:2222"]
-	insteadOf = https://gitlab.com/

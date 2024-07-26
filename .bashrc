@@ -127,17 +127,21 @@ source ~/.aliases-and-envs.zsh
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/opt/conda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+__conda_setup="$('/home/vaden/miniconda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
-        . "/opt/conda/etc/profile.d/conda.sh"
+    if [ -f "/home/vaden/miniconda/etc/profile.d/conda.sh" ]; then
+        . "/home/vaden/miniconda/etc/profile.d/conda.sh"
     else
-        export PATH="/opt/conda/bin:$PATH"
+        export PATH="/home/vaden/miniconda/bin:$PATH"
     fi
 fi
 unset __conda_setup
 # <<< conda initialize <<<
 
 . "$HOME/.cargo/env"
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion

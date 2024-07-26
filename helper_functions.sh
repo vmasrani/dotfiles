@@ -34,7 +34,6 @@ file_count() {
 
 }
 
-
 remove_broken_symlinks() {
     local dir="${1:-.}"  # Default to the current directory if no argument is provided
     local broken_links=()

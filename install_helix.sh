@@ -13,4 +13,4 @@ if ! command -v hx &> /dev/null; then
     fi
 fi
 
-bash install_helix_language
+bash install_helix_language_servers.sh

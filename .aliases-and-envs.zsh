@@ -1,13 +1,33 @@
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
+export PATH=$HOME/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
-export PATH=$PATH:/home/vaden/go/bin:/usr/local/go/bin:/home/vaden/golang/go/bin
+export PATH=$PATH:/home/vaden/go/bin:/usr/local/go/bin
 export BAT_THEME="Solarized (light)"
 export SSL_CERT_DIR='/etc/ssl/certs'
 export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
 
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
+export PYTHONPATH=$(echo -n $PYTHONPATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
+
+alias vscode='cursor'
+
+alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
+
+alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
+alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
+alias mysql_shell='mysql -u root -p -h localhost'
+
+#postgres
+alias pg_start="launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
+alias pg_stop="launchctl unload ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
+
+alias less='less -M -X -g -i -J --underline-special --SILENT'
+
+# Config
+alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
+
 
 alias l='eza -aHl --icons --git'
 alias lt='eza -aHl --icons --git --sort=modified'
@@ -52,17 +72,24 @@ alias du='du -sh'
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach"
-alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
+alias hxlog="hx /home/vaden/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
 alias dots='hx ~/dotfiles/'
-alias rsync='rsync -avz --no-owner --no-group --no-perms --human-readable --partial --progress'
+alias rsync='rsync -avz --compress --verbose --human-readable --partial --progress'
 alias ga="lazygit"
 alias bfs='bfs -L'
 alias chals='alias | grep' #check aliases
+
 
 if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
     export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
 fi
 
-export GOPROXY=proxy.golang.org
+
+alias ga="lazygit"
+
+# bfs
+alias bfs='bfs -L '
+
+

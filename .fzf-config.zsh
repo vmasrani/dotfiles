@@ -1,3 +1,4 @@
+source ~/.fzf-env.zsh
 
 fasd_fzf_preview() {
     fasd -d -R | \
@@ -16,6 +17,7 @@ fzf-fasd-widget(){
 }
 
 
+
 zle     -N   fzf-fasd-widget
 bindkey '^G' fzf-fasd-widget
 
@@ -31,6 +33,23 @@ _fzf_compgen_path() {
 _fzf_compgen_dir() {
   fd --type d --hidden --follow --no-ignore -c always --exclude ".git" . "$1"
 }
+
+
+# bfs_fzf_preview() {
+#     eval $FZF_CTRL_T_COMMAND . | \
+#         fzf-tmux -p80%,80% \
+#             --preview "fzf_preview {}" \
+#             --preview-window=right:50%:wrap \
+#             --bind 'ctrl-/:change-preview-window(right|down|hidden|)'
+# }
+
+
+
+# bfs_fzf_preview2() {
+#     eval $FZF_CTRL_T_COMMAND . | \
+#         fzf-tmux -p80%,80% \
+#             $FZF_CTRL_T_OPTS
+# }
 
 
 bfs_fzf_preview() {
