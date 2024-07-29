@@ -1,13 +1,23 @@
 #!/bin/zsh
 
 # Define the list of servers and their respective paths
-declare -A servers=(
-    ["117"]="10.213.96.117:/home/vaden/dev"
-    ["116"]="10.213.96.116:/home/vaden/dev"
-    ["103"]="10.193.241.103:/fastdata/vaden/dev"
-    ["95"]="7.184.9.95:/data/vaden/dev"
-    ["114"]="10.213.96.114:/home/vaden/dev"
-    ["206"]="10.193.241.206:/data/vaden/dev"
+# declare -A servers=(
+#     ["117"]="10.213.96.117:/home/vaden/dev"
+#     ["116"]="10.213.96.116:/home/vaden/dev"
+#     ["103"]="10.193.241.103:/fastdata/vaden/dev"
+#     ["95"]="7.184.9.95:/data/vaden/dev"
+#     ["114"]="10.213.96.114:/home/vaden/dev"
+#     ["206"]="10.193.241.206:/data/vaden/dev"
+# )
+
+typeset -A servers
+servers=(
+    117 "10.213.96.117:/home/vaden/dev"
+    116 "10.213.96.116:/home/vaden/dev"
+    103 "10.193.241.103:/fastdata/vaden/dev"
+    95  "7.184.9.95:/data/vaden/dev"
+    114 "10.213.96.114:/home/vaden/dev"
+    206 "10.193.241.206:/data/vaden/dev"
 )
 
 # Function to mount all servers
