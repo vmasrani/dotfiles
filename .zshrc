@@ -1,4 +1,3 @@
-
 # shellcheck shell=bash
 # shellcheck source=.aliases-and-envs.zsh
 # shellcheck source=dotfiles/lscolors.sh
@@ -6,7 +5,11 @@
 # shellcheck source=.fzf.zsh
 
 
-tldr --quiet $(tldr --quiet --list | shuf -n1) | /home/vaden/.local/bin/tte expand
+source ~/dotfiles/helper_functions.sh
+# Check if both tldr and tte are installed
+if command_exists tldr && command_exists /home/vaden/.local/bin/tte; then
+    tldr --quiet $(tldr --quiet --list | shuf -n1) | /home/vaden/.local/bin/tte expand
+fi
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]

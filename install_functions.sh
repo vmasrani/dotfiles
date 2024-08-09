@@ -1,10 +1,12 @@
 #!/bin/bash
 
+source ~/dotfiles/helper_functions.sh
+
 install_if_missing() {
     local command_name=$1
     local install_function=$2
 
-    if ! command -v "$command_name" &>/dev/null; then
+    if ! command_exists "$command_name"; then
         echo "$command_name is not installed. Installing $command_name..."
         $install_function
         echo "$command_name installed successfully."
@@ -12,7 +14,6 @@ install_if_missing() {
         echo "$command_name is already installed."
     fi
 }
-
 
 install_miniconda() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then

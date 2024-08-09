@@ -1,3 +1,8 @@
+# Helper function to check if a command exists
+command_exists() {
+    command -v "$1" > /dev/null
+}
+
 move_and_symlink() {
     local source="$1"
     local dest="$2"
