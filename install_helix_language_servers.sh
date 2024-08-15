@@ -1,9 +1,10 @@
 #!/bin/bash
 
+source ~/dotfiles/helper_functions.sh
+
 # Function to check and install packages
 check_and_install_packages() {
-    if ! command -v $1 &> /dev/null
-    then
+    if ! command_exists $1; then
         echo "$1 is not installed"
         eval $2
     fi

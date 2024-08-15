@@ -92,7 +92,7 @@ executables["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat
 executables["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
 
 for command in "${!executables[@]}"; do
-	if ! command -v "$command" &>/dev/null; then
+	if ! command_exists $command; then
 		echo "$command is not installed. Installing $command..."
 		bash install_tar.sh "${executables[$command]}"
 		echo "$command installed successfully."
