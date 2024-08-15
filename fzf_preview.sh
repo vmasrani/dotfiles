@@ -9,6 +9,8 @@ if [[ -f $1 ]]; then
     pq '' "$1"
   elif [[ $1 == *.pt ]]; then
     torch-preview "$1"
+  elif [[ $1 == *.sh ]]; then
+    bat -n --color=always "$1"
   elif [[ $1 == *.npy ]]; then
     npy-preview "$1"
   elif [[ $1 == *.jpg || $1 == *.jpeg || $1 == *.png || $1 == *.gif ]]; then
