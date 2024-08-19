@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 set -e
 
@@ -24,6 +24,7 @@ declare -A links=(
 	["$HOME/dotfiles/sshget"]="$HOME/bin/sshget"
 	["$HOME/dotfiles/show-tmux-popup.sh"]="$HOME/bin/show-tmux-popup.sh"
 	["$HOME/dotfiles/fzf-helix.sh"]="$HOME/bin/fzf-helix"
+	["$HOME/dotfiles/colorize-columns.sh"]="$HOME/bin/colorize-columns"
 )
 
 for source in "${!links[@]}"; do
