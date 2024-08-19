@@ -2,14 +2,17 @@
 # export WANDB_BASE_URL="http://localhost:8080"
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
+export PATH=$HOME/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
-export PATH=$PATH:/home/vaden/go/bin:/usr/local/go/bin
+export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
+
 export PATH="/Users/vmasrani/.cargo/bin:$PATH"
 export BAT_THEME="Solarized (light)"
 
 
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
+export PYTHONPATH=$(echo -n $PYTHONPATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 
 alias vscode='cursor'
 
@@ -57,7 +60,7 @@ alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4'
 alias mv='mv -iv'                           # Preferred 'mv' implementation
 alias mkdir='mkdir -pv'                     # Preferred 'mkdir' implementation
 alias ll='ls -FGlAhp'                       # Preferred 'ls' implementation
-alias less='less -FSRXc'                    # Preferred 'less' implementation
+alias less='less -FSRXc -M -g -i -J --underline-special --SILENT'
 alias rm='rm -v'                            # Show what has been removed
 alias cp='cp -v'                            # Show what has been copied
 alias fr='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
@@ -81,28 +84,19 @@ alias zshrc='hx ~/.zshrc'
 alias alsenvs='hx ~/.aliases-and-envs.zsh'
 alias dots='hx ~/dotfiles/'
 alias hxconf='hx ~/dotfiles/hx_config.toml'
+alias dots='hx ~/dotfiles/'
+alias rsync='rsync -avz --compress --verbose --human-readable --partial --progress'
+alias ga="lazygit"
+alias bfs='bfs -L'
+alias chals='alias | grep' #check aliases
 
-# fzf
 
-export EXTENSION_PATH=$(find ~/.cursor/extensions  -type d -name 'tomrijndorp*')
+if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
+    export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
+fi
+
+
 alias ga="lazygit"
 
 # bfs
-# alias bfs='bfs -L '
-
-move_and_symlink() {
-    local source="$1"
-    local dest="$2"
-
-    if [ -e "$source" ]; then
-        local source_dir="$(dirname "$source")"
-        local source_name="$(basename "$source")"
-
-        mkdir -p "$dest"
-        mv "$source" "$dest/"
-        ln -si "$dest/$source_name" "$source_dir"
-    else
-        echo "Error: $source does not exist"
-        return 1
-    fi
-}
+alias bfs='bfs -L '

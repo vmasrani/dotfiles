@@ -18,7 +18,7 @@ git config --global credential.helper 'cache --timeout=31536000'
 
 echo "Creating symbolic links for custom scripts and zsh in $HOME/bin..."
 declare -A links=(
-	["$HOME/dotfiles/fzf_preview.sh"]="$HOME/bin/fzf_preview"
+	["$HOME/dotfiles/fzf-preview.sh"]="$HOME/bin/fzf-preview"
 	["$HOME/dotfiles/rfz.sh"]="$HOME/bin/rfz"
 	["$HOME/dotfiles/copy.sh"]="$HOME/bin/copy"
 	["$HOME/dotfiles/sshget"]="$HOME/bin/sshget"
@@ -33,6 +33,7 @@ for source in "${!links[@]}"; do
 	echo "Linked $(basename "$source") to $target"
 	chmod +x "$source"
 done
+
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
 files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
