@@ -30,8 +30,10 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 
 # --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'
 
-export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
+# export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
 export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
+export BFS_EXCLUDE='! \( -name .git -prune \) ! \( -name  __pycache__ -prune \)'
+
 
 if type -p bfs >/dev/null; then
     export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
