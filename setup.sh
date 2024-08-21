@@ -19,7 +19,18 @@ git config --global credential.helper 'cache --timeout=31536000'
 
 echo "Creating symbolic links for custom scripts in $HOME/bin..."
 
-scripts=("fzf_preview.sh" "rfz.sh" "copy.sh" "sshget" "show-tmux-popup.sh" "fzf-helix.sh" "torch-preview.sh" "npy-preview.py" "rsync-all.sh")
+scripts=(
+    "fzf-preview.sh"
+    "rfz.sh"
+    "copy.sh"
+    "sshget"
+    "show-tmux-popup.sh"
+    "fzf-helix.sh"
+    "torch-preview.sh"
+    "npy-preview.py"
+    "rsync-all.sh"
+    "colorize-columns.sh"
+    )
 
 for script in "${scripts[@]}"; do
 	source="$HOME/dotfiles/$script"
