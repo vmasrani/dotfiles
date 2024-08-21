@@ -15,6 +15,8 @@ if [[ -f $1 ]]; then
     npy-preview "$1"
   elif [[ $1 == *.jpg || $1 == *.jpeg || $1 == *.png || $1 == *.gif ]]; then
     chafa --size=80x80 "$1"
+  elif [[ $1 == *.zip ]]; then
+    less "$1" | colorize-columns
   elif [[ $1 == *.pdf ]]; then
     pdftotext "$1" -
   elif [[ $1 == *.md ]]; then

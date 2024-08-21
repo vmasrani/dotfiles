@@ -1,16 +1,16 @@
 source ~/.fzf-env.zsh
 
-fasd_fzf_preview() {
+fasd_fzf-preview() {
     fasd -d -R | \
         awk '{print $2}' | \
         fzf-tmux -p80%,80% \
-            --preview "fzf_preview {}" \
+            --preview "fzf-preview {}" \
             --preview-window=right:50%:wrap \
             --bind 'ctrl-/:change-preview-window(right|down|hidden|)'
 }
 
 fzf-fasd-widget(){
- LBUFFER="${LBUFFER}$(fasd_fzf_preview)"
+ LBUFFER="${LBUFFER}$(fasd_fzf-preview)"
  local ret=$?
  zle reset-prompt
  return $ret
@@ -35,27 +35,27 @@ _fzf_compgen_dir() {
 }
 
 
-# bfs_fzf_preview() {
+# bfs_fzf-preview() {
 #     eval $FZF_CTRL_T_COMMAND . | \
 #         fzf-tmux -p80%,80% \
-#             --preview "fzf_preview {}" \
+#             --preview "fzf-preview {}" \
 #             --preview-window=right:50%:wrap \
 #             --bind 'ctrl-/:change-preview-window(right|down|hidden|)'
 # }
 
 
 
-# bfs_fzf_preview2() {
+# bfs_fzf-preview2() {
 #     eval $FZF_CTRL_T_COMMAND . | \
 #         fzf-tmux -p80%,80% \
 #             $FZF_CTRL_T_OPTS
 # }
 
 
-bfs_fzf_preview() {
+bfs_fzf-preview() {
     hx $(eval $FZF_CTRL_T_COMMAND . ~ | \
         fzf-tmux -p80%,80% \
-            --preview "fzf_preview {}" \
+            --preview "fzf-preview {}" \
             --preview-window=right:50%:wrap \
             --bind 'ctrl-/:change-preview-window(right|down|hidden|)')
 
@@ -94,7 +94,7 @@ zstyle ':completion::*:cd:*' fzf-completion-keybindings "${keys[@]}" /:accept:'r
 
 zstyle ':completion:*' fzf-search-display true
 
-export FZF_COMPLETION_OPTS="--border --info=inline --bind 'ctrl-/:change-preview-window(down|hidden|)'  --preview='eval fzf_preview {1}'"
+export FZF_COMPLETION_OPTS="--border --info=inline --bind 'ctrl-/:change-preview-window(down|hidden|)'  --preview='eval fzf-preview {1}'"
 
 zstyle ':completion::*:cd::*' fzf-completion-opts --bind tab:down
 zstyle ':completion::*:ls::*' fzf-completion-opts --bind tab:down
