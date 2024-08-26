@@ -42,7 +42,7 @@ done
 
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
-files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc .curlrc)
+files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .sourcery.yaml .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc .curlrc)
 for file in "${files[@]}"; do
 	echo "Linking $file from dotfiles to home directory."
 	ln -sf "$HOME"/dotfiles/"$file" "$HOME"/"$file"
