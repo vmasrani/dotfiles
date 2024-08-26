@@ -1,6 +1,6 @@
 #!/bin/bash
 
-url="https://github.com/hangxie/parquet-tools/releases/download/v1.20.4/parquet-tools-v1.20.4-darwin-amd64.gz"
+url="https://github.com/hangxie/parquet-tools/releases/download/v1.22.0/parquet-tools-v1.22.0-linux-amd64.gz"
 
 # Determine the file name from the URL
 file_name=$(basename "$url")

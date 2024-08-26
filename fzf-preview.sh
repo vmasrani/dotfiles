@@ -2,9 +2,9 @@
 
 if [[ -f $1 ]]; then
   if [[ $1 == *.parquet ]]; then
-    parquet-tools cat --limit 1000  --format jsonl "$1" | jq -c -C
+    parquet-tools cat --limit 1000  --format jsonl "$1" | jq -C
   elif [[ $1 == *.json ]]; then
-    jq -C . "$1"
+    jq -C . "$1" 2>/dev/null || bat -n --color=always "$1"
   elif [[ $1 == *.pkl || $1 == *.pickle ]]; then
     pq '' "$1"
   elif [[ $1 == *.pt ]]; then
