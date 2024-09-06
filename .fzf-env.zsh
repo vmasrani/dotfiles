@@ -79,8 +79,11 @@ export FZF_CTRL_T_OPTS="--preview 'fzf-preview {}' --prompt 'Files(.)> ' \
 --bind 'ctrl-f:execute:hx {} >/dev/tty' \
 --keep-right"
 
-
 export FZF_CTRL_R_OPTS="
-  --preview 'echo {}' --preview-window up:3:wrap
+  --preview 'echo {2..} | bat --color=always -pl sh'
+  --preview-window up:5:wrap
   --bind 'ctrl-/:toggle-preview'
-  --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'"
+  --bind 'ctrl-v:execute(echo {2..} | view - > /dev/tty)'
+  --bind 'ctrl-t:track+clear-query'
+  --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'"
+
