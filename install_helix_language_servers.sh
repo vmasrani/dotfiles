@@ -27,7 +27,7 @@ echo "Installing conda packages..."
 source ~/miniconda/etc/profile.d/conda.sh
 install_packages base
 install_packages ml3
-install_packages shearllama
+install_packages llava
 
 # Install npm packages
 echo "Installing npm packages..."

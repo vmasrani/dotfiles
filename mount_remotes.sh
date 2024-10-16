@@ -15,6 +15,7 @@ servers=(
     117 "10.213.96.117:/home/vaden/dev"
     116 "10.213.96.116:/home/vaden/dev"
     103 "10.193.241.103:/fastdata/vaden/dev"
+    104 "10.193.241.104:/fastdata/vaden/dev"
     95  "7.184.9.95:/data/vaden/dev"
     114 "10.213.96.114:/home/vaden/dev"
     206 "10.193.241.206:/data/vaden/dev"
