@@ -6,7 +6,7 @@ fasd_fzf-preview() {
         fzf-tmux -p80%,80% \
             --preview "fzf-preview {}" \
             --preview-window=right:50%:wrap \
-            --bind 'ctrl-/:change-preview-window(right|down|hidden|)'
+            --bind 'ctrl-/:change-preview-window(down,80%|hidden|)'
 }
 
 fzf-fasd-widget(){
@@ -15,7 +15,6 @@ fzf-fasd-widget(){
  zle reset-prompt
  return $ret
 }
-
 
 
 zle     -N   fzf-fasd-widget
@@ -34,34 +33,14 @@ _fzf_compgen_dir() {
   fd --type d --hidden --follow --no-ignore -c always --exclude ".git" . "$1"
 }
 
-
-# bfs_fzf-preview() {
-#     eval $FZF_CTRL_T_COMMAND . | \
-#         fzf-tmux -p80%,80% \
-#             --preview "fzf-preview {}" \
-#             --preview-window=right:50%:wrap \
-#             --bind 'ctrl-/:change-preview-window(right|down|hidden|)'
-# }
-
-
-
-# bfs_fzf-preview2() {
-#     eval $FZF_CTRL_T_COMMAND . | \
-#         fzf-tmux -p80%,80% \
-#             $FZF_CTRL_T_OPTS
-# }
-
-
 bfs_fzf-preview() {
     hx $(eval $FZF_CTRL_T_COMMAND . ~ | \
         fzf-tmux -p80%,80% \
             --preview "fzf-preview {}" \
             --preview-window=right:50%:wrap \
-            --bind 'ctrl-/:change-preview-window(right|down|hidden|)')
+            --bind 'ctrl-/:change-preview-window(down,80%|hidden|)')
 
 }
-
-
 
 #export FZF_COMPLETION_TRIGGER=''
 source $HOME/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
@@ -74,7 +53,6 @@ rfz-command() {
 
 zle     -N   rfz-command
 bindkey '^X' 'rfz-command'
-
 
 
 # export FD_OPTIONS="--hidden --follow --no-ignore -c always"
@@ -94,7 +72,7 @@ zstyle ':completion::*:cd:*' fzf-completion-keybindings "${keys[@]}" /:accept:'r
 
 zstyle ':completion:*' fzf-search-display true
 
-export FZF_COMPLETION_OPTS="--border --info=inline --bind 'ctrl-/:change-preview-window(down|hidden|)'  --preview='eval fzf-preview {1}'"
+export FZF_COMPLETION_OPTS="--border --info=inline --bind 'ctrl-/:change-preview-window(down,80%|hidden|)'  --preview='eval fzf-preview {1}'"
 
 zstyle ':completion::*:cd::*' fzf-completion-opts --bind tab:down
 zstyle ':completion::*:ls::*' fzf-completion-opts --bind tab:down

@@ -33,7 +33,7 @@ alias l='eza -aHl --icons --git'
 alias lt='eza -aHl --icons --git --sort=modified'
 alias lf='eza -aHl --icons --git --sort=size --total-size'
 alias ld='eza -aHlD --icons --git'
-
+alias p='fzf-preview'
 #cd alias'#
 alias cd..='cd ../'                         # Go back 1 directory level (for fast typers)
 alias ..='cd ../'                           # Go back 1 directory level
