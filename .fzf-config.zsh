@@ -16,7 +16,6 @@ fzf-fasd-widget(){
  return $ret
 }
 
-
 zle     -N   fzf-fasd-widget
 bindkey '^G' fzf-fasd-widget
 
