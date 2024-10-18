@@ -50,7 +50,7 @@ install_npm() {
 }
 
 install_go() {
-    sudo bash update-golang/update-golang.sh
+    bash update-golang/update-golang.sh
     source /etc/profile.d/golang_path.sh
 }
 
@@ -74,9 +74,9 @@ install_lazygit() {
 }
 
 install_pipx() {
-    python3 -m pip install --user pipx
+    python -m pip install --user pipx
     export PATH="$HOME/.local/bin:$PATH"
-    python3 -m pipx ensurepath
+    python -m pipx ensurepath
 }
 
 install_nbpreview() {

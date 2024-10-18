@@ -2,6 +2,7 @@
 
 ## FZF-Z
 export FZF_TMUX_OPTS='-p95%,95%'
+export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,80%|hidden|)'
 
 # https://erees.dev/terminal-tricks/
 export FZF_DEFAULT_OPTS="--reverse --ansi \
@@ -9,7 +10,7 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
 --inline-info \
 --cycle -m  \
---preview-window=right:50%:wrap \
+--preview-window=right:70%:wrap \
 --bind 'ctrl-/:change-preview-window(down|hidden|)' \
 --bind 'ctrl-d:preview-half-page-down' \
 --bind 'ctrl-u:preview-half-page-up' \
@@ -18,22 +19,9 @@ export FZF_DEFAULT_OPTS="--reverse --ansi \
 --bind 'ctrl-k:preview-up' \
 --bind 'ctrl-b:preview-bottom' \
 --bind 'ctrl-n:preview-top'"
-# --bind 'ctrl-r:repeat-fzf-completion' \
-# --bind 'right:accept:repeat-fzf-completion'"
 
-
-
-#     ctrl-r:'repeat-fzf-completion'
-#     right:accept:'repeat-fzf-completion'
-#     alt-enter:accept:'zle accept-line'
-# )
-
-# --bind 'ctrl-y:execute-silent(echo -n {2..} | copy)+abort'
-
-# export BFS_EXCLUDE="-exclude -name .git -exclude -name __pycache__"
 export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
 export BFS_EXCLUDE='! \( -name .git -prune \) ! \( -name  __pycache__ -prune \)'
-
 
 if type -p bfs >/dev/null; then
     export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
@@ -70,7 +58,6 @@ FZF_CTRL_T_FILES_DIRS_TOGGLE="
     echo \"change-prompt(Files(.)> )+reload($FZF_DEFAULT_FILES_COMMAND .)\"
   fi
 "
-
 
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_FILES_COMMAND ."
 export FZF_CTRL_T_OPTS="--preview 'fzf-preview {}' --prompt 'Files(.)> ' \

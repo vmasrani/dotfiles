@@ -71,10 +71,25 @@ fi
 # conda activate base
 
 
-# for HW remote servers only
-export ftp_proxy=http://127.0.0.1:3128
-export http_proxy=http://127.0.0.1:3128
-export https_proxy=http://127.0.0.1:3128
+# Function to check if a proxy is required
+function check_proxy() {
+    # Attempt to connect to a known external URL
+    if curl --max-time 5 --output /dev/null --silent --head --fail http://example.com; then
+        # No proxy required
+        return 1
+    else
+        # Proxy required
+        return 0
+    fi
+}
+
+# Check if a proxy is required and set the environment variables accordingly
+if check_proxy; then
+    export ftp_proxy=http://127.0.0.1:3128
+    export http_proxy=http://127.0.0.1:3128
+    export https_proxy=http://127.0.0.1:3128
+fi
+
 
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
@@ -90,7 +105,6 @@ autoload -U zmv
 
 #Numeric sort
 setopt numeric_glob_sort
-
 
 # Better vim mode
 
