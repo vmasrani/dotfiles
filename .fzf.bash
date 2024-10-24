@@ -1,7 +1,7 @@
 # Setup fzf
 # ---------
-if [[ ! "$PATH" == */home/vaden/.fzf/bin* ]]; then
-  PATH="${PATH:+${PATH}:}/home/vaden/.fzf/bin"
+if [[ ! "$PATH" == */root/.fzf/bin* ]]; then
+  PATH="${PATH:+${PATH}:}/root/.fzf/bin"
 fi
 
 eval "$(fzf --bash)"
