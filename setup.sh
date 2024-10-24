@@ -8,8 +8,13 @@ if ! command -v zsh &> /dev/null; then
     read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
     case "$choice" in
         y|Y )
-            sudo apt update
-            sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+            if [ "$(id -u)" -eq 0 ]; then
+                apt update && apt upgrade -y
+                apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+            else
+                sudo apt update && sudo apt upgrade -y
+                sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+            fi
             echo "Installation complete. Please restart your shell to use zsh."
             exit
             ;;
