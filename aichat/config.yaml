@@ -1,0 +1,15 @@
+model: openai:gpt-4o-mini
+stream: false
+highlight: false
+clients:
+- type: openai
+  api_key: sk-proj-RqBuJaN5qj461hF79dTfT3BlbkFJuRi4n5U9OwSOb8khXLKq
+function_calling: true           # Enables or disables function calling (Globally).
+mapping_tools:                   # Alias for a tool or toolset
+  fs: 'fs_cat,fs_ls,fs_mkdir,fs_rm,fs_write'
+  main_tools: 'web_search,execute_command,get_current_weather'
+  search_tools: 'search_arxiv,search_wikipedia,search_wolframalpha'
+use_tools: main_tools                  # Which tools to use by default
+
+
+

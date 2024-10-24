@@ -34,23 +34,6 @@ _fzf_compgen_dir() {
 }
 
 
-# bfs_fzf-preview() {
-#     eval $FZF_CTRL_T_COMMAND . | \
-#         fzf-tmux -p80%,80% \
-#             --preview "fzf-preview {}" \
-#             --preview-window=right:50%:wrap \
-#             --bind 'ctrl-/:change-preview-window(right|down|hidden|)'
-# }
-
-
-
-# bfs_fzf-preview2() {
-#     eval $FZF_CTRL_T_COMMAND . | \
-#         fzf-tmux -p80%,80% \
-#             $FZF_CTRL_T_OPTS
-# }
-
-
 bfs_fzf-preview() {
     hx $(eval $FZF_CTRL_T_COMMAND . ~ | \
         fzf-tmux -p80%,80% \

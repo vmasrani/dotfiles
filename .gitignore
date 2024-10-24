@@ -1,5 +1,1 @@
-.condarc
-.curlrc
-.wgetrc
-.zshrc
-.gitconfig
+.secrets

@@ -1,0 +1,489 @@
+
+# 2024-08-27 00:07:08.920677
++l
+
+# 2024-08-27 00:07:11.578366
++filename
+
+# 2024-08-27 00:08:06.111968
++c
+
+# 2024-08-27 00:12:30.295092
++n
+
+# 2024-08-27 00:12:32.835957
++json_dir
+
+# 2024-08-27 00:12:50.011411
++m
+
+# 2024-08-27 00:12:50.959072
++n
+
+# 2024-08-27 00:12:56.153333
++json_files
+
+# 2024-08-27 00:12:58.877680
++n
+
+# 2024-08-27 00:13:01.788498
++l
+
+# 2024-08-27 00:13:07.025808
++n
+
+# 2024-08-27 00:13:09.680635
++all_texts
+
+# 2024-08-27 00:13:40.127862
++all_texts[-1]
+
+# 2024-08-27 00:13:42.669047
++all_texts[-2]
+
+# 2024-08-27 00:13:45.652692
++print(all_texts[-2])
+
+# 2024-08-27 00:13:59.647336
++l
+
+# 2024-08-27 00:14:00.847394
++n
+
+# 2024-08-27 00:16:06.973127
++c
+
+# 2024-08-27 00:16:41.185273
++s
+
+# 2024-08-27 00:16:42.019397
++n
+
+# 2024-08-27 00:17:13.658253
++c
+
+# 2024-08-27 00:18:19.731808
++l
+
+# 2024-08-27 00:18:21.025554
++n
+
+# 2024-08-27 00:18:23.576290
++self.data
+
+# 2024-08-27 00:18:30.220257
++n
+
+# 2024-08-27 00:20:19.110316
++all_texts
+
+# 2024-08-27 00:20:19.950036
++l
+
+# 2024-08-27 00:20:21.412353
++s
+
+# 2024-08-27 00:20:22.115779
++n
+
+# 2024-08-27 00:20:44.127993
++c
+
+# 2024-08-27 00:20:46.408770
++data
+
+# 2024-08-27 00:21:04.944666
++from sentence_transformers import SentenceTransformer
+
+# 2024-08-27 00:21:15.181446
++encoder = SentenceTransformer("paraphrase-mpnet-base-v2")
+
+# 2024-08-27 19:03:07.073680
++all_documents
+
+# 2024-08-27 19:03:27.446426
++all_documents[0]
+
+# 2024-08-27 19:03:57.549285
++l
+
+# 2024-08-27 19:04:00.366803
++n
+
+# 2024-08-27 19:04:16.684352
++all_documents[0][0]
+
+# 2024-08-27 19:04:58.240118
++q
+
+# 2024-08-27 19:05:16.142774
++all_documents[0]
+
+# 2024-08-27 19:05:19.751275
++all_documents[1]
+
+# 2024-08-27 19:11:17.248644
++q
+
+# 2024-08-27 19:13:05.803488
++n
+
+# 2024-08-27 19:13:09.561487
++all_texts[0]
+
+# 2024-08-27 19:13:11.227262
++all_texts[1]
+
+# 2024-08-27 19:15:54.622782
++for t in all_texts: print(t)
+
+# 2024-08-27 19:17:38.702893
++l
+
+# 2024-08-27 19:18:36.856269
++q
+
+# 2024-08-27 19:21:18.291511
++l
+
+# 2024-08-27 19:21:19.110455
++tmp
+
+# 2024-08-27 19:21:26.141843
++next(tmp)
+
+# 2024-08-27 19:21:28.530408
++q
+
+# 2024-08-27 19:21:45.368449
++l
+
+# 2024-08-27 19:21:46.933800
++tmp
+
+# 2024-08-27 19:21:50.676044
++tmp = next(tmp)
+
+# 2024-08-27 19:21:51.970934
++l
+
+# 2024-08-27 19:21:52.688890
++q
+
+# 2024-08-27 19:22:09.548611
++tmp
+
+# 2024-08-27 19:22:16.597122
++debug process_pdf(tmp)
+
+# 2024-08-27 19:22:17.463344
++l
+
+# 2024-08-27 19:22:18.643928
++s
+
+# 2024-08-27 19:22:19.418993
++n
+
+# 2024-08-27 19:22:22.367408
++q
+
+# 2024-08-27 19:22:36.943453
++debug parse_pdf(tmp)
+
+# 2024-08-27 19:22:38.680772
++s
+
+# 2024-08-27 19:22:39.197102
++n
+
+# 2024-08-27 19:22:42.778160
++filename
+
+# 2024-08-27 19:22:43.561235
++n
+
+# 2024-08-27 19:22:45.380627
++author
+
+# 2024-08-27 19:22:46.265245
++n
+
+# 2024-08-27 19:22:47.728432
++title
+
+# 2024-08-27 19:22:48.707088
++n
+
+# 2024-08-27 19:22:50.768262
++text
+
+# 2024-08-27 19:22:58.656973
++b 21
+
+# 2024-08-27 19:22:58.956050
++c
+
+# 2024-08-27 19:23:02.574378
++clear
+
+# 2024-08-27 19:23:05.351572
++b 22
+
+# 2024-08-27 19:23:05.707888
++c
+
+# 2024-08-27 19:23:07.236782
++text
+
+# 2024-08-27 19:23:25.385626
++text.encode("utf8")
+
+# 2024-08-27 19:23:37.400823
++page.get_text().encode('utf8')
+
+# 2024-08-27 19:26:28.174687
++q
+
+# 2024-08-27 19:26:28.730382
++q
+
+# 2024-08-27 19:36:23.203659
++n
+
+# 2024-08-27 19:38:54.034387
++q
+
+# 2024-08-27 19:48:34.002537
++n
+
+# 2024-08-27 19:48:40.779926
++text
+
+# 2024-08-27 19:48:41.760829
++n
+
+# 2024-08-27 19:49:42.416586
++q
+
+# 2024-08-27 19:49:50.957766
++n
+
+# 2024-08-27 19:49:54.582927
++text
+
+# 2024-08-27 19:50:02.787093
++if not text: print(1)
+
+# 2024-08-27 19:50:17.310271
++q
+
+# 2024-08-27 19:50:22.109606
++n
+
+# 2024-08-27 19:50:23.795897
++q
+
+# 2024-08-27 19:50:30.275233
++n
+
+# 2024-08-27 19:50:33.958709
++text
+
+# 2024-08-27 19:50:35.426796
++n
+
+# 2024-08-27 19:50:36.640389
++text
+
+# 2024-08-27 19:50:39.425005
++q
+
+# 2024-08-27 19:56:48.067063
++paragraph
+
+# 2024-08-27 19:56:49.154318
++l
+
+# 2024-08-27 19:56:53.339855
++paragraphs[0]
+
+# 2024-08-27 19:56:56.043803
++paragraphs[1]
+
+# 2024-08-27 19:57:00.286281
++text
+
+# 2024-08-27 19:57:19.335976
++q
+
+# 2024-08-27 19:57:24.573641
++l
+
+# 2024-08-27 19:57:26.172600
++paragraph
+
+# 2024-08-27 19:57:33.848130
++clean_text(paragraph)
+
+# 2024-08-27 19:58:02.416257
++tmp = "tests 54n, 68, 80, 98n, 139, 141,\n158\u20139, 267, 309, 314\u201315, 420;\ncrucial \u2014 see crucial\nexperiments; independent \u2014\n88n, 143, 327, 331, 334, 387;\nseverity of \u2014 298, 325, 336, 346,\n376 & n, 385, 386\u20137, 524\u20137; \u2014\nare attempted refutations 48,\n49n, 71, 150\u20131, 260, 267, 299,\n325, 329, 346, 386, 520\ntheism 166, 465\u20136\ntheoreticism 83; see also\nrationalism, critical\nthesis, antithesis, and synthesis,\nsee dialectic triad\n\u2018things-in-themselves\u2019 see reality vs\nappearance; \u2014 as will see\nvoluntarism; \u2014 as nothingness\nsee nihilism\ntides, theory of 50n, 255\ntime: absolute \u2014 226, 229, 231;\nempty \u2014 241; Kant\u2019s theory of \u2014\n126, 242\ntolerance: attitude of \u2014 10, 22, 480;\ntradition of \u2014 178, 238\ntotalitarianism 450\nTower of Babel 474\ntradition: critical \u2014 see tradition,\nrationalist; irrational theory of \u2014\n161; problem of \u2014 161\u20132;\nrational theory of \u2014 161\u20135, 462,\n473, 505; rationalist \u2014 34\u20135, 67,\n136\u20138, 161\u20135, 168\u201372, 185\u20136,\n201\u20134, 208, 474, 501, 515, 547\u201356;\n\u2014 and schools 201, see also\nrationalism, critical; scienti\ufb01c \u2014\nsee tradition, rationalist; \u2014 as a\nsource of knowledge 36, 323\ntraditionalism 7, 37, 162, 178,\n503\u20135\ntranscendence of ourselves 516; see\nalso knowledge, growth of\ntranscendental: \u2014 argument 243,\n259, 392; \u2014 idealism of Kant see\nunder idealism\ntruth: approach to the \u2014 203, 235,\n293, 306\u20137, 311, 313\u201315, 322, 326\u2013\n36, 393, 432, 504, 536, see also\nverisimilitude; coherence theory\nof \u2014 37, 264, 304\u20139;\ncorrespondence theory of \u2014 see\ntruth, objective theory of;\nepistemic theories of \u2014 see\ntruth, subjective theories of;\nevidence theory of \u2014 304;\ngetting nearer to the \u2014 see truth,\napproach to the; no criteria of \u2014\n37, 306; objective theory of \u2014 21,\n35, 38\u20139, 74, 156 & n, 181, 211,\n281, 303\u20138, 313\u201314, 363n, 365,\n377n, 504\u20135, 515, 527, 541\u20135;\npicture or projection theory of \u2014\n289 & n, 302 & n; pragmatic\ntheory of \u2014 5, 133, 147n, 304;\nsimilarity to the \u2014 see\nverisimilitude; subjective\ntheories of \u2014 306\u20138, 311, 538\u201345,\nsee also truth, coherence,\nevidence, and pragmatic theories\nof; theory of manifest \u2014 7\u201311, 12,\n21\u20134, 30, 46, 468, 473\u20134, 502\u20135;\n\u2014 a property of statements 527;\n\u2014 a regulative principle 39, 306,\n311, 333\u20134, 503\u20134, 515\u201316; \u2014\ncontent see under content; \u2014\nlikeness see verisimilitude\ntype see semantic category; \u2014\nmistake see category mistakes\ntypes, Russell\u2019s theory of 91\u20134,\n350\u20131 & n, 355, 395\u20136\nindex of subjects 581", "file": "c_and_r_unannotated.pdf"}, {"text": "uniformity of nature see under\nNature\nunintended consequences 167\u20138,\n177, 461; see also science, social\nuniversal concepts see universals\nuniversality, levels of \u2014 55n, 83, 155;\nsee also hypotheses, levels of\nexplanatory\nuniversal laws: indispensability of\n\u2014 347, 380\u20133, 389n, 394; \u2014 as\nrules permitting inference 145\u20138,\n225, 353, 380\u20133; \u2014 cannot be\nveri\ufb01ed 46\u20137, 53, 76\u20137 & n, 154,\n353 & n, 377, 379\u201390; \u2014 have\nprobability zero 77, 261, 379,\n380\u20131, 386, see also probability vs\ncontent\nuniversals: indispensability of \u2014\n159, 354\u20135, 374; \u2014 are\ndispositional see under\ndispositional\nutilitarianism 465; methodological\n\u2014 141n; negative \u2014 465, 485\u20136\nutopianism 8, 472, 482\u20137; see also\nsocial \u2018canvas-cleaning\u2019\nveracitas: \u2014 dei of Descartes 9, 11,\n21; \u2014 naturae of Bacon 9, 23\nveri\ufb01ability: non- \u2014 of universal\nlaws see under universal laws; \u2014\nas a criterion of demarcation see\nunder demarcation; \u2014 as a\ncriterion of meaning see under\nmeaning\nveri\ufb01cation: see veri\ufb01cationism;\nasymmetry between \u2014 an"
+
+# 2024-08-27 19:58:08.056251
++tmp = 'tests 54n, 68, 80, 98n, 139, 141,\n158\u20139, 267, 309, 314\u201315, 420;\ncrucial \u2014 see crucial\nexperiments; independent \u2014\n88n, 143, 327, 331, 334, 387;\nseverity of \u2014 298, 325, 336, 346,\n376 & n, 385, 386\u20137, 524\u20137; \u2014\nare attempted refutations 48,\n49n, 71, 150\u20131, 260, 267, 299,\n325, 329, 346, 386, 520\ntheism 166, 465\u20136\ntheoreticism 83; see also\nrationalism, critical\nthesis, antithesis, and synthesis,\nsee dialectic triad\n\u2018things-in-themselves\u2019 see reality vs\nappearance; \u2014 as will see\nvoluntarism; \u2014 as nothingness\nsee nihilism\ntides, theory of 50n, 255\ntime: absolute \u2014 226, 229, 231;\nempty \u2014 241; Kant\u2019s theory of \u2014\n126, 242\ntolerance: attitude of \u2014 10, 22, 480;\ntradition of \u2014 178, 238\ntotalitarianism 450\nTower of Babel 474\ntradition: critical \u2014 see tradition,\nrationalist; irrational theory of \u2014\n161; problem of \u2014 161\u20132;\nrational theory of \u2014 161\u20135, 462,\n473, 505; rationalist \u2014 34\u20135, 67,\n136\u20138, 161\u20135, 168\u201372, 185\u20136,\n201\u20134, 208, 474, 501, 515, 547\u201356;\n\u2014 and schools 201, see also\nrationalism, critical; scienti\ufb01c \u2014\nsee tradition, rationalist; \u2014 as a\nsource of knowledge 36, 323\ntraditionalism 7, 37, 162, 178,\n503\u20135\ntranscendence of ourselves 516; see\nalso knowledge, growth of\ntranscendental: \u2014 argument 243,\n259, 392; \u2014 idealism of Kant see\nunder idealism\ntruth: approach to the \u2014 203, 235,\n293, 306\u20137, 311, 313\u201315, 322, 326\u2013\n36, 393, 432, 504, 536, see also\nverisimilitude; coherence theory\nof \u2014 37, 264, 304\u20139;\ncorrespondence theory of \u2014 see\ntruth, objective theory of;\nepistemic theories of \u2014 see\ntruth, subjective theories of;\nevidence theory of \u2014 304;\ngetting nearer to the \u2014 see truth,\napproach to the; no criteria of \u2014\n37, 306; objective theory of \u2014 21,\n35, 38\u20139, 74, 156 & n, 181, 211,\n281, 303\u20138, 313\u201314, 363n, 365,\n377n, 504\u20135, 515, 527, 541\u20135;\npicture or projection theory of \u2014\n289 & n, 302 & n; pragmatic\ntheory of \u2014 5, 133, 147n, 304;\nsimilarity to the \u2014 see\nverisimilitude; subjective\ntheories of \u2014 306\u20138, 311, 538\u201345,\nsee also truth, coherence,\nevidence, and pragmatic theories\nof; theory of manifest \u2014 7\u201311, 12,\n21\u20134, 30, 46, 468, 473\u20134, 502\u20135;\n\u2014 a property of statements 527;\n\u2014 a regulative principle 39, 306,\n311, 333\u20134, 503\u20134, 515\u201316; \u2014\ncontent see under content; \u2014\nlikeness see verisimilitude\ntype see semantic category; \u2014\nmistake see category mistakes\ntypes, Russell\u2019s theory of 91\u20134,\n350\u20131 & n, 355, 395\u20136\nindex of subjects 581", "file": "c_and_r_unannotated.pdf"}, {"text": "uniformity of nature see under\nNature\nunintended consequences 167\u20138,\n177, 461; see also science, social\nuniversal concepts see universals\nuniversality, levels of \u2014 55n, 83, 155;\nsee also hypotheses, levels of\nexplanatory\nuniversal laws: indispensability of\n\u2014 347, 380\u20133, 389n, 394; \u2014 as\nrules permitting inference 145\u20138,\n225, 353, 380\u20133; \u2014 cannot be\nveri\ufb01ed 46\u20137, 53, 76\u20137 & n, 154,\n353 & n, 377, 379\u201390; \u2014 have\nprobability zero 77, 261, 379,\n380\u20131, 386, see also probability vs\ncontent\nuniversals: indispensability of \u2014\n159, 354\u20135, 374; \u2014 are\ndispositional see under\ndispositional\nutilitarianism 465; methodological\n\u2014 141n; negative \u2014 465, 485\u20136\nutopianism 8, 472, 482\u20137; see also\nsocial \u2018canvas-cleaning\u2019\nveracitas: \u2014 dei of Descartes 9, 11,\n21; \u2014 naturae of Bacon 9, 23\nveri\ufb01ability: non- \u2014 of universal\nlaws see under universal laws; \u2014\nas a criterion of demarcation see\nunder demarcation; \u2014 as a\ncriterion of meaning see under\nmeaning\nveri\ufb01cation: see veri\ufb01cationism;\nasymmetry between \u2014 an'
+
+# 2024-08-27 19:58:12.303995
++clean_text(tmp)
+
+# 2024-08-27 20:01:05.993045
++cleaner = pipeline("text-classification", model="distilbert-base-uncased")
+
+# 2024-08-27 20:01:09.110400
++ifrom transformers import pipeline
++
+
+# 2024-08-27 20:01:09.838596
++from transformers import pipeline
++
+
+# 2024-08-27 20:01:12.434184
++cleaner = pipeline("text-classification", model="distilbert-base-uncased")
+
+# 2024-08-27 20:01:28.598218
++tmp
+
+# 2024-08-27 20:01:30.815845
++result = cleaner(tmp)
+
+# 2024-08-27 20:02:40.528139
++result = cleaner(tmp[:400])
+
+# 2024-08-27 20:02:42.097031
++result
+
+# 2024-08-27 20:02:53.767695
++result = cleaner('Token indices sequence length is longer than the specified maximum sequence length for this model (1093 > 512). Running this sequence through the model will result in indexing errors')
+
+# 2024-08-27 20:02:55.488395
++result
+
+# 2024-08-27 20:10:20.668208
++l
+
+# 2024-08-27 20:10:25.278192
++n
+
+# 2024-08-27 20:10:31.833720
++ll
+
+# 2024-08-27 20:10:33.913569
++c
+
+# 2024-08-27 20:10:43.376532
++q
+
+# 2024-09-05 20:22:33.484537
++all_documents[0]
+
+# 2024-09-05 20:22:54.687544
++q
+
+# 2024-09-05 20:24:21.940060
++all_documents[0]
+
+# 2024-09-05 20:24:31.266257
++all_documents[0][0]
+
+# 2024-09-05 20:24:39.471902
++all_documents[0][100]
+
+# 2024-09-05 20:25:45.988703
++q
+
+# 2024-09-05 20:31:38.628330
++n
+
+# 2024-09-05 20:31:44.063938
++all_texts[0]
+
+# 2024-09-05 20:31:57.066028
++sent_tokenize(all_texts[0])
+
+# 2024-09-05 20:32:04.763463
++all_texts[10]
+
+# 2024-09-05 20:32:07.756779
++all_texts[11]
+
+# 2024-09-05 20:32:16.570471
++sent_tokenize(all_texts[11])
+
+# 2024-09-05 20:33:55.722447
++encoder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device='mps')
+
+# 2024-09-05 20:34:08.972877
++def encode_paragraph(paragraph, encoder, max_tokens=256):
++    sentences = sent_tokenize(paragraph)
++    sentence_embeddings = encoder.encode(sentences, show_progress_bar=False)
++    return np.mean(sentence_embeddings, axis=0)
++
+
+# 2024-09-05 20:34:31.082018
++encode_paragraph(all_texts[11], encoder)
+
+# 2024-09-05 20:36:52.448930
++all_documents[11]
+
+# 2024-09-05 20:37:12.384432
++all_documents[11][0]
+
+# 2024-09-05 20:37:14.048459
++all_documents[11][1]
+
+# 2024-09-05 20:37:16.118097
++all_documents[11][22]
+
+# 2024-09-05 20:43:10.714805
++q
+
+# 2024-09-05 20:43:41.081864
++text
+
+# 2024-09-05 20:46:47.072474
++q
+
+# 2024-09-06 23:02:16.711218
++n
+
+# 2024-09-06 23:02:18.555470
++pdf_file
+
+# 2024-09-06 23:02:21.592884
++n
+
+# 2024-09-06 23:02:23.458534
++output_dir
+
+# 2024-09-06 23:03:00.500012
++n
+
+# 2024-09-06 23:03:46.783407
++l
+
+# 2024-09-06 23:03:50.600987
++pdf_file
+
+# 2024-09-06 23:03:54.172342
++pdf_file.parent
+
+# 2024-09-06 23:03:58.667352
++pdf_file.parent.parent
+
+# 2024-09-06 23:04:02.777304
++pdf_file.parts
+
+# 2024-09-06 23:04:12.361895
++pdf_file.parent.parent
+
+# 2024-09-06 23:06:34.473751
++q

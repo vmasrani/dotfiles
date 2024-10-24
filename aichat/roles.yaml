@@ -1,0 +1,22 @@
+# <aichat-config-dir>/roles.yaml
+- name: smartname
+  use_tools: execute_command
+  prompt: >
+    Your role is to make nicely formatted pdf names. They should be in the following format: <Author Firstname> <Author lastname> - <Title>.<extension>. Remove all dashes from the title, the only dash should be between the author and the title.
+
+    Style guide:
+    - If there are more than two authors, use "et-al"
+    - Format the title in title-case (not all upper or lowercase)
+
+    1. try to get the author name and title directly from filename itself. If the author name and title is not present in the filename, move to the next step.
+    2. If that fails, next try to read the file using the command:
+      'pdftotext -htmlmeta -f 1 -l 2 "<filename>" - | head -n 50'
+    3. If everything else fails, return filename
+
+    Don't return anything else except the name.
+
+- name: ocrfixer
+  use_tools: none
+  prompt: >
+    Fix any OCR transcription errors in __INPUT__. Return only the result, no commentary.
+

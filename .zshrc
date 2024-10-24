@@ -7,19 +7,26 @@
 
 
 source ~/dotfiles/helper_functions.sh
-# Check if both tldr and tte are installed
-if command_exists tldr && command_exists $HOME/.local/bin/tte; then
-    tldr --quiet $(tldr --quiet --list | shuf -n1) | $HOME/.local/bin/tte expand
+source ~/.secrets
+source ~/.aliases-and-envs.zsh
+source ~/dotfiles/lscolors.sh
+. "$HOME/.cargo/env"
+
+if [[ $- == *i* ]]; then  # Only run in interactive mode
+    # Check if both tldr and tte are installed
+    if command_exists tldr && command_exists $HOME/.local/bin/tte; then
+        tldr --quiet $(tldr --quiet --list | shuf -n1) | $HOME/.local/bin/tte expand
+    fi
+
+
+    # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+    # Initialization code that may require console input (password prompts, [y/n]
+    # confirmations, etc.) must go above this block; everything else may go below.
+    if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+    source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+    fi
+
 fi
-
-
-# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
-# Initialization code that may require console input (password prompts, [y/n]
-# confirmations, etc.) must go above this block; everything else may go below.
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
-
 
 
 
@@ -54,11 +61,6 @@ unset __conda_setup
 
 # source custom alias
 export ZSH_DISABLE_COMPFIX="true"
-
-
-source ~/.aliases-and-envs.zsh
-source ~/dotfiles/lscolors.sh
-. "$HOME/.cargo/env"
 
 # conda init
 # conda activate base
@@ -139,5 +141,4 @@ if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/
 
 # Created by `pipx` on 2024-07-10 03:49:22
 export PATH="$PATH:/Users/vmasrani/Library/Python/3.11/bin"
-export PATH=$PATH:~/convertio-cli
 export PATH=$PATH:~/convertio-cli

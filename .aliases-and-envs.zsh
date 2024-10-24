@@ -1,13 +1,16 @@
 # export WANDB_API_KEY="local-1cb84cdb8818ab552fb57da6b591af732d4ba09d"
 # export WANDB_BASE_URL="http://localhost:8080"
+source ~/.secrets
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 export PATH=$HOME/bin:$PATH
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
+export PATH="/usr/local/bin:$PATH"
 
 export PATH="/Users/vmasrani/.cargo/bin:$PATH"
 export BAT_THEME="Solarized (light)"
+export COHERE_WEB_SEARCH_MODEL="command-r"
 
 
 # REMOVE DUPLICATES
@@ -82,9 +85,8 @@ alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
 alias alsenvs='hx ~/.aliases-and-envs.zsh'
-alias dots='hx ~/dotfiles/'
 alias hxconf='hx ~/dotfiles/hx_config.toml'
-alias dots='hx ~/dotfiles/'
+alias dots='cd ~/dotfiles/'
 alias rsync='rsync -avz --compress --verbose --human-readable --partial --progress'
 alias ga="lazygit"
 alias bfs='bfs -L'

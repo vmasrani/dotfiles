@@ -36,7 +36,7 @@ done
 
 # symlink dots
 # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
-files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
+files=(.secrets .aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc)
 for file in "${files[@]}"; do
 	echo "Linking $file from dotfiles to home directory."
 	ln -sf $HOME/dotfiles/$file $HOME/$file
@@ -214,7 +214,7 @@ for repo in "${!git_repos[@]}"; do
 done
 
 # helix
-if [ ! -f "$HOME/bin/hx" ]; then
+if [ ! -f "/usr/local/bin/hx" ]; then
     brew install helix
 else
     echo "helix is already installed."
