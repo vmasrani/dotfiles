@@ -11,9 +11,11 @@ if ! command -v zsh &> /dev/null; then
             if [ "$(id -u)" -eq 0 ]; then
                 apt update && apt upgrade -y
                 apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+                chsh -s $(which zsh)
             else
                 sudo apt update && sudo apt upgrade -y
                 sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+                sudo chsh -s $(which zsh) $USER
             fi
             echo "Installation complete. Please restart your shell to use zsh."
             exit
