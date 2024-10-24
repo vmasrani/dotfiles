@@ -3,6 +3,23 @@
 set -e
 
 # sudo chsh -s $(which zsh) $USER
+# Check if zsh is installed
+if ! command -v zsh &> /dev/null; then
+    read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
+    case "$choice" in
+        y|Y )
+            sudo apt update
+            sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+            echo "Installation complete. Please restart your shell to use zsh."
+            exit
+            ;;
+        * )
+            echo "Skipping installation. Continuing with the setup..."
+            ;;
+    esac
+else
+    echo "zsh is already installed. Continuing with the setup..."
+fi
 
 mkdir -p "$HOME"/bin
 mkdir -p "$HOME/dev/projects"
