@@ -8,7 +8,6 @@
 
 source ~/dotfiles/helper_functions.sh
 source ~/.secrets
-source ~/.aliases-and-envs.zsh
 source ~/dotfiles/lscolors.sh
 . "$HOME/.cargo/env"
 
@@ -75,6 +74,7 @@ source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
 source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
 chruby ruby-3.3.4
 source ~/.iterm2_shell_integration.zsh
+source ~/.aliases-and-envs.zsh
 
 # Customize to your needs...
 export DIRSTACKSIZE=20
