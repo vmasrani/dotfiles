@@ -28,5 +28,10 @@ if ! command -v hx &> /dev/null; then
     esac
 fi
 
+echo "Linking helix from dotfile to ~/.config/helix"
+mkdir -p ~/.config/helix/
+ln -sf ~/dotfiles/hx_config.toml ~/.config/helix/config.toml
+ln -sf ~/dotfiles/hx_languages.toml  ~/.config/helix/languages.toml
+
 bash install_helix_language_servers.sh
 
