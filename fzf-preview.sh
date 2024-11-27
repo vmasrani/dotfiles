@@ -5,7 +5,8 @@
 if [[ -f $1 ]]; then
   case "$1" in
     *.parquet)
-      parquet-tools cat --limit 1000 --format jsonl "$1" | jq -C
+      parquet-tools csv "$1"
+      # parquet-tools cat --limit 1000 --format jsonl "$1" | jq -C
       ;;
     *.json)
       jq -C . "$1" 2>/dev/null || bat -n --color=always "$1"

@@ -78,3 +78,5 @@ eval set -- {+1}
 for arg in "$@"; do
     { git diff --color=always -- "$arg" | git log --color=always "$arg" } 2>/dev/null
 done'
+
+

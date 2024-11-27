@@ -70,7 +70,13 @@ export FZF_CTRL_R_OPTS="
   --preview 'echo {2..} | bat --color=always -pl sh'
   --preview-window up:5:wrap
   --bind 'ctrl-/:toggle-preview'
-  --bind 'ctrl-v:execute(echo {2..} | view - > /dev/tty)'
-  --bind 'ctrl-t:track+clear-query'
-  --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'"
+  "
+
+# export FZF_CTRL_R_OPTS="
+#   --preview 'echo {2..} | bat --color=always -pl sh'
+#   --preview-window up:5:wrap
+#   --bind 'ctrl-/:toggle-preview'
+#   --bind 'ctrl-v:execute(echo {2..} | view - > /dev/tty)'
+#   --bind 'ctrl-t:track+clear-query'
+#   --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'"
 

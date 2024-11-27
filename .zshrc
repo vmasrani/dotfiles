@@ -105,6 +105,8 @@ autoload -U zmv
 
 #Numeric sort
 setopt numeric_glob_sort
+# setopt INC_APPEND_HISTORY  # Write to the history file immediately, not when the shell exits.
+setopt SHARE_HISTORY  # Share history between all sessions.
 
 # Better vim mode
 
@@ -126,7 +128,6 @@ bindkey '^f' edit-command-line
 ## note! can use cat -> enter -> keypress to find the key sequence
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
-
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
