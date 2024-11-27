@@ -1,6 +1,7 @@
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 export PATH=$HOME/bin:$PATH
+export PATH="/home/vaden/bin:$PATH"
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
 export BAT_THEME="Solarized (light)"
