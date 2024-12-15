@@ -1,3 +1,4 @@
+#!/bin/zsh
 
 # shellcheck shell=bash
 # shellcheck source=.aliases-and-envs.zsh

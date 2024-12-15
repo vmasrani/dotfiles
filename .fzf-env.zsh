@@ -79,13 +79,10 @@ export FZF_CTRL_T_OPTS="--preview 'fzf-preview {}' --prompt 'Files(.)> ' \
 
 
 export FZF_CTRL_R_OPTS="
+  --height 100%
   --preview 'echo {2..} | bat --color=always -pl sh'
   --preview-window up:5:wrap
   --bind 'ctrl-/:toggle-preview'
   --bind 'ctrl-v:execute(echo {2..} | view - > /dev/tty)'
   --bind 'ctrl-t:track+clear-query'
   --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'"
-
-#   --header 'Press CTRL-Y to copy command into clipboard'
-#   --bind 'ctrl-/:change-preview-window(30%|60%|90%|)'
-#   --color header:italic
