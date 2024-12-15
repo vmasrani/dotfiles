@@ -67,6 +67,7 @@ export FZF_CTRL_T_OPTS="--preview 'fzf-preview {}' --prompt 'Files(.)> ' \
 --keep-right"
 
 export FZF_CTRL_R_OPTS="
+  --height 100%
   --preview 'echo {2..} | bat --color=always -pl sh'
   --preview-window up:5:wrap
   --bind 'ctrl-/:toggle-preview'
@@ -74,3 +75,4 @@ export FZF_CTRL_R_OPTS="
   --bind 'ctrl-t:track+clear-query'
   --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'"
 
+  
