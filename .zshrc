@@ -83,13 +83,6 @@ function check_proxy() {
     fi
 }
 
-# Check if a proxy is required and set the environment variables accordingly
-if check_proxy; then
-    export ftp_proxy=http://127.0.0.1:3128
-    export http_proxy=http://127.0.0.1:3128
-    export https_proxy=http://127.0.0.1:3128
-fi
-
 
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh

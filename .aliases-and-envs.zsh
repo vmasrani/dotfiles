@@ -94,3 +94,12 @@ alias ga="lazygit"
 alias bfs='bfs -L '
 
 
+# Define the htop filter as an environment variable
+export HTOP_FILTER='sshd|jupyter/runtime/kernel|.cursor-server|/usr/bin/dockerd|/usr/lib/snapd/snapd|amazon|containerd|ssh-agent|gitstatus|zsh|sleep'
+
+# Update the get_filtered_pids function to use the environment variable
+get_filtered_pids() {
+    pgrep -vfd, "$HTOP_FILTER"
+}
+
+alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
