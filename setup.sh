@@ -8,7 +8,7 @@ source "$(dirname "$0")/install_functions.sh"
 install_if_missing zsh install_zsh
 
 # install dotfiles
-install_if_dir_missing ~/bin install_dotfiles
+install_dotfiles
 
 # install essentials
 install_if_dir_missing ~/miniconda install_miniconda

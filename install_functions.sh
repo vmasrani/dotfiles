@@ -45,6 +45,7 @@ install_dotfiles() {
         "fzf-helix.sh"
         "torch-preview.sh"
         "npy-preview.py"
+        "feather-preview.py"
         "rsync-all.sh"
         "colorize-columns.sh"
         )
