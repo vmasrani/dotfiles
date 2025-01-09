@@ -22,6 +22,9 @@ if [[ -f $1 ]]; then
     *.npy)
       npy-preview "$1"
       ;;
+    *.feather)
+      feather-preview "$1"
+      ;;
     *.jpg|*.jpeg|*.png|*.gif)
       chafa --size=80x80 "$1"
       ;;
