@@ -21,12 +21,13 @@ if ! command -v hx &> /dev/null; then
                 sudo apt install helix
             fi
             ;;
+        "24.10")
+            echo "Detected Ubuntu 24.10, installing Helix via snap..."
+            sudo snap install helix --classic
+            ;;
         *)
             wget https://github.com/helix-editor/helix/releases/download/24.03/helix-24.03-x86_64.AppImage -O ~/bin/hx
             chmod +x ~/bin/hx
             ;;
     esac
 fi
-
-bash install_helix_language_servers.sh
-

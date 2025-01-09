@@ -5,7 +5,7 @@ set -e
 # sudo chsh -s $(which zsh) $USER
 # Check if zsh is installed
 if ! command -v zsh &> /dev/null; then
-    read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
+    read -p "zsh is not installed. Do you want to install zsh, build-essential, go, and vim? (y/n) " choice
     case "$choice" in
         y|Y )
             if [ "$(id -u)" -eq 0 ]; then
@@ -14,7 +14,7 @@ if ! command -v zsh &> /dev/null; then
                 chsh -s $(which zsh)
             else
                 sudo apt update && sudo apt upgrade -y
-                sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+                sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev golang-go
                 sudo chsh -s $(which zsh) $USER
             fi
             echo "Installation complete. Please restart your shell to use zsh."
@@ -127,7 +127,7 @@ executables["bat"]="https://github.com/sharkdp/bat/releases/download/v0.18.3/bat
 executables["eza"]="https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
 
 for command in "${!executables[@]}"; do
-	if ! command_exists $command; then
+	if ! command_exists "$command"; then
 		echo "$command is not installed. Installing $command..."
 		bash install_tar.sh "${executables[$command]}"
 		echo "$command installed successfully."

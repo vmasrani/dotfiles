@@ -69,7 +69,3 @@ rule_settings:
 #   min_duplicates: 2
 #   identical_clones_only: false
 
-proxy:
-  no_ssl_verify: true
-  url: http://127.0.0.1:3128
-#   ssl_certs_file:
