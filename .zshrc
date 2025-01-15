@@ -56,6 +56,9 @@ export NVM_DIR="$HOME/.nvm"
 export ZSH_DISABLE_COMPFIX="true"
 
 
+export OPENAI_API_KEY='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'
+export ANTHROPIC_API_KEY='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'
+
 source ~/.aliases-and-envs.zsh
 source ~/dotfiles/lscolors.sh
 source ~/dotfiles/helper_functions.sh
