@@ -7,6 +7,7 @@ export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
 export BAT_THEME="Solarized (light)"
 export SSL_CERT_DIR='/etc/ssl/certs'
 export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
+export WANDB_ENTITY='vadenmasrani'
 
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
@@ -50,6 +51,7 @@ alias .9='cd ../../../../../../../../../'   # Go back 9 directory levels
 
 #tree alias's"
 alias t='eza -aHl --icons --tree --no-user --no-permissions'
+alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1'
 alias t2='eza -aHl --icons --tree --no-user --no-permissions -L 2'
 alias t3='eza -aHl --icons --tree --no-user --no-permissions -L 3'
 alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4'
@@ -72,7 +74,7 @@ alias du='du -sh'
 
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
-alias ta="tmux attach"
+alias ta="tmux attach || tmux new-session -s default"
 alias hxlog="hx /home/vaden/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'

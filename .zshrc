@@ -123,7 +123,7 @@ bindkey '^f' edit-command-line
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
-
+conda activate ml3
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
