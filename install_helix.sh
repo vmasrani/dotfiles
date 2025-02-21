@@ -12,15 +12,28 @@ if ! command -v hx &> /dev/null; then
         "22.04")
             echo "Detected Ubuntu 22.04, installing Helix using package manager..."
             if [ "$(id -u)" -eq 0 ]; then
-                add-apt-repository ppa:maveonair/helix-editor
+                add-apt-repository -y ppa:maveonair/helix-editor
                 apt update
                 apt install helix
             else
-                sudo add-apt-repository ppa:maveonair/helix-editor
+                sudo add-apt-repository -y ppa:maveonair/helix-editor
+                sudo apt update
+                sudo apt install helix -y
+            fi
+            ;;
+        "24.04")
+            echo "Detected Ubuntu 24.04, installing Helix using package manager..."
+            if [ "$(id -u)" -eq 0 ]; then
+                sudo add-apt-repository -y ppa:maveonair/helix-editor
+                sudo apt update
+                sudo apt install helix
+            else
+                sudo add-apt-repository -y ppa:maveonair/helix-editor
                 sudo apt update
                 sudo apt install helix
             fi
             ;;
+
         "24.10")
             echo "Detected Ubuntu 24.10, installing Helix via snap..."
             sudo snap install helix --classic

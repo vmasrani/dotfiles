@@ -1,24 +1,63 @@
 #!/bin/bash
 
-## FZF-Z
-export FZF_TMUX_OPTS='-p95%,95%'
 export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,80%|hidden|)'
 
 # https://erees.dev/terminal-tricks/
-export FZF_DEFAULT_OPTS="--reverse --ansi \
---color border:41 --border=sharp \
---prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
---inline-info \
---cycle -m  \
---preview-window=right:70%:wrap \
---bind 'ctrl-/:change-preview-window(down|hidden|)' \
---bind 'ctrl-d:preview-half-page-down' \
---bind 'ctrl-u:preview-half-page-up' \
---bind 'ctrl-s:toggle-sort' \
---bind 'ctrl-j:preview-down' \
---bind 'ctrl-k:preview-up' \
---bind 'ctrl-b:preview-bottom' \
---bind 'ctrl-n:preview-top'"
+# export FZF_DEFAULT_OPTS=" \
+# --reverse --ansi \
+# --color border:41 --border=sharp \
+# --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
+# --inline-info \
+# --cycle -m  \
+# --tmux 95%  \
+# --preview-window=right:70%:wrap \
+# --bind 'ctrl-/:change-preview-window(down|hidden|)' \
+# --bind 'ctrl-d:preview-half-page-down' \
+# --bind 'ctrl-u:preview-half-page-up' \
+# --bind 'ctrl-s:toggle-sort' \
+# --bind 'ctrl-j:preview-down' \
+# --bind 'ctrl-k:preview-up' \
+# --bind 'ctrl-b:preview-bottom' \
+# --bind 'ctrl-n:preview-top'
+# "
+
+export FZF_DEFAULT_OPTS=" \
+    --style full \
+    --tmux 95%  \
+    --reverse --ansi \
+    --border --padding 1,2 \
+    --border-label ' Demo ' --input-label ' Input ' --header-label ' File Type ' \
+    --preview 'fzf-preview {}' \
+    --preview-window=right:70%:wrap \
+    --bind 'result:transform-list-label: \
+        if [[ -z $FZF_QUERY ]]; then \
+          echo \" $FZF_MATCH_COUNT items \" \
+        else \
+          echo \" $FZF_MATCH_COUNT matches for [$FZF_QUERY] \" \
+        fi \
+        ' \
+    --bind 'focus:transform-preview-label:[[ -n {} ]] && printf \" Previewing [%s] \" {}' \
+    --bind 'focus:+transform-header:file --brief {} || echo \"No file selected\"' \
+    --bind 'ctrl-r:change-list-label( Reloading the list )+reload(sleep 2; git ls-files)' \
+    --color 'border:#aaaaaa,label:#cccccc' \
+    --color 'preview-border:#9999cc,preview-label:#ccccff' \
+    --color 'list-border:#669966,list-label:#99cc99' \
+    --color 'input-border:#996666,input-label:#ffcccc' \
+    --color 'header-border:#6699cc,header-label:#99ccff' \
+
+    --bind 'ctrl-/:change-preview-window(down|hidden|)' \
+    --bind 'ctrl-d:preview-half-page-down' \
+    --bind 'ctrl-u:preview-half-page-up' \
+    --bind 'ctrl-s:toggle-sort' \
+    --bind 'ctrl-j:preview-down' \
+    --bind 'ctrl-k:preview-up' \
+    --bind 'ctrl-b:preview-bottom' \
+    --bind 'ctrl-n:preview-top'"
+
+
+
+
+
 
 export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
 export BFS_EXCLUDE='! \( -name .git -prune \) ! \( -name  __pycache__ -prune \)'
@@ -67,12 +106,14 @@ export FZF_CTRL_T_OPTS="--preview 'fzf-preview {}' --prompt 'Files(.)> ' \
 --keep-right"
 
 export FZF_CTRL_R_OPTS="
-  --height 100%
-  --preview 'echo {2..} | bat --color=always -pl sh'
-  --preview-window up:5:wrap
-  --bind 'ctrl-/:toggle-preview'
-  --bind 'ctrl-v:execute(echo {2..} | view - > /dev/tty)'
-  --bind 'ctrl-t:track+clear-query'
+  --style default \
+  --preview 'echo {2..} | bat --color=always -pl sh' \
+  --preview-window up:5:wrap \
+  --bind 'result:' \
+  --bind 'focus:' \
+  --bind 'focus:+transform-preview-label:' \
+  --bind 'focus:+transform-header:' \
+  --bind 'ctrl-/:toggle-preview' \
+  --bind 'ctrl-v:execute(echo {2..} | view - > /dev/tty)' \
+  --bind 'ctrl-t:track+clear-query' \
   --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'"
-
-  

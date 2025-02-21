@@ -33,20 +33,6 @@ if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
 fi
 
 
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/home/vaden/miniconda/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/home/vaden/miniconda/etc/profile.d/conda.sh" ]; then
-        . "/home/vaden/miniconda/etc/profile.d/conda.sh"
-    else
-        export PATH="/home/vaden/miniconda/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -123,7 +109,13 @@ bindkey '^f' edit-command-line
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
-conda activate ml3
+source /home/vaden/ml3/bin/activate
+
+# uv pip install ruff-lsp pylsp-mypy "python-lsp-server[all]" tqdm pyyaml markdown-strings jmespath  line_profiler memory_profiler google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client llm-axe seaborn numpy matplotlib scikit-learn pandas polars pyjanitor ruff
+# numpy pandas matplotlib scikit-learn scipy seaborn joblib polars
+
+# sudo apt-get install -y python3-pylsp
+
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize

@@ -3,11 +3,11 @@ source ~/.fzf-env.zsh
 fasd_fzf-preview() {
     fasd -d -R | \
         awk '{print $2}' | \
-        fzf-tmux -p80%,80% \
-            --preview "fzf-preview {}" \
-            --preview-window=right:50%:wrap \
+        fzf --tmux 95% \
+            --bind 'focus:+transform-header:' \
             --bind "$FZF_PREVIEW_WINDOW_BINDING"
 }
+
 
 fzf-fasd-widget(){
     LBUFFER="${LBUFFER}$(fasd_fzf-preview)"
@@ -32,15 +32,6 @@ _fzf_compgen_dir() {
   fd --type d --hidden --follow --no-ignore -c always --exclude ".git" . "$1"
 }
 
-bfs_fzf-preview() {
-    hx $(eval $FZF_CTRL_T_COMMAND . ~ | \
-        fzf-tmux -p80%,80% \
-            --preview "fzf-preview {}" \
-            --preview-window=right:50%:wrap \
-            --bind "$FZF_PREVIEW_WINDOW_BINDING")
-
-}
-
 #export FZF_COMPLETION_TRIGGER=''
 source $HOME/.zprezto/contrib/fzf-tab-completion/zsh/fzf-zsh-completion.sh
 bindkey '^I' fzf-completion
@@ -62,7 +53,12 @@ keys=(
 export FZF_COMPLETION_OPTS="--border \
 --info=inline \
 --bind '$FZF_PREVIEW_WINDOW_BINDING' \
---preview='eval fzf-preview {1}'"
+--preview='eval fzf-preview {1}' \
+--bind 'result:' \
+--bind 'focus:' \
+--bind 'focus:+transform-preview-label:' \
+--bind 'focus:+transform-header:' \
+"
 
 zstyle ':completion:*' fzf-completion-keybindings "${keys[@]}"
 zstyle ':completion::*:cd:*' fzf-completion-keybindings "${keys[@]}" /:accept:'repeat-fzf-completion'

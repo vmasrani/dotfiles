@@ -16,18 +16,18 @@ install_packages() {
     # Activate the environment
     conda activate $1
     # Install packages
-    pip install ruff-lsp pylsp-mypy python-lsp-server[all]
+    uv pip install ruff-lsp pylsp-mypy python-lsp-server[all]
     conda install -c conda-forge shellcheck -y
     # Deactivate the environment
     conda deactivate
 }
 
 # Install conda packages
-echo "Installing conda packages..."
-source ~/miniconda/etc/profile.d/conda.sh
-install_packages base
-install_packages ml3
-install_packages llava
+# echo "Installing conda packages..."
+# source ~/miniconda/etc/profile.d/conda.sh
+# install_packages base
+# install_packages ml3
+# install_packages llava
 
 # Install npm packages
 echo "Installing npm packages..."

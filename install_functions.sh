@@ -14,6 +14,7 @@ install_if_missing() {
         echo "$command_name is already installed."
     fi
 }
+
 install_if_dir_missing() {
     local dir_path=$1
     local install_function=$2
@@ -95,29 +96,17 @@ install_zsh() {
 
 
 
-install_miniconda() {
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        mkdir -p ~/miniconda
-        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda/miniconda.sh
-        bash ~/miniconda/miniconda.sh -b -u -p ~/miniconda
-        rm -rf ~/miniconda/miniconda.sh
-    else
-        echo "Unsupported OS. Please install Miniconda manually."
-        exit 1
-    fi
-    export PATH="$HOME/miniconda/bin:$PATH"
-    conda init zsh
-}
-
-install_ml3_env() {
-    conda env create -f ~/dotfiles/ml3_env.yml
-}
-
 
 install_cargo() {
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     source "$HOME/.cargo/env"
 }
+
+
+install_uv() {
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+}
+
 
 install_tealdeer() {
     source "$HOME/.cargo/env"
@@ -130,24 +119,15 @@ install_zprezto() {
     git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$HOME}/.zprezto"
 }
 
-install_ml3_env() {
-    mamba create -n ml3 python=3.10 -y
-    mamba activate ml3
-    mamba install numpy pandas matplotlib scikit-learn scipy seaborn joblib polars -y
-}
-
-install_mamba() {
-    conda install -n base -c conda-forge mamba -y
-}
 
 install_npm() {
     bash install_npm.sh
 }
 
 install_go() {
-    add-apt-repository ppa:longsleep/golang-backports
-    apt update
-    install golang-go
+    sudo add-apt-repository -y ppa:longsleep/golang-backports
+    sudo apt update
+    sudo apt install golang-go -y
 }
 
 install_fzf() {
@@ -170,10 +150,14 @@ install_lazygit() {
 }
 
 install_pipx() {
-    python -m pip install --user pipx
-    export PATH="$HOME/.local/bin:$PATH"
-    python -m pipx ensurepath
+    sudo apt -y install pipx
+    pipx ensurepath
 }
+
+install_bfs() {
+    sudo apt -y install bfs
+}
+
 
 install_nbpreview() {
     export PATH="$HOME/.local/bin:$PATH"
@@ -237,6 +221,8 @@ install_ml_helpers() {
     echo "machine_learning_helpers installed successfully."
 }
 
+
+
 install_hypers() {
     git clone https://github.com/vmasrani/hypers.git "$HOME/hypers"
     echo "hypers installed successfully."
@@ -270,3 +256,6 @@ install_zprezto() {
     git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
     echo "zprezto installed successfully."
 }
+
+
+

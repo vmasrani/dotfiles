@@ -23,3 +23,5 @@ export PATH="$HOME/bin:$HOME/bin/bin:$HOME/.local/bin:$PATH"
 echo "hello from profile"
 
 . "$HOME/.cargo/env"
+
+. "$HOME/.local/bin/env"
