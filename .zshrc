@@ -33,10 +33,18 @@ if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
 fi
 
 
-
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"
+[ -s "/opt/homebrew/opt/nvm/etc/bash_completion" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion"
+
+# Move this after NVM is initialized and update the version check
+if command -v nvm >/dev/null 2>&1; then
+    current_version=$(node -v 2>/dev/null)
+    if [[ "$current_version" != "v16.0.0" ]]; then
+        nvm use 16.0.0 --silent
+    fi
+fi
+
 
 # source custom alias
 export ZSH_DISABLE_COMPFIX="true"
@@ -110,7 +118,7 @@ bindkey '^f' edit-command-line
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
-source /home/vaden/ml3/bin/activate
+source $HOME/ml3/bin/activate
 
 # uv pip install ruff-lsp pylsp-mypy "python-lsp-server[all]" tqdm pyyaml markdown-strings jmespath  line_profiler memory_profiler google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client llm-axe seaborn numpy matplotlib scikit-learn pandas polars pyjanitor ruff
 # numpy pandas matplotlib scikit-learn scipy seaborn joblib polars
