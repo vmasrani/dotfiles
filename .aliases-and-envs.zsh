@@ -17,6 +17,7 @@ export ANTHROPIC_API_KEY='sk-ant-api03-NTcFaAeYEzgfkoQksdYmnf6WWC7HlmRrr0VMOPLtG
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 export PYTHONPATH=$(echo -n $PYTHONPATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
+export PYTHONPATH=$(echo -n $PYTHONPATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 
 alias vscode='cursor'
 
@@ -40,8 +41,8 @@ alias l='eza -aHl --icons --git'
 alias lt='eza -aHl --icons --git --sort=modified'
 alias lf='eza -aHl --icons --git --sort=size --total-size'
 alias ld='eza -aHlD --icons --git'
+alias p='fzf-preview'
 
-#cd alias'#
 alias cd..='cd ../'                         # Go back 1 directory level (for fast typers)
 alias ..='cd ../'                           # Go back 1 directory level
 alias .1='cd ../'                           # Go back 1 directory level
@@ -57,6 +58,7 @@ alias .9='cd ../../../../../../../../../'   # Go back 9 directory levels
 #tree alias's"
 alias t='eza -aHl --icons --tree --no-user --no-permissions'
 alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1'
+alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1'
 alias t2='eza -aHl --icons --tree --no-user --no-permissions -L 2'
 alias t3='eza -aHl --icons --tree --no-user --no-permissions -L 3'
 alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4'
@@ -66,11 +68,10 @@ alias mv='mv -iv'                           # Preferred 'mv' implementation
 alias mkdir='mkdir -pv'                     # Preferred 'mkdir' implementation
 alias ll='ls -FGlAhp'                       # Preferred 'ls' implementation
 alias less='less -FSRXc -M -g -i -J --underline-special --SILENT'
+alias less='less -FSRXc -M -g -i -J --underline-special --SILENT'
 alias rm='rm -v'                            # Show what has been removed
 alias cp='cp -v'                            # Show what has been copied
-alias fr='open -a Finder ./'                # fr:            Opens current directory in MacOS Finder
 alias ~="cd ~"                              # ~:            Go Home
-alias h="history"                           # h:            History
 alias path='echo -e ${PATH//:/\\n}'         # path:         Echo all executable Paths
 alias fix_stty='stty sane'                  # fix_stty:     Restore terminal settings when screwed up
 alias cic='set completion-ignore-case On'   # cic:          Make tab-completion case-insensitive
@@ -106,3 +107,13 @@ alias bfs='bfs -L '
 
 # preview
 alias p='fzf-preview'
+
+# Define the htop filter as an environment variable
+export HTOP_FILTER='sshd|jupyter/runtime/kernel|.cursor-server|/usr/bin/dockerd|/usr/lib/snapd/snapd|amazon|containerd|ssh-agent|gitstatus|zsh|sleep'
+
+# Update the get_filtered_pids function to use the environment variable
+get_filtered_pids() {
+    pgrep -vfd, "$HTOP_FILTER"
+}
+
+alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'

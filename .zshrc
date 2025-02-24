@@ -1,5 +1,3 @@
-#!/bin/zsh
-
 # shellcheck shell=bash
 # shellcheck source=.aliases-and-envs.zsh
 # shellcheck source=dotfiles/lscolors.sh
@@ -8,26 +6,17 @@
 
 
 source ~/dotfiles/helper_functions.sh
-source ~/.secrets
-source ~/dotfiles/lscolors.sh
-. "$HOME/.cargo/env"
-
-if [[ $- == *i* ]]; then  # Only run in interactive mode
-    # Check if both tldr and tte are installed
-    if command_exists tldr && command_exists $HOME/.local/bin/tte; then
-        tldr --quiet $(tldr --quiet --list | shuf -n1) | $HOME/.local/bin/tte expand
-    fi
-
-
-    # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
-    # Initialization code that may require console input (password prompts, [y/n]
-    # confirmations, etc.) must go above this block; everything else may go below.
-    if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-    source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-    fi
-
+# Check if both tldr and tte are installed
+if command_exists tldr && command_exists /home/vaden/.local/bin/tte; then
+    tldr --quiet $(tldr --quiet --list | shuf -n1) | /home/vaden/.local/bin/tte expand
 fi
 
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
 
 
 # [[ "$TERM_PROGRAM" == "vscode" ]] && . "$(code --locate-shell-integration-path zsh)"
@@ -44,42 +33,49 @@ if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
 fi
 
 
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/Users/vmasrani/miniconda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/Users/vmasrani/miniconda/etc/profile.d/conda.sh" ]; then
-        . "/Users/vmasrani/miniconda/etc/profile.d/conda.sh"
-    else
-        export PATH="/Users/vmasrani/miniconda/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 # source custom alias
 export ZSH_DISABLE_COMPFIX="true"
 
+
+export OPENAI_API_KEY='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'
+export ANTHROPIC_API_KEY='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'
+
+source ~/.aliases-and-envs.zsh
+source ~/dotfiles/lscolors.sh
+source ~/dotfiles/helper_functions.sh
+source ~/dotfiles/mount_remotes.sh
+. "$HOME/.cargo/env"
+
+
+# Check if Node.js version 16 is active
+if [[ $(node -v) != "v16.0.0" ]]; then
+    nvm use 16.0.0 --silent
+fi
 # conda init
 # conda activate base
+
+
+# Function to check if a proxy is required
+function check_proxy() {
+    # Attempt to connect to a known external URL
+    if curl --max-time 5 --output /dev/null --silent --head --fail http://example.com; then
+        # No proxy required
+        return 1
+    else
+        # Proxy required
+        return 0
+    fi
+}
+
 
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
-
-
-# no ruby for now
-# ruby
-# source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
-# source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
-# source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
-# chruby ruby-3.3.4
-
-
-source ~/.iterm2_shell_integration.zsh
-source ~/.aliases-and-envs.zsh
 
 # Customize to your needs...
 export DIRSTACKSIZE=20
@@ -102,9 +98,6 @@ bindkey -M vicmd '/' history-incremental-search-forward
 # Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
 export KEYTIMEOUT=1
 
-# Better vim mode
-
-
 # Enable Ctrl-x-e to edit command line
 autoload -U edit-command-line
 
@@ -117,36 +110,14 @@ bindkey '^f' edit-command-line
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
+source /home/vaden/ml3/bin/activate
 
-_aichat_zsh() {
-    if [[ -n "$BUFFER" ]]; then
-        local _old=$BUFFER
-        BUFFER+="⌛"
-        zle -I && zle redisplay
-        BUFFER=$(aichat -e "$_old")
-        zle end-of-line
-    fi
-}
-zle -N _aichat_zsh
-bindkey '\ee' _aichat_zsh
+# uv pip install ruff-lsp pylsp-mypy "python-lsp-server[all]" tqdm pyyaml markdown-strings jmespath  line_profiler memory_profiler google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client llm-axe seaborn numpy matplotlib scikit-learn pandas polars pyjanitor ruff
+# numpy pandas matplotlib scikit-learn scipy seaborn joblib polars
 
+# sudo apt-get install -y python3-pylsp
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
 
-
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f '/Users/vmasrani/google-cloud-sdk/path.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/path.zsh.inc'; fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc'; fi
-
-# Created by `pipx` on 2024-07-10 03:49:22
-export PATH="$PATH:/Users/vmasrani/Library/Python/3.11/bin"
-export PATH=$PATH:~/convertio-cli
-
-# Added by Windsurf
-export PATH="/Users/vmasrani/.codeium/windsurf/bin:$PATH"

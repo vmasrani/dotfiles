@@ -77,6 +77,7 @@ export POWERLEVEL9K_INSTALLATION_DIR=$HOME/.zprezto/modules/prompt/external/powe
 export PATH="$HOME/miniconda/bin:$PATH"
 export PATH=$HOME/local/bin:$PATH
 
+
 source ~/dotfiles/lscolors.sh
 
 # Created by `pipx` on 2024-07-10 03:49:22

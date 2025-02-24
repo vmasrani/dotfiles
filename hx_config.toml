@@ -6,13 +6,28 @@ auto-format = true
 true-color = true
 # mouse = false
 line-number = "relative"
+completion-timeout = 5
+popup-border = 'all'
 
 [editor.soft-wrap]
 enable = true
 
 [editor.statusline]
-right = ["diagnostics", "selections", "position","position-percentage", "file-encoding"]
-left = ["mode","spinner", "file-name"]
+left = ["mode", "spinner"]
+center = ["file-name"]
+right = ["diagnostics", "selections", "position", "file-encoding", "file-line-ending", "file-type",  "version-control"]
+separator = "│"
+mode.normal = "NORMAL"
+mode.insert = "INSERT"
+mode.select = "SELECT"
+
+[editor.lsp]
+display-messages = true
+display-inlay-hints = true
+
+[editor.file-picker]
+hidden = false
+
 
 [editor.cursor-shape]
 insert = "bar"
@@ -20,10 +35,10 @@ select = "underline"
 
 [keys.normal]
 C-s = ":w!"
-C-g = ":sh tmux popup -d \"#{pane_current_path}\" -xC -yC -w80% -h80% -E '/home/vadmas/go/bin/lazygit'"
+C-g = ":sh tmux popup -d \"#{pane_current_path}\" -xC -yC -w80% -h80% -E '/home/vaden/go/bin/lazygit'"
 C-w = ":buffer-close"
 C-a = ":reload-all"
-y = [":clipboard-yank","yank"]
+# y = [":clipboard-yank","yank"]
 C-v = [":clipboard-paste-before"]
 C-right = [":bn"]
 C-left = [":bp"]
@@ -32,7 +47,7 @@ X = ["extend_line_up", "extend_to_line_bounds"]
 "C-d" = ["keep_primary_selection", "move_prev_word_start", "move_next_word_end", "search_selection", "select_mode"]
 # https://www.reddit.com/r/HelixEditor/comments/10reh4p/post_your_best_tipstricks_workflow_hacks_and/
 V = ["goto_first_nonwhitespace", "extend_to_line_end"]
-D = ["ensure_selections_forward", "extend_to_line_end"]
+# D = ["ensure_selections_forward", "extend_to_line_end"]
 x = "extend_line"
 A-right = "move_next_word_start"
 A-left = "move_prev_word_start"
@@ -64,10 +79,12 @@ S-right = "extend_char_right"
 S-left = "extend_char_left"
 S-up = "extend_line_up"
 S-down = "extend_line_down"
-# esc = 'keep_primary_selection'
+C-t = [":insert-output fzf-helix" ]
+#
+
 
 [keys.select]
-y = [":clipboard-yank","yank"]
+# y = [":clipboard-yank","yank"]
 X = ["extend_line_up", "extend_to_line_bounds"]
 # if already in select mode, just add new selection at next occurrence
 "C-d" = ["search_selection", "extend_search_next"]
@@ -80,4 +97,5 @@ A-right = "extend_next_word_start"
 A-left = "extend_prev_word_start"
 S-right = "extend_char_right"
 S-left = "extend_char_left"
+C-t = [":insert-output fzf-helix"]
 # esc = 'keep_primary_selection'
