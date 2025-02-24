@@ -24,7 +24,6 @@ def get_metadata(input_file):
 def sanitize_name(name):
     return re.sub(r'_{2,}', '_', ''.join(c.lower() if c.isalnum() else '_' for c in name)).strip('_')
 
-
 def convert_file(api, source, target, output_dir):
     output_file = output_dir / f"{source.stem}.{target}"
     print(f"Converting to {target}...")
@@ -38,6 +37,10 @@ def convert_file(api, source, target, output_dir):
         print(f"Error: Conversion to {target} failed. {str(e)}")
     return output_file
 
+def handle_format(api, input_file, output_dir, target_format):
+    if input_file.suffix.lower() == f'.{target_format}':
+        return input_file
+    return convert_file(api, input_file, target_format, output_dir)
 
 def main():
     if len(sys.argv) != 2:
@@ -56,27 +59,34 @@ def main():
     output_dir = Path("temp_ebook")
     output_dir.mkdir(exist_ok=True)
 
-    pdf_file = input_file if input_file.suffix.lower() == '.pdf' else convert_file(api, input_file, 'pdf', output_dir)
-    epub_file = input_file if input_file.suffix.lower() == '.epub' else convert_file(api, input_file, 'epub', output_dir)
-
-    if not pdf_file.exists():
-        print(f"Error: The PDF file '{pdf_file}' was not created.")
-        sys.exit(1)
-
-    if not epub_file.exists():
-        print(f"Error: The EPUB file '{epub_file}' was not created.")
-        sys.exit(1)
+    # Convert to all formats
+    pdf_file = handle_format(api, input_file, output_dir, 'pdf')
+    epub_file = handle_format(api, input_file, output_dir, 'epub')
+    mobi_file = handle_format(api, input_file, output_dir, 'mobi')
 
     author, title = get_metadata(pdf_file)
     clean_name = sanitize_name(f"{author} - {title}")
     final_output_dir = Path(f"{clean_name}_ebook")
     final_output_dir.mkdir(exist_ok=True)
 
+    # Check all files exist
+    for file, format in [(pdf_file, 'PDF'), (epub_file, 'EPUB'), (mobi_file, 'MOBI')]:
+        if not file.exists():
+            print(f"Error: The {format} file '{file}' was not created.")
+            sys.exit(1)
+
+    # Copy all formats to final directory
     shutil.copy(str(pdf_file), final_output_dir / f"{clean_name}.pdf")
     shutil.copy(str(epub_file), final_output_dir / f"{clean_name}.epub")
+    shutil.copy(str(mobi_file), final_output_dir / f"{clean_name}.mobi")
 
     shutil.rmtree(output_dir)
     print(f"Conversion complete. Output files are in the '{final_output_dir}' directory.")
 
 if __name__ == "__main__":
     main()
+
+
+
+
+

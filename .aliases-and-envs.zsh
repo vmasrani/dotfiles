@@ -11,7 +11,8 @@ export PATH="/usr/local/bin:$PATH"
 export PATH="/Users/vmasrani/.cargo/bin:$PATH"
 export BAT_THEME="Solarized (light)"
 export COHERE_WEB_SEARCH_MODEL="command-r"
-
+export OPENAI_API_KEY='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'
+export ANTHROPIC_API_KEY='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'
 
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
@@ -55,6 +56,7 @@ alias .9='cd ../../../../../../../../../'   # Go back 9 directory levels
 
 #tree alias's"
 alias t='eza -aHl --icons --tree --no-user --no-permissions'
+alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1'
 alias t2='eza -aHl --icons --tree --no-user --no-permissions -L 2'
 alias t3='eza -aHl --icons --tree --no-user --no-permissions -L 3'
 alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4'
@@ -79,8 +81,7 @@ alias du='du -sh'
 
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
-alias ta="tmux attach"
-alias brew="arch -x86_64 /usr/local/bin/brew"
+alias ta="tmux attach || tmux new-session -s default"
 alias hxlog="hx /home/vadmas/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
@@ -102,3 +103,6 @@ alias ga="lazygit"
 
 # bfs
 alias bfs='bfs -L '
+
+# preview
+alias p='fzf-preview'

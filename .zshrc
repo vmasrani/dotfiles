@@ -69,11 +69,15 @@ export ZSH_DISABLE_COMPFIX="true"
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 source ~/.fzf-config.zsh
 
-  # ruby
-source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
-source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
-source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
-chruby ruby-3.3.4
+
+# no ruby for now
+# ruby
+# source $(brew --prefix)/opt/chruby/share/chruby/chruby.sh
+# source $(brew --prefix)/opt/chruby/share/chruby/auto.sh
+# source /opt/homebrew/opt/chruby/share/chruby/chruby.sh
+# chruby ruby-3.3.4
+
+
 source ~/.iterm2_shell_integration.zsh
 source ~/.aliases-and-envs.zsh
 
@@ -89,7 +93,7 @@ autoload -U zmv
 setopt numeric_glob_sort
 
 # Better vim mode
-eval "$(/usr/local/bin/brew shellenv)"
+eval "$(brew shellenv)"
 
 # Better searching in command mode
 bindkey -M vicmd '?' history-incremental-search-backward
@@ -143,3 +147,6 @@ if [ -f '/Users/vmasrani/google-cloud-sdk/completion.zsh.inc' ]; then . '/Users/
 # Created by `pipx` on 2024-07-10 03:49:22
 export PATH="$PATH:/Users/vmasrani/Library/Python/3.11/bin"
 export PATH=$PATH:~/convertio-cli
+
+# Added by Windsurf
+export PATH="/Users/vmasrani/.codeium/windsurf/bin:$PATH"
