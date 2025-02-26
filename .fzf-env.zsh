@@ -6,8 +6,8 @@ export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,80%|hidden|
 # export FZF_DEFAULT_OPTS=" \
 # --reverse --ansi \
 # --color border:41 --border=sharp \
-# --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
 # --inline-info \
+# --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
 # --cycle -m  \
 # --tmux 95%  \
 # --preview-window=right:70%:wrap \
@@ -24,6 +24,8 @@ export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,80%|hidden|
 export FZF_DEFAULT_OPTS=" \
     --style full \
     --tmux 95%  \
+    --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
+    --cycle -m  \
     --reverse --ansi \
     --border --padding 1,2 \
     --border-label ' Demo ' --input-label ' Input ' --header-label ' File Type ' \

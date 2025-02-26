@@ -111,10 +111,6 @@ bindkey '^[[1;3C' forward-word
 
 source /home/vaden/ml3/bin/activate
 
-# uv pip install ruff-lsp pylsp-mypy "python-lsp-server[all]" tqdm pyyaml markdown-strings jmespath  line_profiler memory_profiler google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client llm-axe seaborn numpy matplotlib scikit-learn pandas polars pyjanitor ruff
-# numpy pandas matplotlib scikit-learn scipy seaborn joblib polars
-
-# sudo apt-get install -y python3-pylsp
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
