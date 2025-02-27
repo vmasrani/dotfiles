@@ -2,22 +2,22 @@
 
 # Define the list of servers and their respective paths
 # declare -A servers=(
-#     ["117"]="10.213.96.117:/home/vaden/dev"
-#     ["116"]="10.213.96.116:/home/vaden/dev"
+#     ["117"]="10.213.96.117:$HOME/dev"
+#     ["116"]="10.213.96.116:$HOME/dev"
 #     ["103"]="10.193.241.103:/fastdata/vaden/dev"
 #     ["95"]="7.184.9.95:/data/vaden/dev"
-#     ["114"]="10.213.96.114:/home/vaden/dev"
+#     ["114"]="10.213.96.114:$HOME/dev"
 #     ["206"]="10.193.241.206:/data/vaden/dev"
 # )
 
 typeset -A servers
 servers=(
-    117 "10.213.96.117:/home/vaden/dev"
-    116 "10.213.96.116:/home/vaden/dev"
+    117 "10.213.96.117:$HOME/dev"
+    116 "10.213.96.116:$HOME/dev"
     103 "10.193.241.103:/fastdata/vaden/dev"
     104 "10.193.241.104:/fastdata/vaden/dev"
     95  "7.184.9.95:/data/vaden/dev"
-    114 "10.213.96.114:/home/vaden/dev"
+    114 "10.213.96.114:$HOME/dev"
     206 "10.193.241.206:/data/vaden/dev"
 )
 

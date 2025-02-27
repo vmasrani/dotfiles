@@ -1,7 +1,7 @@
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
 export PATH=$HOME/bin:$PATH
-export PATH="/home/vaden/bin:$PATH"
+export PATH="$HOME/bin:$PATH"
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
 export BAT_THEME="Solarized (light)"
@@ -75,7 +75,7 @@ alias du='du -sh'
 alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach || tmux new-session -s default"
-alias hxlog="hx /home/vaden/.cache/helix/helix.log"
+alias hxlog="hx $HOME/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
 alias dots='cd ~/dotfiles/'

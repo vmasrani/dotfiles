@@ -13,7 +13,7 @@ user="vaden"
 my_command="$1"
 
 # Directory to change into on the target machine
-target_directory="/home/vaden/dev/projects/llm-watermarking"
+target_directory="$HOME/dev/projects/llm-watermarking"
 
 
 # Tmux session name

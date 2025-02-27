@@ -6,10 +6,10 @@
 
 
 source ~/dotfiles/helper_functions.sh
-# Check if both tldr and tte are installed
-if command_exists tldr && command_exists /home/vaden/.local/bin/tte; then
-    tldr --quiet $(tldr --quiet --list | shuf -n1) | /home/vaden/.local/bin/tte expand
-fi
+# # Check if both tldr and tte are installed
+# if command_exists tldr && command_exists $HOME/.local/bin/tte; then
+#     tldr --quiet $(tldr --quiet --list | shuf -n1) | $HOME/.local/bin/tte expand
+# fi
 
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
@@ -109,7 +109,7 @@ bindkey '^f' edit-command-line
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
-source /home/vaden/ml3/bin/activate
+source $HOME/ml3/bin/activate
 
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.

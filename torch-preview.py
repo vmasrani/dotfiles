@@ -1,4 +1,4 @@
-#!/home/vaden/miniconda/envs/ml3/bin/python
+#! $HOME/ml3/bin/python
 import sys
 from pprint import pprint
 from torch import load, __version__
