@@ -21,10 +21,11 @@ export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,80%|hidden|
 # --bind 'ctrl-n:preview-top'
 # "
 
+# --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
+
 export FZF_DEFAULT_OPTS=" \
     --style full \
     --tmux 95%  \
-    --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
     --cycle -m  \
     --reverse --ansi \
     --border --padding 1,2 \
