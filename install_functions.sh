@@ -248,7 +248,7 @@ install_diff_so_fancy() {
 }
 
 install_finditfaster() {
-    cp ~/dotfiles/find_files.sh "$(find ~/.cursor-server/extensions -type d -name 'tomrijndorp*')"
+    cp ~/dotfiles/find_files.sh "$(find ~/.cursor-server/extensions -type d -name 'tomrijndorp*' 2>/dev/null)" || :
     echo "find_files.sh copied to cursor extension directory successfully."
 }
 

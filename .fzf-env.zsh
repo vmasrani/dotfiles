@@ -23,6 +23,7 @@ export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,80%|hidden|
 
 export FZF_DEFAULT_OPTS=" \
     --style full \
+    --cycle -m  \
     --tmux 95%  \
     --reverse --ansi \
     --border --padding 1,2 \
