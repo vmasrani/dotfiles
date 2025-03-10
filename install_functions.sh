@@ -2,6 +2,18 @@
 
 source ~/dotfiles/helper_functions.sh
 
+# Detect operating system
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    OS_TYPE="mac"
+    PACKAGE_MANAGER="brew"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    OS_TYPE="linux"
+    PACKAGE_MANAGER="apt"
+else
+    echo "Unsupported operating system: $OSTYPE"
+    exit 1
+fi
+
 install_if_missing() {
     local command_name=$1
     local install_function=$2
@@ -76,14 +88,20 @@ install_zsh() {
     read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
     case "$choice" in
         y|Y )
-            if [ "$(id -u)" -eq 0 ]; then
-                apt update && apt upgrade -y
-                apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+            if [[ "$OS_TYPE" == "linux" ]]; then
+                if [ "$(id -u)" -eq 0 ]; then
+                    apt update && apt upgrade -y
+                    apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+                    chsh -s $(which zsh)
+                else
+                    sudo apt update && sudo apt upgrade -y
+                    sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+                    sudo chsh -s $(which zsh) $USER
+                fi
+            elif [[ "$OS_TYPE" == "mac" ]]; then
+                brew update
+                brew install zsh vim
                 chsh -s $(which zsh)
-            else
-                sudo apt update && sudo apt upgrade -y
-                sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-                sudo chsh -s $(which zsh) $USER
             fi
             echo "Installation complete. Please restart your shell to use zsh."
             ;;
@@ -105,6 +123,8 @@ install_cargo() {
 
 install_uv() {
     curl -LsSf https://astral.sh/uv/install.sh | sh
+    uv venv --python 3.12 $HOME/ml3
+
 }
 
 
@@ -125,9 +145,13 @@ install_npm() {
 }
 
 install_go() {
-    sudo add-apt-repository -y ppa:longsleep/golang-backports
-    sudo apt update
-    sudo apt install golang-go -y
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo add-apt-repository -y ppa:longsleep/golang-backports
+        sudo apt update
+        sudo apt install golang-go -y
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install go
+    fi
 }
 
 install_fzf() {
@@ -150,12 +174,20 @@ install_lazygit() {
 }
 
 install_pipx() {
-    sudo apt -y install pipx
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt -y install pipx
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install pipx
+    fi
     pipx ensurepath
 }
 
 install_bfs() {
-    sudo apt -y install bfs
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt -y install bfs
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install tavianator/tap/bfs
+    fi
 }
 
 
@@ -170,44 +202,76 @@ install_terminaltexteffects() {
 }
 
 install_tmux() {
-    wget -O "$HOME/bin/tmux" "n0p.me/bin/tmux" && chmod +x "$HOME/bin/tmux"
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        wget -O "$HOME/bin/tmux" "n0p.me/bin/tmux" && chmod +x "$HOME/bin/tmux"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install tmux
+    fi
     echo "tmux installed successfully."
 }
 
 install_rg() {
-    wget -O "$HOME/bin/rg" "n0p.me/bin/rg" && chmod +x "$HOME/bin/rg"
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        wget -O "$HOME/bin/rg" "n0p.me/bin/rg" && chmod +x "$HOME/bin/rg"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install ripgrep
+    fi
     echo "rg installed successfully."
 }
 
 install_fd() {
-    wget -O "$HOME/bin/fd" "n0p.me/bin/fd" && chmod +x "$HOME/bin/fd"
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        wget -O "$HOME/bin/fd" "n0p.me/bin/fd" && chmod +x "$HOME/bin/fd"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install fd
+    fi
     echo "fd installed successfully."
 }
 
 install_jq() {
-    wget -O "$HOME/bin/jq" "n0p.me/bin/jq" && chmod +x "$HOME/bin/jq"
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        wget -O "$HOME/bin/jq" "n0p.me/bin/jq" && chmod +x "$HOME/bin/jq"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install jq
+    fi
     echo "jq installed successfully."
 }
 
 install_pq() {
-    wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
+    fi
     echo "pq installed successfully."
 }
 
 install_bat() {
-    bash install_tar.sh "https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        bash install_tar.sh "https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install bat
+    fi
     echo "bat installed successfully."
 }
 
 install_eza() {
-    bash install_tar.sh "https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        bash install_tar.sh "https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install eza
+    fi
     echo "eza installed successfully."
 }
 
 install_parquet_tools() {
-    wget https://github.com/hangxie/parquet-tools/releases/download/v1.25.1/parquet-tools_1.25.1_amd64.deb
-    sudo dpkg -i parquet-tools_1.25.1_amd64.deb
-    rm parquet-tools_1.25.1_amd64.deb
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        wget https://github.com/hangxie/parquet-tools/releases/download/v1.25.1/parquet-tools_1.25.1_amd64.deb
+        sudo dpkg -i parquet-tools_1.25.1_amd64.deb
+        rm parquet-tools_1.25.1_amd64.deb
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install parquet-tools
+    fi
     echo "parquet-tools installed successfully."
 }
 
@@ -256,6 +320,4 @@ install_zprezto() {
     git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
     echo "zprezto installed successfully."
 }
-
-
 
