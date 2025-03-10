@@ -61,6 +61,7 @@ install_dotfiles() {
         "feather-preview.py"
         "rsync-all.sh"
         "colorize-columns.sh"
+        "convert_ebook.py"
         )
 
     for script in "${scripts[@]}"; do
@@ -187,6 +188,14 @@ install_bfs() {
         sudo apt -y install bfs
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install tavianator/tap/bfs
+    fi
+}
+
+install_xsel() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt -y install xclip xsel
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install xclip xsel
     fi
 }
 
