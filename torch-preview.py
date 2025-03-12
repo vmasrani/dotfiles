@@ -1,4 +1,4 @@
-#! $HOME/ml3/bin/python
+#!/usr/bin/env python
 import sys
 from pprint import pprint
 from torch import load, __version__

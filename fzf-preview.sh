@@ -1,7 +1,5 @@
 #!/bin/bash
 
-#!/bin/bash
-
 if [[ -f $1 ]]; then
   case "$1" in
     *.parquet)
