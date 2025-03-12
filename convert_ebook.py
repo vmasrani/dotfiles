@@ -1,4 +1,4 @@
-#!/Users/vmasrani/ml3/bin/python
+#!/usr/bin/env python
 
 import sys
 from pathlib import Path

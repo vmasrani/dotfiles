@@ -1,4 +1,4 @@
-#!$HOME/.conda/envs/ml3/bin/python
+#!/usr/bin/env python
 import sys
 import numpy as np
 
