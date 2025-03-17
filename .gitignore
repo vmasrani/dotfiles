@@ -1,4 +1,5 @@
 .condarc
+local_env.sh
 .pdbhistory
 .curlrc
 .wgetrc
