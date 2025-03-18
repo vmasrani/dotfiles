@@ -1,7 +1,0 @@
-.condarc
-local_env.sh
-.pdbhistory
-.curlrc
-.wgetrc
-.zshrc
-.gitconfig
