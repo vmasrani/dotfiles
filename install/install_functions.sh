@@ -1,6 +1,7 @@
+# shellcheck shell=zsh
 #!/bin/bash
 
-source ~/dotfiles/helper_functions.sh
+source ~/dotfiles/shell/helper_functions.sh
 
 # Detect operating system
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -45,40 +46,168 @@ install_dotfiles() {
     mkdir -p "$HOME"/bin
     mkdir -p "$HOME/dev/projects"
     # chmod bash files
-    chmod +x $HOME/dotfiles/*.sh
+    find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
+    touch $HOME/dotfiles/local/.local_env.sh
 
-    echo "Creating symbolic links for custom scripts in $HOME/bin..."
+    echo "Creating symbolic links..."
 
-    scripts=(
-        "fzf-preview.sh"
-        "rfz.sh"
-        "copy.sh"
-        "sshget"
-        "show-tmux-popup.sh"
-        "fzf-helix.sh"
-        "torch-preview.sh"
-        "npy-preview.py"
-        "feather-preview.py"
-        "rsync-all.sh"
-        "colorize-columns.sh"
-        "convert_ebook.py"
-        )
+  # Define base paths
+    local dotfiles="$HOME/dotfiles"
+    local bin="$HOME/bin"
+    local home="$HOME"
 
-    for script in "${scripts[@]}"; do
-        source="$HOME/dotfiles/$script"
-        target="$HOME/bin/${script%.*}"
+    # Create an array of source:target pairs
+    declare -a file_pairs=(
+        "$dotfiles/tools/rfz.sh:$bin/rfz"
+        "$dotfiles/tools/copy.sh:$bin/copy"
+        "$dotfiles/tools/sshget:$bin/sshget"
+        "$dotfiles/tools/fzf-helix.sh:$bin/fzf-helix"
+        "$dotfiles/tools/rsync-all.sh:$bin/rsync-all"
+        "$dotfiles/tools/colorize-columns.sh:$bin/colorize-columns"
+        "$dotfiles/tools/convert_ebook.py:$bin/convert_ebook"
+        "$dotfiles/tools/imgcat.sh:$bin/imgcat"
+        "$dotfiles/tmux/show-tmux-popup.sh:$bin/show-tmux-popup"
+
+        # Preview files
+        "$dotfiles/preview/fzf-preview.sh:$bin/fzf-preview"
+        "$dotfiles/preview/torch-preview.sh:$bin/torch-preview"
+        "$dotfiles/preview/npy-preview.py:$bin/npy-preview"
+        "$dotfiles/preview/feather-preview.py:$bin/feather-preview"
+
+        # editor dotfiles
+        "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
+        "$dotfiles/editors/.vimrc:$home/.vimrc"
+
+        # linters dotfiles
+        "$dotfiles/linters/.pylintrc:$home/.pylintrc"
+        "$dotfiles/linters/.sourcery.yaml:$home/.sourcery.yaml"
+
+        # Shell dotfiles
+        "$dotfiles/fzf/.fzf-config.zsh:$home/.fzf-config.zsh"
+        "$dotfiles/fzf/.fzf.bash:$home/.fzf.bash"
+        "$dotfiles/fzf/.fzf.zsh:$home/.fzf.zsh"
+        "$dotfiles/fzf/.fzf-env.zsh:$home/.fzf-env.zsh"
+
+
+        # Shell dotfiles
+        "$dotfiles/shell/.p10k.zsh:$home/.p10k.zsh"
+        "$dotfiles/shell/.aliases-and-envs.zsh:$home/.aliases-and-envs.zsh"
+        "$dotfiles/shell/.bash_logout:$home/.bash_logout"
+        "$dotfiles/shell/.bash_profile:$home/.bash_profile"
+        "$dotfiles/shell/.bashrc:$home/.bashrc"
+        "$dotfiles/shell/.zlogin:$home/.zlogin"
+        "$dotfiles/shell/.zlogout:$home/.zlogout"
+        "$dotfiles/shell/.zpreztorc:$home/.zpreztorc"
+        "$dotfiles/shell/.zprofile:$home/.zprofile"
+        "$dotfiles/shell/.profile:$home/.profile"
+        "$dotfiles/shell/.zshenv:$home/.zshenv"
+        "$dotfiles/shell/.zshrc:$home/.zshrc"
+        "$dotfiles/shell/helper_functions.sh:$home/helper_functions.sh"
+
+        # local dotfiles
+        "$dotfiles/local/.local_env.sh:$home/.local_env.sh"
+        "$dotfiles/local/.secrets:$home/.secrets"
+
+    )
+
+    # Create all symlinks in a single loop
+    for pair in "${file_pairs[@]}"; do
+        source="${pair%%:*}"
+        target="${pair#*:}"
+        echo "Linking $(basename "$source") to $target"
         ln -sf "$source" "$target"
-        echo "Linked $(basename "$source") to $target"
         chmod +x "$source"
     done
 
-    # symlink dots
-    # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
-    files=(.aliases-and-envs.zsh .bash_logout .bash_profile .bashrc .fzf-config.zsh .fzf.bash .fzf.zsh .fzf-env.zsh .gitconfig .p10k.zsh .profile .pylintrc .sourcery.yaml .tmux.conf .vimrc .zlogin .zlogout .zpreztorc .zprofile .zshenv .zshrc .curlrc)
-    for file in "${files[@]}"; do
-        echo "Linking $file from dotfiles to home directory."
-        ln -sf "$HOME"/dotfiles/"$file" "$HOME"/"$file"
-    done
+    # scripts=(
+
+    #     "rfz.sh"
+    #     "copy.sh"
+    #     "sshget"
+    #     "show-tmux-popup.sh"
+    #     "fzf-helix.sh"
+    #     "rsync-all.sh"
+    #     "colorize-columns.sh"
+    #     "convert_ebook.py"
+    #     )
+
+    # for script in "${scripts[@]}"; do
+    #     source="$HOME/dotfiles/tools/$script"
+    #     target="$HOME/bin/${script%.*}"
+    #     ln -sf "$source" "$target"
+    #     echo "Linked $(basename "$source") to $target"
+    #     chmod +x "$source"
+    # done
+
+
+
+    # # manually handle different cases
+    # scripts=(
+    #     "fzf-preview.sh"
+    #     "torch-preview.sh"
+    #     "npy-preview.py"
+    #     "feather-preview.py"
+    #     )
+
+    # for script in "${scripts[@]}"; do
+    #     source="$HOME/dotfiles/preview/$script"
+    #     target="$HOME/bin/${script%.*}"
+    #     ln -sf "$source" "$target"
+    #     echo "Linked $(basename "$source") to $target"
+    #     chmod +x "$source"
+    # done
+
+
+    # # symlink dots
+    # # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
+    # files=(
+    #        .bash_logout
+    #        .bash_profile
+    #        .bashrc
+    #        .zlogin
+    #        .zlogout
+    #        .zpreztorc
+    #        .zprofile
+    #        .profile
+    #        .zshenv
+    #        .zshrc
+    #        )
+
+    # for file in "${files[@]}"; do
+    #     echo "Linking $file from dotfiles to home directory."
+    #     ln -sf "$HOME"/dotfiles/shell/"$file" "$HOME"/"$file"
+    # done
+
+    # # symlink dots
+    # # this is dangerous!! broken dotfiles can lead to not being able to regain SSH access, make sure to test before exiting
+    # files=(.aliases-and-envs.zsh
+    #        .fzf-config.zsh
+    #        .fzf.bash
+    #        .fzf.zsh
+    #        .fzf-env.zsh
+    #        .gitconfig
+    #        .p10k.zsh
+    #        .profile
+    #        .pylintrc
+    #        .sourcery.yaml
+    #        .tmux.conf
+    #        .vimrc
+    #        .zshrc
+    #        .curlrc
+    #        .bash_logout
+    #        .bash_profile
+    #        .bashrc
+    #        .zlogin
+    #        .zlogout
+    #        .zpreztorc
+    #        .zprofile
+    #        .zshenv
+    #        )
+
+    # for file in "${files[@]}"; do
+    #     echo "Linking $file from dotfiles to home directory."
+    #     ln -sf "$HOME"/dotfiles/"$file" "$HOME"/"$file"
+    # done
 
 
 }
@@ -142,7 +271,7 @@ install_zprezto() {
 
 
 install_npm() {
-    bash install_npm.sh
+    bash install/install_npm.sh
 }
 
 install_go() {
@@ -161,7 +290,7 @@ install_fzf() {
 }
 
 install_helix() {
-    bash install_helix.sh
+    bash install/install_helix.sh
 }
 
 install_glow() {
@@ -257,7 +386,7 @@ install_pq() {
 
 install_bat() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        bash install_tar.sh "https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
+        bash install/install_tar.sh "https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install bat
     fi
@@ -266,7 +395,7 @@ install_bat() {
 
 install_eza() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        bash install_tar.sh "https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
+        bash install/install_tar.sh "https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install eza
     fi
@@ -321,7 +450,7 @@ install_diff_so_fancy() {
 }
 
 install_finditfaster() {
-    cp ~/dotfiles/find_files.sh "$(find ~/.cursor-server/extensions -type d -name 'tomrijndorp*' 2>/dev/null)" || :
+    cp ~/dotfiles/tools/find_files.sh "$(find ~/.cursor-server/extensions -type d -name 'tomrijndorp*' 2>/dev/null)" || :
     echo "find_files.sh copied to cursor extension directory successfully."
 }
 

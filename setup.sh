@@ -1,8 +1,13 @@
 #!/bin/bash
+
+# shellcheck shell=zsh
+# shellcheck source=install/install_functions.sh
+
 set -e
 
+
 # Source the installation functions
-source "$(dirname "$0")/install_functions.sh"
+source "$(dirname "$0")/install/install_functions.sh"
 
 # install zsh
 install_if_missing zsh install_zsh
