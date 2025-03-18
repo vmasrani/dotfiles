@@ -1,3 +1,4 @@
+# shellcheck shell=zsh
 #
 # Executes commands at login pre-zshrc.
 #
@@ -78,4 +79,4 @@ export PATH="$HOME/miniconda/bin:$PATH"
 export PATH=$HOME/local/bin:$PATH
 
 
-source ~/dotfiles/lscolors.sh
+source ~/dotfiles/shell/lscolors.sh

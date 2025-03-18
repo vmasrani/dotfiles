@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source ~/dotfiles/helper_functions.sh
+source ~/dotfiles/shell/helper_functions.sh
 
 # Function to check and install packages
 check_and_install_packages() {
