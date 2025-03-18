@@ -8,7 +8,7 @@ set -e
 
 # Source the installation functions
 source "$(dirname "$0")/install/install_functions.sh"
-
+source "$(dirname "$0")/shell/.aliases-and-envs.zsh"
 # install zsh
 install_if_missing zsh install_zsh
 
@@ -38,7 +38,7 @@ install_if_missing go install_go # Go programming language and toolchain
 install_if_missing hx install_helix # Modern terminal-based text editor
 install_if_missing glow install_glow # Markdown terminal viewer with style
 install_if_missing lazygit install_lazygit # Terminal UI for git commands
-# install_if_missing nbpreview install_nbpreview # Jupyter notebook terminal previewer # TODO: add this back in
+install_if_missing nbpreview install_nbpreview # Jupyter notebook terminal previewer # TODO: add this back in
 install_if_missing tte install_terminaltexteffects # Terminal text effects and animations
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
