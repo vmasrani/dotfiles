@@ -1,5 +1,7 @@
 # shellcheck shell=zsh
 
+▍# autossh
+alias ssh="autossh -M 0"
 alias fr='open -a Finder .'
 export SSL_CERT_FILE=$(python -m certifi)
 export REQUESTS_CA_BUNDLE=$(python -m certifi)
