@@ -33,8 +33,8 @@ alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
 
 
 # alias l='eza -aHl --icons --git'
-alias l='eza -aHl --icons --git --grid --time-style relative --group-directories-first'
-alias L='eza -aHl --icons --git --time-style relative --group-directories-first'
+alias L='eza -aHl --icons --git --grid --time-style relative --group-directories-first'
+alias l='eza -aHl --icons --git --time-style relative --group-directories-first'
 alias lt='eza -aHl --icons --git --sort=modified'
 alias lf='eza -aHl --icons --git --sort=size --total-size'
 alias ld='eza -aHlD --icons --git'
