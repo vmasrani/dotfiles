@@ -217,6 +217,7 @@ install_lazygit() {
     go install github.com/jesseduffield/lazygit@latest
 }
 
+
 install_pipx() {
     if [[ "$OS_TYPE" == "linux" ]]; then
         sudo apt -y install pipx
@@ -226,6 +227,7 @@ install_pipx() {
     pipx ensurepath
 }
 
+
 install_bfs() {
     if [[ "$OS_TYPE" == "linux" ]]; then
         sudo apt -y install bfs
@@ -233,6 +235,17 @@ install_bfs() {
         brew install tavianator/tap/bfs
     fi
 }
+
+
+install_yq() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo snap install yq
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install yq
+    fi
+}
+
+
 
 install_xsel() {
     if [[ "$OS_TYPE" == "linux" ]]; then
