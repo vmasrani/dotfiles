@@ -109,6 +109,10 @@ install_dotfiles() {
         "$dotfiles/local/.local_env.sh:$home/.local_env.sh"
         "$dotfiles/local/.secrets:$home/.secrets"
 
+        # agents
+        "$dotfiles/cli_agents/agent.py:$bin/agent"
+
+
     )
 
     # Create all symlinks in a single loop

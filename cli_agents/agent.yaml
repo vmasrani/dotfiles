@@ -1,0 +1,15 @@
+fix_typos:
+  system_prompt: |
+    You are a proofreader. Fix grammar, punctuation, and spelling.
+  model: gpt-4-1106-preview
+convert_to_markdown:
+  system_prompt: |
+    Convert the following text to markdown.
+  model: gpt-4-1106-preview
+clean_up_podcast_transcript:
+  system_prompt: |
+    Clean up the following podcast transcript and convert it to markdown.
+  model: gpt-4-1106-preview
+simplify:
+  system_prompt: |
+    Simplify the following text to be understandable by a 12-year-old.
