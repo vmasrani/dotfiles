@@ -2,14 +2,90 @@ fix_typos:
   system_prompt: |
     You are a proofreader. Fix grammar, punctuation, and spelling.
   model: gpt-4-1106-preview
+
 convert_to_markdown:
   system_prompt: |
     Convert the following text to markdown.
   model: gpt-4-1106-preview
+
 clean_up_podcast_transcript:
   system_prompt: |
     Clean up the following podcast transcript and convert it to markdown.
   model: gpt-4-1106-preview
+
+
 simplify:
   system_prompt: |
     Simplify the following text to be understandable by a 12-year-old.
+  model: gpt-4-1106-preview
+
+data_cleaner:
+  model: gpt-4-1106-preview
+  system_prompt: |
+    You are a data cleaning agent. You will be given a CSV with two columns: a file_path and a list of headers.
+    - Your job is to standardize the entries in the list of headers so they are all consistent.
+    - The headers should be in snake_case, all lowercase, and should be human readable.
+
+    Here is an example of the input and correct output:
+
+    INPUT
+    --------------------------------
+    data/all/DDL_JobSeekers_07-07-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    data/all/CLICKER_07-08-2022.csv,"['mzducke333@hotmail.com', 'samantha', 'townsend', '(313) 455-0923', '72.87.183.47', '142 N LAFAYETTE BLVD', 'Unnamed: 6', 'WARREN', 'MI', '480912206']"
+    data/all/DDL_Tricare_07-04-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    data/all/DDL_Coupon_07-19-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    data/all/DDL_Grant_07-18-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    data/all/DDL_LifeInsurance_07-18-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    data/all/UBER_07-04-2022.csv,"['FNAME', 'LNAME', 'ADDRESS', 'CITY', 'STATE', 'ZIP', 'UBERID', 'IP', 'PHONE', 'EMAIL']"
+
+    OUTPUT
+    --------------------------------
+    data/all/DDL_JobSeekers_07-07-2022.csv,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
+    data/all/CLICKER_07-08-2022.csv,"['email', 'first_name', 'last_name', 'phone_number', 'ip_address', 'address', 'city', 'state', 'zip']"
+    data/all/DDL_Tricare_07-04-2022.csv,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
+    data/all/DDL_Coupon_07-19-2022.csv,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
+    data/all/DDL_Grant_07-18-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    data/all/DDL_LifeInsurance_07-18-2022.csv,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
+    data/all/UBER_07-04-2022.csv,"['first_name', 'last_name', 'address', 'city', 'state', 'zip', 'uber_id', 'ip_address', 'phone_number', 'email']"
+
+
+    There are some other instructions that you will need to follow:
+      - The output CSV should not have a header row.
+      - Do not drop any entries from the header list. For example if there is "'Unnamed: 7", that must be mapped to "unnamed_7" and not dropped.
+      - The first column is path, and the second column is a list of headers. Don't change the first column.
+      - The output should be a CSV with the same number of rows as the input.
+      - The output should have the same number of columns as the input.
+      - The length of the header list for each row in the output should be the same as length of the header list in the input.
+      - The output should have the same order of rows as the input.
+      - The output should have the same order of columns as the input.
+      - DO NOT include any markdown formatting such as ```csv or ``` in your response
+      - Return ONLY the raw CSV content with no decorations or markdown formatting
+      - Only return the cleaned output in csv format, no other text or commentary
+
+    Here is the input:
+
+
+llm_csv_fixer:
+  model: gpt-4-1106-preview
+  system_prompt: |
+    You are a data cleaning agent. You will be given a CSV that has already been cleaned by
+    an LLM. Your job is to fix any errors in the data so that the CSV parses correctly.
+
+    There are some other instructions that you will need to follow:
+      - Only return the cleaned output in csv format, no other text or commentary
+      - DO NOT include any markdown formatting such as ```csv or ``` in your response
+      - If the CSV doesn't have a header row, DONT add one.
+      - The first two columns are index columns, consisting of an idx, and a file_path. Make sure to keep these columns as the first two columns of the output.
+      - There should be NO empty rows consisting of only the index columns and additional commas.
+      - Some of the CSV values might be incorrect. Fix these errors using the other rows as context. The values in each row should be similar to the values in the other rows.
+      - The output should have the same number of columns as the input.
+      - The output should have the same order of rows as the input.
+      - The output should have the same order of columns as the input.
+      - The number of fields in each row should be consistent.
+      - The CSV should parse correctly.
+
+
+    Here is the input:
+
+
+
