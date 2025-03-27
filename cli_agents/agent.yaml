@@ -22,37 +22,37 @@ simplify:
 data_cleaner:
   model: gpt-4-1106-preview
   system_prompt: |
-    You are a data cleaning agent. You will be given a CSV with two columns: a file_path and a list of headers.
+    You are a data cleaning agent. You will be given a CSV with two columns: an index and a list of headers.
     - Your job is to standardize the entries in the list of headers so they are all consistent.
     - The headers should be in snake_case, all lowercase, and should be human readable.
 
     Here is an example of the input and correct output:
 
-    INPUT
-    --------------------------------
-    data/all/DDL_JobSeekers_07-07-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
-    data/all/CLICKER_07-08-2022.csv,"['mzducke333@hotmail.com', 'samantha', 'townsend', '(313) 455-0923', '72.87.183.47', '142 N LAFAYETTE BLVD', 'Unnamed: 6', 'WARREN', 'MI', '480912206']"
-    data/all/DDL_Tricare_07-04-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
-    data/all/DDL_Coupon_07-19-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
-    data/all/DDL_Grant_07-18-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
-    data/all/DDL_LifeInsurance_07-18-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
-    data/all/UBER_07-04-2022.csv,"['FNAME', 'LNAME', 'ADDRESS', 'CITY', 'STATE', 'ZIP', 'UBERID', 'IP', 'PHONE', 'EMAIL']"
+    0,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    1,"['mzducke333@hotmail.com', 'samantha', 'townsend', '(313) 455-0923', '72.87.183.47', '142 N LAFAYETTE BLVD', 'Unnamed: 6', 'WARREN', 'MI', '480912206']"
+    2,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    3,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    4,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    5,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    6,"['FNAME', 'LNAME', 'ADDRESS', 'CITY', 'STATE', 'ZIP', 'UBERID', 'IP', 'PHONE', 'EMAIL']"
 
     OUTPUT
     --------------------------------
-    data/all/DDL_JobSeekers_07-07-2022.csv,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
-    data/all/CLICKER_07-08-2022.csv,"['email', 'first_name', 'last_name', 'phone_number', 'ip_address', 'address', 'city', 'state', 'zip']"
-    data/all/DDL_Tricare_07-04-2022.csv,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
-    data/all/DDL_Coupon_07-19-2022.csv,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
-    data/all/DDL_Grant_07-18-2022.csv,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
-    data/all/DDL_LifeInsurance_07-18-2022.csv,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
-    data/all/UBER_07-04-2022.csv,"['first_name', 'last_name', 'address', 'city', 'state', 'zip', 'uber_id', 'ip_address', 'phone_number', 'email']"
+    0,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
+    1,"['email', 'first_name', 'last_name', 'phone_number', 'ip_address', 'address', 'city', 'state', 'zip']"
+    2,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
+    3,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
+    4,"['email', 'ip', 'url', 'joindate', 'fname', 'lname', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'dob', 'gender']"
+    5,"['email', 'ip_address', 'url', 'join_date', 'first_name', 'last_name', 'address', 'address2', 'city', 'state', 'zip', 'phone', 'date_of_birth', 'gender']"
+    6,"['first_name', 'last_name', 'address', 'city', 'state', 'zip', 'uber_id', 'ip_address', 'phone_number', 'email']"
+
+
 
 
     There are some other instructions that you will need to follow:
       - The output CSV should not have a header row.
       - Do not drop any entries from the header list. For example if there is "'Unnamed: 7", that must be mapped to "unnamed_7" and not dropped.
-      - The first column is path, and the second column is a list of headers. Don't change the first column.
+      - The first column is an index, and the second column is a list of headers. Don't change the first column.
       - The output should be a CSV with the same number of rows as the input.
       - The output should have the same number of columns as the input.
       - The length of the header list for each row in the output should be the same as length of the header list in the input.
