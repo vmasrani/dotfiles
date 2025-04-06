@@ -240,6 +240,7 @@ def main(
         if args.inplace:
             backup = f"{args.file}.bak"
             # First create the backup
+
             Path(backup).write_bytes(Path(args.file).read_bytes())
             # Then write the new content to the original file
             Path(args.file).write_text(output)
