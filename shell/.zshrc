@@ -83,3 +83,9 @@ bindkey '^[[1;3C' forward-word
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 . "$HOME/.cargo/env"
 
+
+. "$HOME/.local/bin/env"
+
+# Task Master aliases added on 4/19/2025
+alias tm='task-master'
+alias taskmaster='task-master'
