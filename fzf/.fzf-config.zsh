@@ -74,3 +74,34 @@ eval set -- {+1}
 for arg in "$@"; do
     { git diff --color=always -- "$arg" | git log --color=always "$arg" } 2>/dev/null
 done'
+
+
+#!/usr/bin/env bash
+# Author: James Cherti
+# License: MIT
+# URL: https://www.jamescherti.com/tmux-autocomplete-fzf-fuzzy-insertion-scrollback/
+
+tmux_fzf_autocomplete() {
+  # Capture the last 100,000 lines from the tmux scrollback buffer, reverse
+  # order, and extract strings
+  tmux capture-pane -pS -100000 \
+    |
+    # Split input on spaces and newlines, remove duplicates while preserving
+    # order, and keep only strings longer than 4 characters
+    awk 'BEGIN { RS = "[ \t\n]" } length($0) > 4 && !seen[$0]++' \
+    |
+    # Invoke fzf for case-insensitive exact fuzzy matching, with results shown
+    # in reverse order
+    fzf --no-sort --exact +i --tac
+}
+
+fzf-tmux-widget(){
+    LBUFFER="${LBUFFER}$(tmux_fzf_autocomplete)"
+    local ret=$?
+    zle reset-prompt
+    return $ret
+}
+
+# Pressing Ctrl-n autocompletes from the Tmux scrollback buffer
+zle     -N   fzf-tmux-widget
+bindkey '^N' fzf-tmux-widget
