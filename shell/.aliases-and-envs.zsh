@@ -75,7 +75,7 @@ alias rg='rg --no-ignore'
 alias bat='bat -n --color=always'
 alias du='du -sh'
 
-alias mmv='noglob zmv -W'
+# alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach || tmux new-session -s default"
 alias hxlog="hx $HOME/.cache/helix/helix.log"
@@ -86,6 +86,8 @@ alias rsync='rsync -avz --compress --verbose --human-readable --partial --progre
 alias ga="lazygit"
 alias bfs='bfs -L'
 alias chals='alias | grep' #check aliases
+alias rename='agent file_renamer'
+
 
 
 if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
@@ -108,3 +110,5 @@ get_filtered_pids() {
 }
 
 alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
+
+alias archive-agent='/Users/vmasrani/dev/archive-agent/Archive-Agent/archive-agent.sh'
