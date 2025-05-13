@@ -112,6 +112,10 @@ install_dotfiles() {
         # agents
         "$dotfiles/cli_agents/agent.py:$bin/agent"
 
+        # helix
+        "$dotfiles/editors/hx_languages.toml:$home/.config/helix/languages.toml"
+        "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
+
 
     )
 
