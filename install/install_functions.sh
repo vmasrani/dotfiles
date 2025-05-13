@@ -258,11 +258,15 @@ install_xsel() {
 
 install_nbpreview() {
     export PATH="$HOME/.local/bin:$PATH"
+    echo "WARNING!!!"
+    echo "REPLACE THIS WITH UV"
     pipx install nbpreview
 }
 
 install_terminaltexteffects() {
     export PATH="$HOME/.local/bin:$PATH"
+    echo "WARNING!!!"
+    echo "REPLACE THIS WITH UV"
     pipx install terminaltexteffects
 }
 
@@ -346,13 +350,16 @@ install_fzf_tab_completion() {
 }
 
 install_ml_helpers() {
+    echo "WARNING!!!"
+    echo "REPLACE THIS WITH UV"
     git clone https://github.com/vmasrani/machine_learning_helpers.git "$HOME/.python"
     echo "machine_learning_helpers installed successfully."
 }
 
 
-
 install_hypers() {
+    echo "WARNING!!!"
+    echo "REPLACE THIS WITH UV"
     git clone https://github.com/vmasrani/hypers.git "$HOME/hypers"
     echo "hypers installed successfully."
 }

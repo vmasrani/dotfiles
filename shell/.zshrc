@@ -33,7 +33,7 @@ export KEYTIMEOUT=1
 export ZSH_DISABLE_COMPFIX="true"
 
 # Activate ml3 environment
-source $HOME/ml3/bin/activate
+# source $HOME/ml3/bin/activate
 
 # Source Core Configuration Files
 source ~/helper_functions.sh
