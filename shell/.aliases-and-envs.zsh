@@ -18,14 +18,6 @@ alias vscode='cursor'
 
 alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
 
-alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
-alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
-alias mysql_shell='mysql -u root -p -h localhost'
-
-#postgres
-alias pg_start="launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
-alias pg_stop="launchctl unload ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
-
 alias less='less -M -X -g -i -J --underline-special --SILENT'
 
 # Config
@@ -53,11 +45,13 @@ alias .8='cd ../../../../../../../../'      # Go back 8 directory levels
 alias .9='cd ../../../../../../../../../'   # Go back 9 directory levels
 
 #tree alias's"
-alias t='eza -aHl --icons --tree --no-user --no-permissions'
-alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1'
-alias t2='eza -aHl --icons --tree --no-user --no-permissions -L 2'
-alias t3='eza -aHl --icons --tree --no-user --no-permissions -L 3'
-alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4'
+export EZA_TREE_IGNORE='.venv|.git|.mypy_cache|__pycache__|.pytest_cache'
+
+alias t='eza -aHl --icons --tree --no-user --no-permissions -I "$EZA_TREE_IGNORE"'
+alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1 -I "$EZA_TREE_IGNORE"'
+alias t2='eza -aHl --icons --tree --no-user --no-permissions -L 2 -I "$EZA_TREE_IGNORE"'
+alias t3='eza -aHl --icons --tree --no-user --no-permissions -L 3 -I "$EZA_TREE_IGNORE"'
+alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4 -I "$EZA_TREE_IGNORE"'
 
 #Preferred implementations
 alias mv='mv -iv'                           # Preferred 'mv' implementation
@@ -75,7 +69,7 @@ alias rg='rg --no-ignore'
 alias bat='bat -n --color=always'
 alias du='du -sh'
 
-alias mmv='noglob zmv -W'
+# alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
 alias ta="tmux attach || tmux new-session -s default"
 alias hxlog="hx $HOME/.cache/helix/helix.log"
@@ -86,6 +80,8 @@ alias rsync='rsync -avz --compress --verbose --human-readable --partial --progre
 alias ga="lazygit"
 alias bfs='bfs -L'
 alias chals='alias | grep' #check aliases
+alias rename='agent file_renamer'
+
 
 
 if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
@@ -108,3 +104,5 @@ get_filtered_pids() {
 }
 
 alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
+
+alias archive-agent='/Users/vmasrani/dev/archive-agent/Archive-Agent/archive-agent.sh'

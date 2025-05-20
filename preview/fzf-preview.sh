@@ -23,7 +23,7 @@ if [[ -f $1 ]]; then
     *.feather)
       feather-preview "$1"
       ;;
-    *.jpg|*.jpeg|*.png|*.gif)
+    *.jpg|*.jpeg|*.png)
       chafa --size=80x80 "$1"
       ;;
     *.zip)
@@ -51,7 +51,7 @@ if [[ -f $1 ]]; then
       ;;
   esac
 elif [[ -d $1 ]]; then
-  eza -aHl --icons --tree --no-user --no-permissions -L 3 -I ".git|.mypy_cache|__pycache__" --color=always "$1"
+  eza -aHl --icons --tree --no-user --no-permissions -L 3 -I "$EZA_TREE_IGNORE" --color=always "$1"
 else
   echo "$1"
 fi
