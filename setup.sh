@@ -26,15 +26,13 @@ install_if_dir_missing ~/bin/_diff-so-fancy install_diff_so_fancy               
 install_if_dir_missing ~/.cursor-server/extensions install_finditfaster          # Fast file finder extension for Cursor editor
 
 # install binaries
-install_if_missing pipx install_pipx # Python package installer that creates isolated environments
-install_if_missing uv install_uv # Fast Python package installer and environment manager
+install_if_missing npm install_npm # Node.js package manager
+install_if_missing go install_go # Go programming language and toolchain
 install_if_missing bfs install_bfs # Breadth-first search for filesystem traversal
 install_if_missing eza install_eza # Modern replacement for ls with color and git integration
 install_if_missing fzf install_fzf # Command-line fuzzy finder for files, history, and more
 install_if_missing cargo install_cargo # Rust package manager and build system
 install_if_missing tldr install_tealdeer # Simplified and community-driven man pages
-install_if_missing npm install_npm # Node.js package manager
-install_if_missing go install_go # Go programming language and toolchain
 install_if_missing hx install_helix # Modern terminal-based text editor
 install_if_missing glow install_glow # Markdown terminal viewer with style
 install_if_missing lazygit install_lazygit # Terminal UI for git commands

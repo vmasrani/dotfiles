@@ -40,7 +40,7 @@ if [[ -f $1 ]]; then
       chafa --size=60x60 "/tmp/thumbnail.png"
       ;;
     *.ipynb)
-      nbp -c --color-system truecolor -n -w 60 "$1"
+      nbcat "$1"
       ;;
     *)
       if tldr "$1" &> /dev/null; then
