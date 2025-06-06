@@ -2,27 +2,9 @@
 
 import sys
 from pathlib import Path
-import shutil
 import time
 from convertio import Client
-import re
-from pypdf import PdfReader
-from tqdm import tqdm
 
-def get_metadata(input_file):
-    try:
-        reader = PdfReader(input_file)
-        info = reader.metadata
-        author = info.get('/Author', 'unknown_author')
-        title = info.get('/Title', input_file.stem)
-    except Exception as e:
-        print(f"Error reading metadata: {e}")
-        author = "unknown_author"
-        title = input_file.stem
-    return author, title
-
-def sanitize_name(name):
-    return re.sub(r'_{2,}', '_', ''.join(c.lower() if c.isalnum() else '_' for c in name)).strip('_')
 
 def convert_file(api, source, target, output_dir):
     output_file = output_dir / f"{source.stem}.{target}"
@@ -56,18 +38,14 @@ def main():
         api_key = f.read().strip()
 
     api = Client(api_key)
-    output_dir = Path("temp_ebook")
-    output_dir.mkdir(exist_ok=True)
+    output_dir = input_file.parent
 
     # Convert to all formats
     pdf_file = handle_format(api, input_file, output_dir, 'pdf')
     epub_file = handle_format(api, input_file, output_dir, 'epub')
     mobi_file = handle_format(api, input_file, output_dir, 'mobi')
 
-    author, title = get_metadata(pdf_file)
-    clean_name = sanitize_name(f"{author} - {title}")
-    final_output_dir = Path(f"{clean_name}_ebook")
-    final_output_dir.mkdir(exist_ok=True)
+    # clean_name = input_file.stem
 
     # Check all files exist
     for file, format in [(pdf_file, 'PDF'), (epub_file, 'EPUB'), (mobi_file, 'MOBI')]:
@@ -75,13 +53,7 @@ def main():
             print(f"Error: The {format} file '{file}' was not created.")
             sys.exit(1)
 
-    # Copy all formats to final directory
-    shutil.copy(str(pdf_file), final_output_dir / f"{clean_name}.pdf")
-    shutil.copy(str(epub_file), final_output_dir / f"{clean_name}.epub")
-    shutil.copy(str(mobi_file), final_output_dir / f"{clean_name}.mobi")
-
-    shutil.rmtree(output_dir)
-    print(f"Conversion complete. Output files are in the '{final_output_dir}' directory.")
+    print(f"Conversion complete. Output files are in '{input_file.parent}'.")
 
 if __name__ == "__main__":
     main()
