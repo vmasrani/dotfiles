@@ -45,6 +45,7 @@ install_dotfiles() {
 
     mkdir -p "$HOME"/bin
     mkdir -p "$HOME/dev/projects"
+    mkdir -p "$HOME/.config/helix"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
@@ -222,16 +223,6 @@ install_lazygit() {
 }
 
 
-install_pipx() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt -y install pipx
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install pipx
-    fi
-    pipx ensurepath
-}
-
-
 install_bfs() {
     if [[ "$OS_TYPE" == "linux" ]]; then
         sudo apt -y install bfs
@@ -261,13 +252,7 @@ install_xsel() {
 
 
 install_nbpreview() {
-    export PATH="$HOME/.local/bin:$PATH"
-    pipx install nbpreview
-}
-
-install_terminaltexteffects() {
-    export PATH="$HOME/.local/bin:$PATH"
-    pipx install terminaltexteffects
+    uv tool install nbcat
 }
 
 install_tmux() {
@@ -334,13 +319,7 @@ install_eza() {
 }
 
 install_parquet_tools() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        wget https://github.com/hangxie/parquet-tools/releases/download/v1.25.1/parquet-tools_1.25.1_amd64.deb
-        sudo dpkg -i parquet-tools_1.25.1_amd64.deb
-        rm parquet-tools_1.25.1_amd64.deb
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install parquet-tools
-    fi
+    go install github.com/hangxie/parquet-tools@latest
     echo "parquet-tools installed successfully."
 }
 
@@ -350,13 +329,16 @@ install_fzf_tab_completion() {
 }
 
 install_ml_helpers() {
+    echo "WARNING!!!"
+    echo "REPLACE THIS WITH UV"
     git clone https://github.com/vmasrani/machine_learning_helpers.git "$HOME/.python"
     echo "machine_learning_helpers installed successfully."
 }
 
 
-
 install_hypers() {
+    echo "WARNING!!!"
+    echo "REPLACE THIS WITH UV"
     git clone https://github.com/vmasrani/hypers.git "$HOME/hypers"
     echo "hypers installed successfully."
 }

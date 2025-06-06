@@ -18,14 +18,6 @@ alias vscode='cursor'
 
 alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
 
-alias mysql_start='sudo /usr/local/mysql/support-files/mysql.server start'
-alias mysql_stop='sudo /usr/local/mysql/support-files/mysql.server stop'
-alias mysql_shell='mysql -u root -p -h localhost'
-
-#postgres
-alias pg_start="launchctl load ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
-alias pg_stop="launchctl unload ~/Library/LaunchAgents/homebrew.mxcl.postgresql.plist"
-
 alias less='less -M -X -g -i -J --underline-special --SILENT'
 
 # Config
@@ -53,11 +45,13 @@ alias .8='cd ../../../../../../../../'      # Go back 8 directory levels
 alias .9='cd ../../../../../../../../../'   # Go back 9 directory levels
 
 #tree alias's"
-alias t='eza -aHl --icons --tree --no-user --no-permissions'
-alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1'
-alias t2='eza -aHl --icons --tree --no-user --no-permissions -L 2'
-alias t3='eza -aHl --icons --tree --no-user --no-permissions -L 3'
-alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4'
+export EZA_TREE_IGNORE='.venv|.git|.mypy_cache|__pycache__|.pytest_cache'
+
+alias t='eza -aHl --icons --tree --no-user --no-permissions -I "$EZA_TREE_IGNORE"'
+alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1 -I "$EZA_TREE_IGNORE"'
+alias t2='eza -aHl --icons --tree --no-user --no-permissions -L 2 -I "$EZA_TREE_IGNORE"'
+alias t3='eza -aHl --icons --tree --no-user --no-permissions -L 3 -I "$EZA_TREE_IGNORE"'
+alias t4='eza -aHl --icons --tree --no-user --no-permissions -L 4 -I "$EZA_TREE_IGNORE"'
 
 #Preferred implementations
 alias mv='mv -iv'                           # Preferred 'mv' implementation
