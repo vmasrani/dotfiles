@@ -61,6 +61,8 @@ source ~/.fzf-config.zsh
 
 # Numeric sort
 setopt numeric_glob_sort
+# setopt INC_APPEND_HISTORY  # Write to the history file immediately, not when the shell exits.
+setopt SHARE_HISTORY  # Share history between all sessions.
 
 # Better vim mode
 
@@ -78,37 +80,6 @@ bindkey '^f' edit-command-line
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
-
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 . "$HOME/.cargo/env"
-
-
-. "$HOME/.local/bin/env"
-
-# Task Master aliases added on 4/19/2025
-alias tm='task-master'
-alias taskmaster='task-master'
-
-# bun completions
-[ -s "/Users/vmasrani/.bun/_bun" ] && source "/Users/vmasrani/.bun/_bun"
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
