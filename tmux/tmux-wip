@@ -1,0 +1,731 @@
+# vim:ft=conf:
+
+# Primer: https://danielmiessler.com/study/tmux/
+# Tmux for mere mortals: https://zserge.com/posts/tmux/
+# gitmux: https://github.com/arl/gitmux
+
+
+# Create new panes and windows with current path
+bind c new-window -c "#{pane_current_path}"
+bind '"' split-window -c "#{pane_current_path}"
+bind % split-window -h -c "#{pane_current_path}"
+bind-key -n "M-'" split-window -h -c "#{pane_current_path}"
+bind-key -n M-/ split-window -v -c "#{pane_current_path}"
+bind-key -n M-n new-window -c "#{pane_current_path}"
+bind-key -n M-N new-session -c "#{pane_current_path}"
+
+# toggle
+bind-key / next-layout
+# Quick view of processes
+bind-key h display-popup -E -h 95% -w 95% -x 5% 'htop -t -u "$(whoami)"'
+# bind-key h display-popup -E -h 95% -w 95% -x 5% 'htop -t -u "$(whoami)" -p "$(pgrep -vfd, $HTOP_FILTER)"'
+
+bind-key g display-popup -E -h 95% -w 60% -x C -y C 'watch -n 1 nvidia-smi'
+bind W run-shell -b "$HOME/.tmux/plugins/tmux-fzf/scripts/window.sh switch"
+
+# Help screen: rebind list-keys window into a new pane
+bind-key ? split-window -h 'exec tmux list-keys | fzf-tmux -p80%,80%'
+
+
+# syntax highlighting in Vim
+# set -g terminal-overrides ",xterm-256color:Tc"
+# set -g default-terminal "screen-256color"
+set -g default-terminal "tmux-256color"
+# increase history limit
+set -g history-limit 100000
+# start numbering windows from 1 instead of zero
+set -g base-index 1
+set-option -g renumber-windows on
+# Faster escape sequences (default is 500ms).
+# This helps when exiting insert mode in Vim: http://superuser.com/a/252717/65504
+set -s escape-time 50
+
+
+bind -n M-A display-popup -E -h 95% -w 95% -x 5% show-tmux-popup.sh popup1
+bind -T popup M-A detach
+
+bind -n M-S display-popup -E -h 95% -w 95% -x 5% show-tmux-popup.sh popup2
+bind -T popup M-S detach
+# bind -n M-A run-shell "sh ~/.tmux/show-tmux-popup.sh popup1"
+# bind -n M-B run-shell "sh ~/.tmux/show-tmux-popup.sh popup2"
+
+# support detaching from nested session with the same shortcut
+bind -T popup C-o copy-mode
+
+# Enable mouse mode for the popup window
+bind -T popup MouseDown1Pane select-pane
+bind -T popup WheelUpPane if-shell -F -t = "#{?pane_in_mode,1,0}" "send-keys -t = -X scroll-up" "copy-mode -u"
+bind -T popup WheelDownPane if-shell -F -t = "#{?pane_in_mode,1,0}" "send-keys -t = -X scroll-down" "copy-mode"
+
+
+# enable for iTerm (Terminal.app doesn't have mouse support)
+# set -g mouse off
+set -g mouse on
+
+set -s set-clipboard on
+set -g allow-passthrough
+
+
+# bind-key -T vi-copy WheelUpPane scroll-up
+# bind-key -T vi-copy WheelDownPane scroll-down
+bind -T copy-mode-vi v send -X begin-selection
+bind -T copy-mode-vi y send-keys -X copy-pipe-and-cancel 'copy'
+bind P paste-buffer
+bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel 'copy'
+
+set-option -g status-position top
+
+# enable clipboard  http://goo.gl/DN82E
+# enable RubyMotion http://goo.gl/WDlCy
+# set -g default-command "reattach-to-user-namespace bash -l"
+
+set-option -g status-keys vi
+set-option -g set-titles on
+set-option -g set-titles-string 'tmux - #W'
+set -g bell-action any
+set-option -g visual-bell off
+# set-option -g set-clipboard off
+setw -g mode-keys vi
+setw -g monitor-activity on
+set -g visual-activity on
+set -g status-interval 2
+
+setenv -g SHOW_DIRECTORY_NAME 1
+
+# disable possibly set visual editor
+set-environment -gu GEM_EDITOR
+
+# load any local config
+if-shell "test -f $HOME/.tmux.conf.local "source $HOME/.tmux.conf.local
+set -g @plugin 'tmux-plugins/tmux-sensible'
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'laktak/extrakto'
+# set -g @plugin 'shivamashtikar/tmux-onedark-theme'
+set -g @plugin 'sainnhe/tmux-fzf'
+set -g @plugin 'fcsonline/tmux-thumbs'
+# set -g @plugin 'tmux-plugins/tmux-copycat'
+
+
+# from https://github.com/wincent/wincent/blob/c02f91d6821f/aspects/dotfiles/files/.config/tmux/tmux.conf
+
+
+%hidden TMUX_VERSION="#{s|next-||:#{version}}"
+%hidden IS_TMUX_3_3_OR_ABOVE="#{e|>=|f|0:$TMUX_VERSION,3.3}"
+%hidden IS_TMUX_3_4_OR_ABOVE="#{e|>=|f|0:$TMUX_VERSION,3.4}"
+%hidden IS_TMUX_3_5_OR_ABOVE="#{e|>=|f|0:$TMUX_VERSION,3.5}"
+
+# # Set prefix to space.
+# unbind-key C-b
+set-option -g prefix C-b
+
+
+# Bindings:
+# - to see current bindings:
+#   tmux list-keys
+
+# Intuitive window-splitting keys.
+bind-key | split-window -h -c '#{pane_current_path}' # normally prefix-%
+bind-key '\' split-window -h -c '#{pane_current_path}' # normally prefix-%
+bind-key - split-window -v -c '#{pane_current_path}' # normally prefix-"
+
+# Open split panes with the path of the current pane.
+unbind-key %
+bind-key % split-window -h -c '#{pane_current_path}'
+unbind-key '"'
+bind-key '"' split-window -v -c '#{pane_current_path}'
+
+# Same for new windows.
+unbind-key c
+bind-key c new-window -c '#{pane_current_path}'
+
+# Vim-like key bindings for pane navigation (default uses cursor keys).
+unbind-key h
+bind-key h select-pane -L
+unbind-key j
+bind-key j select-pane -D
+unbind-key k
+bind-key k select-pane -U
+unbind-key l # normally used for last-window
+bind-key l select-pane -R
+
+# Resizing (mouse also works).
+# Here, and in other binds, `-r` allows us to repeat without having to hit the
+# prefix (with repeat-time, which defaults to 500ms).
+unbind-key Left
+bind-key -r Left resize-pane -L 5
+unbind-key Right
+bind-key -r Right resize-pane -R 5
+unbind-key Down
+bind-key -r Down resize-pane -D 5
+unbind-key Up
+bind-key -r Up resize-pane -U 5
+
+# Fast toggle between current and last-used window (normally prefix-l).
+bind-key ^space last-window
+
+# `^space ^space` is awfully close to the destructive `^space space`, which
+# trashes the layout. Provide a quick way to get back to the previous-used
+# layout.
+#
+# prefix-p is normally used for previous-window, but I never use that,
+# prefering numeric access or the fast toggle above (prefix-^space).
+bind-key p select-layout -o
+
+bind-key -r '<' swap-window -d -t '{previous}' # Move window left.
+bind-key -r '>' swap-window -d -t '{next}' # Move window right.
+
+# =================================== END OF WINCENT CONFIG ===================================
+
+
+
+
+
+
+set -g @dracula-colors "
+foreground='#ffffff'
+background='#002451'
+highlight='#003f8e'
+status_line='#00346e'
+comment='#7285b7'
+red='#ff9da4'
+orange='#ffc58f'
+yellow='#ffeead'
+green='#d1f1a9'
+aqua='#99ffff'
+blue='#bbdaff'
+purple='#ebbbff'
+pane='#4d5057'
+"
+
+#Variables
+
+color_status_text="colour245"
+color_window_off_status_bg="colour238"
+color_light="white" #colour015
+color_dark="colour232" # black= colour232
+color_window_off_status_current_bg="colour254"
+wg_user_host="#[fg=$color_secondary]#(whoami)#[default]@#H"
+
+bind -T root F12  \
+  set prefix None \;\
+  set key-table off \;\
+  set status-style "fg=$color_status_text,bg=$color_window_off_status_bg" \;\
+  set window-status-current-format "#[fg=$color_window_off_status_bg,bg=$color_window_off_status_current_bg]$separator_powerline_right#[default] #I:#W# #[fg=$color_window_off_status_current_bg,bg=$color_window_off_status_bg]$separator_powerline_right#[default]" \;\
+  set window-status-current-style "fg=$color_dark,bold,bg=$color_window_off_status_current_bg" \;\
+  if -F '#{pane_in_mode}' 'send-keys -X cancel' \;\
+  refresh-client -S \;\
+
+bind -T off F12 \
+  set -u prefix \;\
+  set -u key-table \;\
+  set -u status-style \;\
+  set -u window-status-current-style \;\
+  set -u window-status-current-format \;\
+  refresh-client -S
+
+wg_is_keys_off="#{?#{==:#(tmux show-option -qv key-table),off},#[reverse]OFF,}"
+
+# wg_is_keys_off="#[fg=$color_light,bg=$color_window_off_indicator]#([ $(tmux show-option -qv key-table) = 'off' ] && echo 'OFF')#[default]"
+
+set -g status-right "$wg_is_keys_off #{sysstat_cpu} | #{sysstat_mem} | #{sysstat_loadavg} | $wg_user_host"
+
+
+# Detect if we're running remotely via SSH
+if-shell '[ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]' {
+    # Remote configuration (Ubuntu with GPU)
+    set -g @plugin 'dracula/tmux'
+
+    # Check if nvidia-smi is available for GPU metrics
+    if-shell "command -v nvidia-smi" {
+        set -g @dracula-plugins "cpu-usage ram-usage gpu-usage gpu-ram-usage gpu-power-draw ssh-session network-bandwidth network"
+    } {
+        # Fallback for remote systems without GPU
+        set -g @dracula-plugins "synchronize cpu-usage ram-usage ssh-session network-bandwidth network"
+    }
+
+    set -g @dracula-show-powerline true
+    set -g @dracula-show-left-icon "󰄛"
+    set -g @dracula-synchronize-label "󰓦"
+    set -g @dracula-synchronize-indicator "sync"
+} {
+    # Local configuration (MacBook)
+    set -g @plugin 'dracula/tmux'
+    set -g @dracula-plugins "synchronize cpu-usage ram-usage weather time battery"
+    set -g @dracula-show-powerline true
+
+    # Local icon (laptop) + session name
+    set -g @dracula-show-left-icon ""
+
+    # Synchronize indicator settings
+    set -g @dracula-synchronize-label "󰓦"
+    set -g @dracula-synchronize-indicator "sync"
+    set -g @dracula-synchronize-colors "green dark_gray"
+
+    # CPU usage settings
+    set -g @dracula-cpu-usage-label "󰻠"
+    set -g @dracula-cpu-usage-colors "pink dark_gray"
+
+    # RAM usage settings
+    set -g @dracula-ram-usage-label ""
+    # set -g @dracula-ram-usage-label "󰍛"
+    set -g @dracula-ram-usage-colors "cyan dark_gray"
+
+    # Battery settings
+    set -g @dracula-battery-label "󰁹"
+    set -g @dracula-battery-colors "green dark_gray"
+    set -g @dracula-battery-style "percentage"
+    set -g @dracula-show-battery-percentage true
+
+    # Time settings
+    set -g @dracula-time-colors "orange dark_gray"
+
+    # Weather settings
+    set -g @dracula-weather-label "󰖐"
+    set -g @dracula-weather-colors "blue dark_gray"
+    set -g @dracula-fixed-location "Vancouver"
+    # set -g @dracula-show-fahrenheit false
+    # set -g @dracula-show-location true
+}
+
+
+# Common visual settings
+set -g @dracula-gpu-power-draw-colors "red dark_gray"
+set -g @dracula-gpu-ram-usage-colors "orange dark_gray"
+set -g @dracula-gpu-usage-colors "yellow dark_gray"
+
+
+set -g @dracula-network-colors "pink dark_gray"
+set -g @dracula-network-bandwidth-interval 1
+# Shared settings for both environments
+# CPU and RAM display settings
+set -g @dracula-cpu-usage-label "󰻠"
+set -g @dracula-cpu-display-load true
+set -g @dracula-cpu-usage-colors "dark_gray white"
+set -g @dracula-show-cpu-usage true
+
+# set -g @dracula-ram-usage-label "󰍛"
+set -g @dracula-ram-usage true
+set -g @dracula-ram-usage-colors "dark_purple white"
+set -g @dracula-show-ram-usage true
+
+set -g @dracula-ram-usage-label ""
+
+set -g @dracula-gpu-power-label "󰢮"
+set -g @dracula-gpu-usage-label "󰢮"
+set -g @dracula-gpu-vram-label "󰢮"
+
+
+set -g @dracula-network-ethernet-label "󰈀 Eth"
+set -g @dracula-network-offline-label "󱍢 "
+set -g @dracula-network-wifi-label ""
+
+set -g @dracula-show-left-sep ""
+set -g @dracula-show-right-sep ""
+set -g @dracula-show-flags false
+set -g @dracula-refresh-rate 2
+set -g @dracula-border-contrast true
+
+run-shell ~/.tmux/plugins/tmux-thumbs/tmux-thumbs.tmux
+set -g @thumbs-command 'echo -n {} | copy'
+set -g @thumbs-reverse enabled
+set -g @thumbs-unique enabled
+
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+set -g @plugin 'tmux-plugins/tmux-continuum'
+set -g @continuum-restore 'on'
+set -g default-command "exec $(which zsh) -l"
+
+set-option -g status-interval 5
+set-option -g automatic-rename on
+set-option -g automatic-rename-format '#{b:pane_current_path}'
+
+# source this file after changes
+bind R source-file ~/.tmux.conf \; display "Reloaded .tmux.conf file"
+
+run '~/.tmux/plugins/tpm/tpm'
+
+# Alternative icons if you prefer:
+# CPU: 󰘚 or  or
+# RAM:  or  or 󰆼
+# GPU: 󰾲 or  or
+# Weather:  or  or
+# Time:  or  or
+# Power:  or  or
+
+
+
+
+# # vim:ft=conf:
+
+# # Primer: https://danielmiessler.com/study/tmux/
+# # Tmux for mere mortals: https://zserge.com/posts/tmux/
+# # gitmux: https://github.com/arl/gitmux
+
+
+# # Create new panes and windows with current path
+# bind c new-window -c "#{pane_current_path}"
+# bind '"' split-window -c "#{pane_current_path}"
+# bind % split-window -h -c "#{pane_current_path}"
+# bind-key -n "M-'" split-window -h -c "#{pane_current_path}"
+# bind-key -n M-/ split-window -v -c "#{pane_current_path}"
+# bind-key -n M-n new-window -c "#{pane_current_path}"
+# bind-key -n M-N new-session -c "#{pane_current_path}"
+
+# # toggle
+# bind-key / next-layout
+# # Quick view of processes
+# bind-key h display-popup -E -h 95% -w 95% -x 5% 'htop -t -u "$(whoami)"'
+# # bind-key h display-popup -E -h 95% -w 95% -x 5% 'htop -t -u "$(whoami)" -p "$(pgrep -vfd, $HTOP_FILTER)"'
+
+# bind-key g display-popup -E -h 95% -w 60% -x C -y C 'watch -n 1 nvidia-smi'
+# bind W run-shell -b "$HOME/.tmux/plugins/tmux-fzf/scripts/window.sh switch"
+
+# # Help screen: rebind list-keys window into a new pane
+# bind-key ? split-window -h 'exec tmux list-keys | fzf-tmux -p80%,80%'
+
+
+# # syntax highlighting in Vim
+# # set -g terminal-overrides ",xterm-256color:Tc"
+# # set -g default-terminal "screen-256color"
+# set -g default-terminal "tmux-256color"
+# # increase history limit
+# set -g history-limit 100000
+# # start numbering windows from 1 instead of zero
+# set -g base-index 1
+# set-option -g renumber-windows on
+# # Faster escape sequences (default is 500ms).
+# # This helps when exiting insert mode in Vim: http://superuser.com/a/252717/65504
+# set -s escape-time 50
+
+
+# bind -n M-A display-popup -E -h 95% -w 95% -x 5% show-tmux-popup.sh popup1
+# bind -T popup M-A detach
+
+# bind -n M-S display-popup -E -h 95% -w 95% -x 5% show-tmux-popup.sh popup2
+# bind -T popup M-S detach
+# # bind -n M-A run-shell "sh ~/.tmux/show-tmux-popup.sh popup1"
+# # bind -n M-B run-shell "sh ~/.tmux/show-tmux-popup.sh popup2"
+
+# # support detaching from nested session with the same shortcut
+# bind -T popup C-o copy-mode
+
+# # Enable mouse mode for the popup window
+# bind -T popup MouseDown1Pane select-pane
+# bind -T popup WheelUpPane if-shell -F -t = "#{?pane_in_mode,1,0}" "send-keys -t = -X scroll-up" "copy-mode -u"
+# bind -T popup WheelDownPane if-shell -F -t = "#{?pane_in_mode,1,0}" "send-keys -t = -X scroll-down" "copy-mode"
+
+
+# # enable for iTerm (Terminal.app doesn't have mouse support)
+# # set -g mouse off
+# set -g mouse on
+
+# set -s set-clipboard on
+# set -g allow-passthrough
+
+
+# # bind-key -T vi-copy WheelUpPane scroll-up
+# # bind-key -T vi-copy WheelDownPane scroll-down
+# bind -T copy-mode-vi v send -X begin-selection
+# bind -T copy-mode-vi y send-keys -X copy-pipe-and-cancel 'copy'
+# bind P paste-buffer
+# bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel 'copy'
+
+# set-option -g status-position top
+
+# # enable clipboard  http://goo.gl/DN82E
+# # enable RubyMotion http://goo.gl/WDlCy
+# # set -g default-command "reattach-to-user-namespace bash -l"
+
+# set-option -g status-keys vi
+# set-option -g set-titles on
+# set-option -g set-titles-string 'tmux - #W'
+# set -g bell-action any
+# set-option -g visual-bell off
+# # set-option -g set-clipboard off
+# setw -g mode-keys vi
+# setw -g monitor-activity on
+# set -g visual-activity on
+# set -g status-interval 2
+
+# setenv -g SHOW_DIRECTORY_NAME 1
+
+# # disable possibly set visual editor
+# set-environment -gu GEM_EDITOR
+
+# # load any local config
+# if-shell "test -f $HOME/.tmux.conf.local "source $HOME/.tmux.conf.local
+# set -g @plugin 'tmux-plugins/tmux-sensible'
+# set -g @plugin 'tmux-plugins/tpm'
+# set -g @plugin 'laktak/extrakto'
+# # set -g @plugin 'shivamashtikar/tmux-onedark-theme'
+# set -g @plugin 'sainnhe/tmux-fzf'
+# set -g @plugin 'fcsonline/tmux-thumbs'
+
+# run ~/.config/tmux/plugins/catppuccin/tmux/catppuccin.tmux
+
+
+# set -g @plugin 'omerxx/catppuccin-tmux' # My fork that holds the meetings script bc I'm lazy af
+# set -g @plugin 'omerxx/tmux-sessionx'
+# set -g @plugin 'omerxx/tmux-floax'
+# set -g @floax-width '80%'
+# set -g @floax-height '80%'
+# set -g @floax-border-color 'magenta'
+# set -g @floax-text-color 'blue'
+# set -g @floax-bind 'p'
+# set -g @floax-change-path 'true'
+# set -g @sessionx-bind-zo-new-window 'ctrl-y'
+# set -g @sessionx-auto-accept 'off'
+# set -g @sessionx-custom-paths '~/dotfiles'
+# set -g @sessionx-bind 'o'
+# set -g @sessionx-x-path '~/dotfiles'
+# set -g @sessionx-window-height '85%'
+# set -g @sessionx-window-width '75%'
+# set -g @sessionx-zoxide-mode 'on'
+# set -g @sessionx-custom-paths-subdirectories 'false'
+# set -g @sessionx-filter-current 'false'
+# set -g @continuum-restore 'on'
+# set -g @resurrect-strategy-nvim 'session'
+# set -g @catppuccin_window_left_separator ""
+# set -g @catppuccin_window_right_separator " "
+# set -g @catppuccin_window_middle_separator " █"
+# set -g @catppuccin_window_number_position "right"
+# set -g @catppuccin_window_default_fill "number"
+# set -g @catppuccin_window_default_text "#W"
+# set -g @catppuccin_window_current_fill "number"
+# set -g @catppuccin_window_current_text "#W#{?window_zoomed_flag,(),}"
+# set -g @catppuccin_status_modules_right "cpu battery directory date_time "
+# set -g @catppuccin_status_modules_left "session"
+# set -g @catppuccin_status_left_separator  " "
+# set -g @catppuccin_status_right_separator " "
+# set -g @catppuccin_status_right_separator_inverse "no"
+# set -g @catppuccin_status_fill "icon"
+# set -g @catppuccin_status_connect_separator "no"
+# set -g @catppuccin_directory_text "#{b:pane_current_path}"
+# set -g @catppuccin_meetings_text "#($HOME/.config/tmux/scripts/cal.sh)"
+# set -g @catppuccin_date_time_text "%H:%M"
+
+
+
+
+
+# # # set -g @plugin 'tmux-plugins/tmux-copycat'
+
+
+# # # set -g @dracula-colors "
+# # # # Dracula Color Pallette
+# # # white='#f8f8f2'
+# # # gray='#44475a'
+# # # dark_gray='#282a36'
+# # # light_purple='#bd93f9'
+# # # dark_purple='#6272a4'
+# # # cyan='#8be9fd'
+# # # green='#50fa7b'
+# # # orange='#ffb86c'
+# # # red='#ff5555'
+# # # pink='#ff79c6'
+# # # yellow='#f1fa8c'
+# # # "
+
+# # set -g @dracula-colors "
+# # foreground='#ffffff'
+# # background='#002451'
+# # highlight='#003f8e'
+# # status_line='#00346e'
+# # comment='#7285b7'
+# # red='#ff9da4'
+# # orange='#ffc58f'
+# # yellow='#ffeead'
+# # green='#d1f1a9'
+# # aqua='#99ffff'
+# # blue='#bbdaff'
+# # purple='#ebbbff'
+# # pane='#4d5057'
+# # "
+
+
+# # #Variables
+
+# # color_status_text="colour245"
+# # color_window_off_status_bg="colour238"
+# # color_light="white" #colour015
+# # color_dark="colour232" # black= colour232
+# # color_window_off_status_current_bg="colour254"
+# # wg_user_host="#[fg=$color_secondary]#(whoami)#[default]@#H"
+
+# # bind -T root F12  \
+# #   set prefix None \;\
+# #   set key-table off \;\
+# #   set status-style "fg=$color_status_text,bg=$color_window_off_status_bg" \;\
+# #   set window-status-current-format "#[fg=$color_window_off_status_bg,bg=$color_window_off_status_current_bg]$separator_powerline_right#[default] #I:#W# #[fg=$color_window_off_status_current_bg,bg=$color_window_off_status_bg]$separator_powerline_right#[default]" \;\
+# #   set window-status-current-style "fg=$color_dark,bold,bg=$color_window_off_status_current_bg" \;\
+# #   if -F '#{pane_in_mode}' 'send-keys -X cancel' \;\
+# #   refresh-client -S \;\
+
+# # bind -T off F12 \
+# #   set -u prefix \;\
+# #   set -u key-table \;\
+# #   set -u status-style \;\
+# #   set -u window-status-current-style \;\
+# #   set -u window-status-current-format \;\
+# #   refresh-client -S
+
+# # wg_is_keys_off="#{?#{==:#(tmux show-option -qv key-table),off},#[reverse]OFF,}"
+
+# # # wg_is_keys_off="#[fg=$color_light,bg=$color_window_off_indicator]#([ $(tmux show-option -qv key-table) = 'off' ] && echo 'OFF')#[default]"
+
+# # set -g status-right "$wg_is_keys_off #{sysstat_cpu} | #{sysstat_mem} | #{sysstat_loadavg} | $wg_user_host"
+
+
+# # # Detect if we're running remotely via SSH
+# # if-shell '[ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]' {
+# #     # Remote configuration (Ubuntu with GPU)
+# #     set -g @plugin 'dracula/tmux'
+
+# #     # Check if nvidia-smi is available for GPU metrics
+# #     if-shell "command -v nvidia-smi" {
+# #         set -g @dracula-plugins "cpu-usage ram-usage gpu-usage gpu-ram-usage gpu-power-draw ssh-session network-bandwidth network"
+# #     } {
+# #         # Fallback for remote systems without GPU
+# #         set -g @dracula-plugins "synchronize cpu-usage ram-usage ssh-session network-bandwidth network"
+# #     }
+
+# #     set -g @dracula-show-powerline true
+# #     set -g @dracula-show-left-icon "󰄛"
+# #     set -g @dracula-synchronize-label "󰓦"
+# #     set -g @dracula-synchronize-indicator "sync"
+# # } {
+# #     # Local configuration (MacBook)
+# #     set -g @plugin 'dracula/tmux'
+# #     set -g @dracula-plugins "synchronize cpu-usage ram-usage weather time battery"
+# #     set -g @dracula-show-powerline true
+
+# #     # Local icon (laptop) + session name
+# #     set -g @dracula-show-left-icon ""
+
+# #     # Synchronize indicator settings
+# #     set -g @dracula-synchronize-label "󰓦"
+# #     set -g @dracula-synchronize-indicator "sync"
+# #     set -g @dracula-synchronize-colors "green dark_gray"
+
+# #     # CPU usage settings
+# #     set -g @dracula-cpu-usage-label "󰻠"
+# #     set -g @dracula-cpu-usage-colors "pink dark_gray"
+
+# #     # RAM usage settings
+# #     set -g @dracula-ram-usage-label ""
+# #     # set -g @dracula-ram-usage-label "󰍛"
+# #     set -g @dracula-ram-usage-colors "cyan dark_gray"
+
+# #     # Battery settings
+# #     set -g @dracula-battery-label "󰁹"
+# #     set -g @dracula-battery-colors "green dark_gray"
+# #     set -g @dracula-battery-style "percentage"
+# #     set -g @dracula-show-battery-percentage true
+
+# #     # Time settings
+# #     set -g @dracula-time-colors "orange dark_gray"
+
+# #     # Weather settings
+# #     set -g @dracula-weather-label "󰖐"
+# #     set -g @dracula-weather-colors "blue dark_gray"
+# #     set -g @dracula-fixed-location "Vancouver"
+# #     # set -g @dracula-show-fahrenheit false
+# #     # set -g @dracula-show-location true
+# # }
+
+# # # ethernet: 󰈀 󰒪 󰒍 󰌗 󰌘
+# # # offline: 󰖪  󱍢
+# # # wifi:      󰖩  󰘊 󰒢
+# # # 󰣀
+
+# # #
+# # # Available colors for Dracula widgets:
+# # # - dark_gray
+# # # - gray
+# # # - light_purple
+# # # - dark_purple
+# # # - cyan
+# # # - green
+# # # - orange
+# # # - red
+# # # - pink
+# # # - yellow
+# # # - white
+# # # - black
+# # # - purple
+# # # - light_gray
+# # # - blue
+# # # - dark_blue
+# # # - background (the default background color)
+# # # - foreground (the default foreground color)
+# # #
+# # # Each widget can be customized with the format:
+# # # set -g @dracula-[widget]-colors "[background] [foreground]"
+
+
+# # # Common visual settings
+# # set -g @dracula-gpu-power-draw-colors "red dark_gray"
+# # set -g @dracula-gpu-ram-usage-colors "orange dark_gray"
+# # set -g @dracula-gpu-usage-colors "yellow dark_gray"
+
+
+# # set -g @dracula-network-colors "pink dark_gray"
+# # set -g @dracula-network-bandwidth-interval 1
+# # # Shared settings for both environments
+# # # CPU and RAM display settings
+# # set -g @dracula-cpu-usage-label "󰻠"
+# # set -g @dracula-cpu-display-load true
+# # set -g @dracula-cpu-usage-colors "dark_gray white"
+# # set -g @dracula-show-cpu-usage true
+
+# # # set -g @dracula-ram-usage-label "󰍛"
+# # set -g @dracula-ram-usage true
+# # set -g @dracula-ram-usage-colors "dark_purple white"
+# # set -g @dracula-show-ram-usage true
+
+# # set -g @dracula-ram-usage-label ""
+
+# # set -g @dracula-gpu-power-label "󰢮"
+# # set -g @dracula-gpu-usage-label "󰢮"
+# # set -g @dracula-gpu-vram-label "󰢮"
+
+
+# # set -g @dracula-network-ethernet-label "󰈀 Eth"
+# # set -g @dracula-network-offline-label "󱍢 "
+# # set -g @dracula-network-wifi-label ""
+
+# # set -g @dracula-show-left-sep ""
+# # set -g @dracula-show-right-sep ""
+# # set -g @dracula-show-flags false
+# # set -g @dracula-refresh-rate 2
+# # set -g @dracula-border-contrast true
+
+# # run-shell ~/.tmux/plugins/tmux-thumbs/tmux-thumbs.tmux
+# # set -g @thumbs-command 'echo -n {} | copy'
+# # set -g @thumbs-reverse enabled
+# # set -g @thumbs-unique enabled
+
+# # set -g @plugin 'tmux-plugins/tmux-resurrect'
+# # set -g @plugin 'tmux-plugins/tmux-continuum'
+# # set -g @continuum-restore 'on'
+# # set -g default-command "exec $(which zsh) -l"
+
+# # set-option -g status-interval 5
+# # set-option -g automatic-rename on
+# # set-option -g automatic-rename-format '#{b:pane_current_path}'
+
+# # source this file after changes
+# bind R source-file ~/.tmux.conf \; display "Reloaded .tmux.conf file"
+
+# run '~/.tmux/plugins/tpm/tpm'
+
+# # Alternative icons if you prefer:
+# # CPU: 󰘚 or  or
+# # RAM:  or  or 󰆼
+# # GPU: 󰾲 or  or
+# # Weather:  or  or
+# # Time:  or  or
+# # Power:  or  or
+
+
+
