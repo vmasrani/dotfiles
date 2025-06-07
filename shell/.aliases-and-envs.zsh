@@ -83,6 +83,8 @@ alias chals='alias | grep' #check aliases
 alias rename='agent file_renamer'
 alias npp='uv init . && uv add ipython joblib matplotlib numpy pandas pandas_flavor polars pyjanitor requests rich scikit_learn seaborn torch tqdm pandas numpy requests ipdb PyYAML ipykernel openai ollama git+https://github.com/vmasrani/machine_learning_helpers.git neo4j mysql-connector-python'
 
+alias pyinit='uv init ipython joblib matplotlib numpy pandas pandas_flavor polars pyjanitor requests rich scikit_learn seaborn torch tqdm pandas numpy requests ipdb PyYAML ipykernel openai ollama git+https://github.com/vmasrani/machine_learning_helpers.git neo4j mysql-connector-python requests --python 3.13 --yes'
+
 
 
 if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then

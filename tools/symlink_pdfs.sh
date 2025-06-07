@@ -1,0 +1,36 @@
+!/bin/bash
+
+ # Check if fd is installed
+ if ! command -v fd &> /dev/null; then
+    echo "Error: fd command not found. Please install it with 'brew install fd'"
+    exit 1
+ fi
+
+ # Check if the correct number of arguments is provided
+ if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <source_directory> <target_directory>"
+    echo "Example: $0 ~/Documents/dirA ~/Documents/dirB"
+    exit 1
+ fi
+
+ SOURCE_DIR="$1"
+ TARGET_DIR="$2"
+
+ # Check if source directory exists
+ if [ ! -d "$SOURCE_DIR" ]; then
+    echo "Error: Source directory '$SOURCE_DIR' does not exist"
+    exit 1
+ fi
+
+ # Create target directory if it doesn't exist
+ if [ ! -d "$TARGET_DIR" ]; then
+    echo "Creating target directory '$TARGET_DIR'"
+    mkdir -p "$TARGET_DIR"
+ fi
+
+ # Find all PDF files in the source directory and create symbolic links in the target directory
+ echo "Creating symbolic links for all PDFs from '$SOURCE_DIR' to '$TARGET_DIR'..."
+
+ fd '\.pdf$' "$SOURCE_DIR" -t f -x ln -sf {} "$TARGET_DIR"
+
+ echo "Done! All PDF files have been symlinked."

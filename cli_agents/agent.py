@@ -10,7 +10,7 @@ from cyclopts.types import PositiveInt, ExistingFile
 from rich.console import Console
 from agent_utils import get_chunk_dir, check_completed_chunks, create_combined_panel, load_config, process_file_content, call_llm
 from tools import PROCESS_FUNCTIONS
-# uv run --with rich git+https://github.com/vmasrani/machine_learning_helpers cyclopts openai
+
 
 api_key = os.getenv("OPENAI_API_KEY", "")
 client = OpenAI(api_key=api_key)
