@@ -4,7 +4,6 @@
 # shellcheck source=.fzf-config.zsh
 # shellcheck source=.fzf.zsh
 
-
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
@@ -45,14 +44,18 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
+# nvm use 18
+nvm use 18 > /dev/null
+
 # source custom alias
+
 export ZSH_DISABLE_COMPFIX="true"
 
 
-# Check if Node.js version 16 is active
-if [[ $(node -v) != "v16.0.0" ]]; then
-    nvm use 16.0.0 --silent
-fi
+# # Check if Node.js version 16 is active
+# if [[ $(node -v) != "v16.0.0" ]]; then
+#     nvm use 16.0.0 --silent
+# fi
 
 
 # fzf
@@ -61,8 +64,6 @@ source ~/.fzf-config.zsh
 
 # Numeric sort
 setopt numeric_glob_sort
-# setopt INC_APPEND_HISTORY  # Write to the history file immediately, not when the shell exits.
-setopt SHARE_HISTORY  # Share history between all sessions.
 
 # Better vim mode
 
@@ -80,6 +81,16 @@ bindkey '^f' edit-command-line
 bindkey '^[[1;3D' backward-word
 bindkey '^[[1;3C' forward-word
 
+
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 . "$HOME/.cargo/env"
+
+
+. "$HOME/.local/bin/env"
+
+# Task Master aliases added on 4/19/2025
+alias tm='task-master'
+alias taskmaster='task-master'
+
+alias claude="$HOME/.claude/local/claude"
