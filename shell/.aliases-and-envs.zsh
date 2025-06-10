@@ -6,8 +6,8 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
 export BAT_THEME="Solarized (light)"
-export SSL_CERT_DIR='/etc/ssl/certs'
-export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
+# export SSL_CERT_DIR='/etc/ssl/certs'
+# export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
 export WANDB_ENTITY='vadenmasrani'
 
 # REMOVE DUPLICATES
