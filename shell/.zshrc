@@ -89,8 +89,3 @@ bindkey '^[[1;3C' forward-word
 
 . "$HOME/.local/bin/env"
 
-# Task Master aliases added on 4/19/2025
-alias tm='task-master'
-alias taskmaster='task-master'
-
-alias claude="$HOME/.claude/local/claude"
