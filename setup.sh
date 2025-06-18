@@ -46,6 +46,7 @@ install_if_missing jq install_jq # Command-line JSON processor
 install_if_missing pq install_pq # Command-line protobuf processor
 install_if_missing yq install_yq # Command-line yaml processor
 install_if_missing parquet-tools install_parquet_tools # Parquet file viewer and processor
-install_if_missing xsel install_xsel # X11 selection and clipboard manipulation utilities
+install_if_missing shellcheck install_shellcheck # Shell script linter
+install_if_missing claude install_claude_code_cli # Claude code CLI
 
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."

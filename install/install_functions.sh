@@ -6,14 +6,25 @@ source ~/dotfiles/shell/helper_functions.sh
 # Detect operating system
 if [[ "$OSTYPE" == "darwin"* ]]; then
     OS_TYPE="mac"
-    PACKAGE_MANAGER="brew"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS_TYPE="linux"
-    PACKAGE_MANAGER="apt"
 else
     echo "Unsupported operating system: $OSTYPE"
     exit 1
 fi
+
+
+install_on_brew_or_mac() {
+    local linux_package=$1
+    local mac_package=${2:-$1}  # Use first arg if second not provided
+
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt -y install "$linux_package"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install "$mac_package"
+    fi
+}
+
 
 install_if_missing() {
     local command_name=$1
@@ -224,12 +235,18 @@ install_lazygit() {
 
 
 install_bfs() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt -y install bfs
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install tavianator/tap/bfs
-    fi
+    install_on_brew_or_mac "bfs" "tavianator/tap/bfs"
 }
+
+install_shellcheck() {
+    install_on_brew_or_mac "shellcheck"
+}
+
+install_claude_code_cli() {
+    npm install -g @anthropic-ai/claude-code
+}
+
+
 
 
 install_yq() {
@@ -243,11 +260,7 @@ install_yq() {
 
 
 install_xsel() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt -y install xclip xsel
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install xclip xsel
-    fi
+    install_on_brew_or_mac "xclip xsel"
 }
 
 
