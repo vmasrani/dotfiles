@@ -81,7 +81,7 @@ alias ga="lazygit"
 alias bfs='bfs -L'
 alias chals='alias | grep' #check aliases
 alias rename='agent file_renamer'
-alias npp='uv init . && uv add ipython joblib matplotlib numpy pandas pandas_flavor polars pyjanitor requests rich IProgress scikit_learn seaborn torch tqdm pandas numpy requests ipdb PyYAML ipykernel openai ollama git+https://github.com/vmasrani/machine_learning_helpers.git mysql-connector-python --python 3.13 --yes '
+alias npp='uv init . && uv add ipython joblib matplotlib numpy pandas pandas_flavor polars pyjanitor requests rich IProgress scikit_learn seaborn torch tqdm pandas numpy requests ipdb PyYAML ipykernel openai ollama git+https://github.com/vmasrani/machine_learning_helpers.git mysql-connector-python --python 3.10'
 
 alias act='source .venv/bin/activate'
 
