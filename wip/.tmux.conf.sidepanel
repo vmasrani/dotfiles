@@ -1,0 +1,25 @@
+# Sidepanel tmux config - sources main config but overrides for minimal interface
+# Source the main config first
+source-file ~/.tmux.conf
+
+# Override Dracula plugin settings for sidepanel
+set -u @plugin
+set -g @plugin 'tmux-plugins/tmux-sensible'
+set -g @plugin 'tmux-plugins/tpm'
+
+# Override status bar to be minimal
+set -g status-style "fg=white,bg=black"
+set -g status-left "#[fg=green]#S #[fg=black]|"
+set -g status-right "#[fg=black]| #[fg=green]%H:%M #[fg=black]| #[fg=green]%d-%b-%Y"
+
+# Override window status
+set -g window-status-format " #I:#W "
+set -g window-status-current-format " #I:#W "
+set -g window-status-current-style "fg=black,bg=green"
+
+# Override pane border
+set -g pane-border-style "fg=black"
+set -g pane-active-border-style "fg=green"
+
+# Detach from sidepanel
+bind-key L detach-client
