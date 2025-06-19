@@ -78,7 +78,7 @@ install_dotfiles() {
         "$dotfiles/tools/colorize-columns.sh:$bin/colorize-columns"
         "$dotfiles/tools/convert_ebook.py:$bin/convert_ebook"
         "$dotfiles/tools/imgcat.sh:$bin/imgcat"
-        "$dotfiles/tmux/show-tmux-popup.sh:$bin/show-tmux-popup"
+        # "$dotfiles/tmux/show-tmux-popup.sh:$bin/show-tmux-popup"
 
         # Preview files
         "$dotfiles/preview/fzf-preview.sh:$bin/fzf-preview"
