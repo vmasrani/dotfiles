@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from rich.panel import Panel
 from rich.columns import Columns
 from rich.console import Group, Console # Added Console here as it might be used by panel functions
-from parallel import pmap
+from mlh.parallel import pmap
 import pytesseract
 from pdf2image import convert_from_path
 from PIL import Image
