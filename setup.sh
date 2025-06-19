@@ -13,6 +13,8 @@ source "$(dirname "$0")/shell/.aliases-and-envs.zsh"
 install_if_missing zsh install_zsh
 
 # install dotfiles
+install_if_dir_missing ~/dotfiles/local install_local_dotfiles
+
 install_dotfiles
 
 # install essentials
