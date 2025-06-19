@@ -144,6 +144,13 @@ install_dotfiles() {
 
 
 
+install_local_dotfiles() {
+    mkdir -p "$HOME/.local"
+    touch "$HOME/.local/local_env.sh"
+    touch "$HOME/.local/secrets"
+}
+
+
 install_zsh() {
     read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
     case "$choice" in
