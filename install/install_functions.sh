@@ -146,8 +146,8 @@ install_dotfiles() {
 
 install_local_dotfiles() {
     mkdir -p "$HOME/dotfiles/local"
-    touch "$HOME/dotfiles/local/local_env.sh"
-    touch "$HOME/dotfiles/local/secrets"
+    touch "$HOME/dotfiles/local/.local_env.sh"
+    touch "$HOME/dotfiles/local/.secrets"
 }
 
 
