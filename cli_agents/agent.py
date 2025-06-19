@@ -1,4 +1,22 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "cyclopts",
+#     "machine-learning-helpers",
+#     "markitdown[all]",
+#     "openai",
+#     "pdf2image",
+#     "pypdf2",
+#     "pytesseract",
+#     "pyyaml",
+#     "rich",
+#     "torch",
+# ]
+#
+# [tool.uv.sources]
+# machine-learning-helpers = { git = "https://github.com/vmasrani/machine_learning_helpers.git" }
+# ///
 import os
 
 from pathlib import Path
