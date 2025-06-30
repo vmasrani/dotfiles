@@ -49,9 +49,6 @@ nvm use 18 > /dev/null
 
 # source custom alias
 
-export ZSH_DISABLE_COMPFIX="true"
-
-
 # # Check if Node.js version 16 is active
 # if [[ $(node -v) != "v16.0.0" ]]; then
 #     nvm use 16.0.0 --silent
@@ -71,8 +68,7 @@ setopt numeric_glob_sort
 bindkey -M vicmd '?' history-incremental-search-backward
 bindkey -M vicmd '/' history-incremental-search-forward
 
-# Make Vi mode transitions faster (KEYTIMEOUT is in hundredths of a second)
-export KEYTIMEOUT=1
+# Make Vi mode transitions faster (KEYTIMEOUT already set above)
 
 # Enable Ctrl-x-e to edit command line
 autoload -U edit-command-line

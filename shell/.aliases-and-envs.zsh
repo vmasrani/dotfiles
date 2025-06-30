@@ -1,14 +1,27 @@
-export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
-export PATH=~/.local/bin:$PATH
-export PATH=/Users/vmasrani/.claude:$PATH
-export PATH=$HOME/bin:$PATH
-export PATH="$HOME/bin:$PATH"
-export PATH="$HOME/.npm-global/bin:$PATH"
-export PATH="$HOME/.local/bin:$PATH"
-export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
+# ===================================================================
+# PATH AND ENVIRONMENT SETUP
+# ===================================================================
 
-# Add nvm bin directory to PATH for tslab and other global npm packages
-export PATH="$HOME/.nvm/versions/node/v18.20.8/bin:$PATH"
+# Python Path Configuration
+export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
+
+# Consolidated PATH Setup (order matters - earlier entries take precedence)
+PATH_ADDITIONS=(
+    "$HOME/.local/bin"              # Local user binaries
+    "$HOME/bin"                     # Personal scripts
+    "/Users/vmasrani/.claude"       # Claude CLI
+    "$HOME/.npm-global/bin"         # Global npm packages
+    "$HOME/go/bin"                  # Go binaries
+    "/usr/local/go/bin"             # Go installation
+    "$HOME/.nvm/versions/node/v18.20.8/bin"  # Node.js binaries (version-specific)
+)
+
+# Add paths to PATH if they exist and aren't already present
+for path_dir in "${PATH_ADDITIONS[@]}"; do
+    if [[ -d "$path_dir" && ":$PATH:" != *":$path_dir:"* ]]; then
+        export PATH="$path_dir:$PATH"
+    fi
+done
 
 export BAT_THEME="Solarized (light)"
 # export SSL_CERT_DIR='/etc/ssl/certs'
@@ -19,17 +32,22 @@ export WANDB_ENTITY='vadenmasrani'
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 export PYTHONPATH=$(echo -n $PYTHONPATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 
+# ===================================================================
+# APPLICATION ALIASES
+# ===================================================================
 alias vscode='cursor'
-
-alias DT='tee ~/Desktop/terminalOut.txt'    # DT:           Pipe content to file on MacOS Desktop
-
-alias less='less -M -X -g -i -J --underline-special --SILENT'
-
-# Config
 alias config='/usr/bin/git --git-dir=$HOME/.myconf/ --work-tree=$HOME'
 
+# ===================================================================
+# UTILITY ALIASES
+# ===================================================================
+alias DT='tee ~/Desktop/terminalOut.txt'    # Pipe content to file on MacOS Desktop
+alias less='less -M -X -g -i -J --underline-special --SILENT'
 
-# alias l='eza -aHl --icons --git'
+
+# ===================================================================
+# FILE LISTING ALIASES (EZA)
+# ===================================================================
 alias L='eza -aHl --icons --git --grid --time-style relative --group-directories-first'
 alias l='eza -aHl --icons --git --time-style relative --group-directories-first'
 alias lt='eza -aHl --icons --git --sort=modified --time-style relative --group-directories-first'
@@ -37,6 +55,9 @@ alias lf='eza -aHl --icons --git --sort=size --total-size --time-style relative 
 alias ld='eza -aHlD --icons --git --time-style relative --group-directories-first'
 alias p='fzf-preview'
 
+# ===================================================================
+# NAVIGATION ALIASES
+# ===================================================================
 alias cd..='cd ../'                         # Go back 1 directory level (for fast typers)
 alias ..='cd ../'                           # Go back 1 directory level
 alias .1='cd ../'                           # Go back 1 directory level
@@ -89,14 +110,11 @@ alias rename='agent file_renamer'
 alias npp='uv init . && uv add ipython joblib matplotlib numpy pandas pandas_flavor polars pyjanitor requests rich IProgress scikit_learn seaborn torch tqdm pandas numpy requests ipdb PyYAML ipykernel openai ollama git+https://github.com/vmasrani/machine_learning_helpers.git mysql-connector-python'
 alias act='source .venv/bin/activate'
 
-
-
 if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
     export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
 fi
 
 
-alias ga="lazygit"
 
 # bfs
 alias bfs='bfs -L '
