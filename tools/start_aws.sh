@@ -1,6 +1,13 @@
 #!/bin/bash
 
+
+
+# GPU_INSTANCE_ID="i-02cdd250f93ade49c"
+# CPU_INSTANCE_ID="i-0f7a56bf2bb58fab2"
+
+
 # === Config ===
+# INSTANCE_ID="i-0f7a56bf2bb58fab2"
 INSTANCE_ID="i-02cdd250f93ade49c"
 KEY_PATH="$HOME/.ssh/vaden-vodasafe-aws.pem"
 SSH_USER="vaden"  # Change to ubuntu, admin, etc. as needed

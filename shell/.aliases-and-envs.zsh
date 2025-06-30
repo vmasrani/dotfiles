@@ -1,10 +1,15 @@
 export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
 export PATH=~/.local/bin:$PATH
+export PATH=/Users/vmasrani/.claude:$PATH
 export PATH=$HOME/bin:$PATH
 export PATH="$HOME/bin:$PATH"
 export PATH="$HOME/.npm-global/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="$HOME/go/bin:/usr/local/go/bin:$PATH"
+
+# Add nvm bin directory to PATH for tslab and other global npm packages
+export PATH="$HOME/.nvm/versions/node/v18.20.8/bin:$PATH"
+
 export BAT_THEME="Solarized (light)"
 # export SSL_CERT_DIR='/etc/ssl/certs'
 # export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
@@ -108,3 +113,5 @@ get_filtered_pids() {
 alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
 
 alias archive-agent='/Users/vmasrani/dev/archive-agent/Archive-Agent/archive-agent.sh'
+alias cc='claude'
+alias ccc='claude --continue'

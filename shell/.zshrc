@@ -89,3 +89,11 @@ bindkey '^[[1;3C' forward-word
 
 . "$HOME/.local/bin/env"
 
+
+
+# bun completions
+[ -s "/Users/vmasrani/.bun/_bun" ] && source "/Users/vmasrani/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
