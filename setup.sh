@@ -1,7 +1,12 @@
 #!/bin/bash
-
-# shellcheck shell=zsh
+# shellcheck shell=bash
 # shellcheck source=install/install_functions.sh
+# ===================================================================
+# Dotfiles Setup Script
+# ===================================================================
+# Installs and configures all dotfiles and required tools
+# Usage: ./setup.sh
+# ===================================================================
 
 set -e
 

@@ -1,12 +1,13 @@
 #!/bin/bash
+# shellcheck shell=bash
+# ===================================================================
+# AWS EC2 Instance Management Script
+# ===================================================================
+# Manages EC2 instance startup with volume attachment
+# Usage: ./start_aws.sh
+# ===================================================================
 
-
-
-# GPU_INSTANCE_ID="i-02cdd250f93ade49c"
-# CPU_INSTANCE_ID="i-0f7a56bf2bb58fab2"
-
-
-# === Config ===
+# === Configuration ===
 # INSTANCE_ID="i-0f7a56bf2bb58fab2"
 INSTANCE_ID="i-02cdd250f93ade49c"
 KEY_PATH="$HOME/.ssh/vaden-vodasafe-aws.pem"

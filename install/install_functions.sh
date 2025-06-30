@@ -1,5 +1,5 @@
-# shellcheck shell=zsh
 #!/bin/bash
+# shellcheck shell=bash
 
 source ~/dotfiles/shell/helper_functions.sh
 
