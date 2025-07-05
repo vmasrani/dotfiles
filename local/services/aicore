@@ -158,11 +158,16 @@ generate_service_file() {
     local current_user
     current_user=$(whoami)
     
+    # Get project name
+    local project_name
+    project_name=$(basename "$abs_project_path")
+    
     # Generate service file
     sed -e "s|{PROJECT_PATH}|$abs_project_path|g" \
         -e "s|{VENV_PATH}|$venv_path|g" \
         -e "s|{PORT}|$port|g" \
         -e "s|{USER}|$current_user|g" \
+        -e "s|{PROJECT_NAME}|$project_name|g" \
         "$TEMPLATE_FILE" > "$service_file"
     
     echo "$service_file"
@@ -275,8 +280,9 @@ start_service() {
 stop_service() {
     local project_path="$1"
     
-    # Validate project
-    if ! validate_project "$project_path"; then
+    # Only validate that project path exists for service name generation
+    if [[ ! -d "$project_path" ]]; then
+        print_error "Project directory does not exist: $project_path"
         return 1
     fi
     
@@ -313,8 +319,9 @@ stop_service() {
 check_status() {
     local project_path="$1"
     
-    # Validate project
-    if ! validate_project "$project_path"; then
+    # Only validate that project path exists for service name generation
+    if [[ ! -d "$project_path" ]]; then
+        print_error "Project directory does not exist: $project_path"
         return 1
     fi
     
