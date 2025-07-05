@@ -1,0 +1,42 @@
+[Unit]
+Description=ADK API Server ({PROJECT_NAME})
+Documentation=https://github.com/example/adk-api-server
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory={PROJECT_PATH}
+Environment=PYTHONPATH={PROJECT_PATH}
+Environment=PYTHONUNBUFFERED=1
+ExecStart={VENV_PATH}/bin/adk api_server --port {PORT} --host 0.0.0.0 agents
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=78
+
+# Security and resource limits
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={PROJECT_PATH}
+ReadWritePaths=/tmp
+ReadWritePaths=/var/tmp
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=adk-api-server-{PROJECT_NAME}
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target
