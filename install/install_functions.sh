@@ -57,6 +57,7 @@ install_dotfiles() {
     mkdir -p "$HOME"/bin
     mkdir -p "$HOME/dev/projects"
     mkdir -p "$HOME/.config/helix"
+    mkdir -p "$HOME/.local/bin"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh

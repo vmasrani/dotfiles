@@ -8,7 +8,8 @@
 # for ssh logins, install and configure the libpam-umask package.
 #umask 022
 
-source ~/dotfiles/lscolors.sh
+source ~/lscolors.sh
+echo "hello from profile"
 
 # if running bash
 if [ -n "$BASH_VERSION" ]; then
@@ -25,3 +26,4 @@ echo "hello from profile"
 . "$HOME/.cargo/env"
 
 . "$HOME/.local/bin/env"
+echo "Sourcing $0"
