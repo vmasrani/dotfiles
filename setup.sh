@@ -1,5 +1,5 @@
-#!/bin/bash
-# shellcheck shell=bash
+#!/bin/zsh
+# shellcheck shell=zsh
 # shellcheck source=install/install_functions.sh
 # ===================================================================
 # Dotfiles Setup Script
@@ -12,8 +12,8 @@ set -e
 
 
 # Source the installation functions
-source "$(dirname "$0")/install/install_functions.sh"
-source "$(dirname "$0")/shell/.aliases-and-envs.zsh"
+source "$(dirname $0)/install/install_functions.sh"
+source "$(dirname $0)/shell/.aliases-and-envs.zsh"
 # install zsh
 install_if_missing zsh install_zsh
 
@@ -39,6 +39,7 @@ install_if_missing bfs install_bfs # Breadth-first search for filesystem travers
 install_if_missing eza install_eza # Modern replacement for ls with color and git integration
 install_if_missing fzf install_fzf # Command-line fuzzy finder for files, history, and more
 install_if_missing cargo install_cargo # Rust package manager and build system
+install_if_missing uv install_uv # Python package manager
 install_if_missing tldr install_tealdeer # Simplified and community-driven man pages
 install_if_missing hx install_helix # Modern terminal-based text editor
 install_if_missing glow install_glow # Markdown terminal viewer with style

@@ -13,6 +13,7 @@ PATH_ADDITIONS=(
     "$HOME/.npm-global/bin"         # Global npm packages
     "$HOME/go/bin"                  # Go binaries
     "/usr/local/go/bin"             # Go installation
+    "$HOME/.nvm"                    # nvm installation
     "$HOME/.nvm/versions/node/v18.20.8/bin"  # Node.js binaries (version-specific)
 )
 

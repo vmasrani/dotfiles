@@ -7,6 +7,7 @@
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
+
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
@@ -45,7 +46,7 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 # nvm use 18
-nvm use 18 > /dev/null
+nvm use --lts > /dev/null
 
 # source custom alias
 
@@ -83,7 +84,7 @@ bindkey '^[[1;3C' forward-word
 . "$HOME/.cargo/env"
 
 
-. "$HOME/.local/bin/env"
+# . "$HOME/.local/bin/env"
 
 
 
