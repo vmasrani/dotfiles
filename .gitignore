@@ -1,1 +1,6 @@
-local
+# Exclude secret files but allow other local configs
+local/.secrets*
+local/*env*
+local/*key*
+local/*token*
+local/.local_env.sh
