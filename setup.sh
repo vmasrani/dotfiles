@@ -56,5 +56,6 @@ install_if_missing yq install_yq # Command-line yaml processor
 install_if_missing parquet-tools install_parquet_tools # Parquet file viewer and processor
 install_if_missing shellcheck install_shellcheck # Shell script linter
 install_if_missing claude install_claude_code_cli # Claude code CLI
+install_if_missing pm2 install_pm2 # Process manager for commandline applications
 
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."

@@ -254,6 +254,10 @@ install_claude_code_cli() {
     npm install -g @anthropic-ai/claude-code
 }
 
+install_pm2() {
+    npm install -g pm2
+}
+
 
 
 
