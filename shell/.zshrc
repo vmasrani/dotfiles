@@ -32,9 +32,6 @@ export DIRSTACKSIZE=20
 export KEYTIMEOUT=1
 export ZSH_DISABLE_COMPFIX="true"
 
-# Activate ml3 environment
-# source $HOME/ml3/bin/activate
-
 # Source Core Configuration Files
 source ~/helper_functions.sh
 source ~/lscolors.sh
@@ -45,16 +42,8 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-# nvm use 18
+
 nvm use --lts > /dev/null
-
-# source custom alias
-
-# # Check if Node.js version 16 is active
-# if [[ $(node -v) != "v16.0.0" ]]; then
-#     nvm use 16.0.0 --silent
-# fi
-
 
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
@@ -91,5 +80,3 @@ bindkey '^[[1;3C' forward-word
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
-# Package update checking on startup
-# source ~/update_startup.sh
