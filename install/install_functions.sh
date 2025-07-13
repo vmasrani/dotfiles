@@ -1,7 +1,8 @@
 #!/bin/bash
 # shellcheck shell=bash
 
-source ~/dotfiles/shell/helper_functions.sh
+source "$HOME/dotfiles/shell/helper_functions.sh"
+
 
 # Detect operating system
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -48,7 +49,7 @@ install_if_dir_missing() {
         $install_function
         echo "Installation completed successfully."
     else
-        echo "Directory $dir_path already exists."
+        echo "$dir_path is already installed."
     fi
 }
 
@@ -120,15 +121,12 @@ install_dotfiles() {
         "$dotfiles/shell/.zshrc:$home/.zshrc"
         "$dotfiles/shell/lscolors.sh:$home/lscolors.sh"
         "$dotfiles/shell/helper_functions.sh:$home/helper_functions.sh"
-        "$dotfiles/shell/agent_functions.sh:$home/agent_functions.sh"
         "$dotfiles/shell/update_startup.sh:$home/update_startup.sh"
+
 
         # local dotfiles
         "$dotfiles/local/.local_env.sh:$home/.local_env.sh"
         "$dotfiles/local/.secrets:$home/.secrets"
-
-        # agents
-        "$dotfiles/cli_agents/agent.py:$bin/agent"
 
         # helix
         "$dotfiles/editors/hx_languages.toml:$home/.config/helix/languages.toml"
@@ -147,6 +145,11 @@ install_dotfiles() {
         ln -sf "$source" "$target"
         chmod +x "$source"
     done
+
+if [ -d "$HOME/.cursor" ]; then
+    ln -sf "$HOME/.cursor" "$HOME/.cursor-server"
+    echo "Symlink created from ~/.cursor to ~/.cursor-server"
+fi
 
 }
 
@@ -235,7 +238,15 @@ install_fzf() {
 }
 
 install_helix() {
-    bash install/install_helix.sh
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        snap install --classic helix
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install helix
+    fi
+
+    hx --grammar fetch
+    hx --grammar build
+    echo "Helix grammars updated successfully."
 }
 
 install_glow() {
@@ -259,6 +270,14 @@ install_shellcheck() {
 
 install_claude_code_cli() {
     npm install -g @anthropic-ai/claude-code
+}
+
+install_chafa() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt install chafa -y
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install chafa
+    fi
 }
 
 
@@ -354,6 +373,10 @@ install_parquet_tools() {
 install_fzf_tab_completion() {
     git clone https://github.com/lincheney/fzf-tab-completion "$HOME/.zprezto/contrib/fzf-tab-completion"
     echo "fzf-tab-completion installed successfully."
+
+    if [[ "$OS_TYPE" == "mac" ]]; then
+        brew install gawk grep gnu-sed coreutils
+    fi
 }
 
 install_ml_helpers() {
@@ -391,7 +414,7 @@ install_diff_so_fancy() {
 }
 
 install_finditfaster() {
-    cp ~/dotfiles/tools/find_files.sh "$(find ~/.cursor-server/extensions -type d -name 'tomrijndorp*' 2>/dev/null)" || :
+    cp ~/dotfiles/tools/find_files.sh "$(find ~/.cursor_server/extensions -type d -name 'tomrijndorp*' 2>/dev/null)" || :
     echo "find_files.sh copied to cursor extension directory successfully."
 }
 
@@ -454,24 +477,18 @@ install_nvm() {
 }
 
 install_bun() {
-    if ! command_exists "bun"; then
-        echo "Installing Bun..."
-        if [[ "$OS_TYPE" == "mac" ]]; then
-            brew tap oven-sh/bun
-            brew install bun
-        else
-            curl -fsSL https://bun.sh/install | bash
-        fi
-        echo "Bun installed successfully."
+    echo "Installing Bun..."
+    if [[ "$OS_TYPE" == "mac" ]]; then
+        brew tap oven-sh/bun
+        brew install bun
     else
-        echo "Bun is already installed."
+        curl -fsSL https://bun.sh/install | bash
     fi
+    echo "Bun installed successfully."
 }
 
-update_helix_grammars() {
-    echo "Updating Helix tree-sitter grammars..."
-    hx --grammar fetch
-    hx --grammar build
-    echo "Helix grammars updated successfully."
-}
 
+install_uvx_tools() {
+    uv tool install rich-cli
+    uv tool install "markitdown[all]"
+}
