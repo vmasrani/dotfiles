@@ -2,9 +2,6 @@
 # PATH AND ENVIRONMENT SETUP
 # ===================================================================
 
-# Python Path Configuration
-export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
-
 # NVM Setup
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -41,7 +38,6 @@ done
 
 # REMOVE DUPLICATES
 export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
-export PYTHONPATH=$(echo -n $PYTHONPATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 
 # Additional Environment Variables
 export BAT_THEME="Solarized (light)"
