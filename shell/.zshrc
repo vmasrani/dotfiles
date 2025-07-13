@@ -37,6 +37,7 @@ export ZSH_DISABLE_COMPFIX="true"
 
 # Source Core Configuration Files
 source ~/helper_functions.sh
+source ~/agent_functions.sh
 source ~/lscolors.sh
 source ~/.aliases-and-envs.zsh
 source ~/.local_env.sh  # Should contain API keys and local-specific settings
@@ -84,13 +85,12 @@ bindkey '^[[1;3C' forward-word
 . "$HOME/.cargo/env"
 
 
-# . "$HOME/.local/bin/env"
-
-
-
 # bun completions
 [ -s "/Users/vmasrani/.bun/_bun" ] && source "/Users/vmasrani/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Package update checking on startup
+# source ~/update_startup.sh

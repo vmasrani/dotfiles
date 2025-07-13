@@ -1,37 +1,5 @@
-# ===================================================================
-# PATH AND ENVIRONMENT SETUP
-# ===================================================================
-
-# Python Path Configuration
-export PYTHONPATH=~/.python:~/.roma-scripts:$PYTHONPATH
-
-# Consolidated PATH Setup (order matters - earlier entries take precedence)
-PATH_ADDITIONS=(
-    "$HOME/.local/bin"              # Local user binaries
-    "$HOME/bin"                     # Personal scripts
-    "/Users/vmasrani/.claude"       # Claude CLI
-    "$HOME/.npm-global/bin"         # Global npm packages
-    "$HOME/go/bin"                  # Go binaries
-    "/usr/local/go/bin"             # Go installation
-    "$HOME/.nvm"                    # nvm installation
-    "$HOME/.nvm/versions/node/v18.20.8/bin"  # Node.js binaries (version-specific)
-)
-
-# Add paths to PATH if they exist and aren't already present
-for path_dir in "${PATH_ADDITIONS[@]}"; do
-    if [[ -d "$path_dir" && ":$PATH:" != *":$path_dir:"* ]]; then
-        export PATH="$path_dir:$PATH"
-    fi
-done
-
-export BAT_THEME="Solarized (light)"
-# export SSL_CERT_DIR='/etc/ssl/certs'
-# export REQUESTS_CA_BUNDLE='/etc/ssl/certs/ca-certificates.crt'
-export WANDB_ENTITY='vadenmasrani'
-
-# REMOVE DUPLICATES
-export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
-export PYTHONPATH=$(echo -n $PYTHONPATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
+# Source PATH management
+[[ -f ~/.paths.zsh ]] && source ~/.paths.zsh
 
 # ===================================================================
 # APPLICATION ALIASES
@@ -107,22 +75,15 @@ alias rsync='rsync -avz --compress --verbose --human-readable --partial --progre
 alias ga="lazygit"
 alias bfs='bfs -L'
 alias chals='alias | grep' #check aliases
-alias rename='agent file_renamer'
 alias npp='uv init . && uv add ipython joblib matplotlib numpy pandas pandas_flavor polars pyjanitor requests rich IProgress scikit_learn seaborn torch tqdm pandas numpy requests ipdb PyYAML ipykernel openai ollama git+https://github.com/vmasrani/machine_learning_helpers.git mysql-connector-python'
 alias act='source .venv/bin/activate'
 
-if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
-    export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
-fi
 
 
 
 # bfs
 alias bfs='bfs -L '
 
-
-# Define the htop filter as an environment variable
-export HTOP_FILTER='sshd|jupyter/runtime/kernel|.cursor-server|/usr/bin/dockerd|/usr/lib/snapd/snapd|amazon|containerd|ssh-agent|gitstatus|zsh|sleep'
 
 # Update the get_filtered_pids function to use the environment variable
 get_filtered_pids() {
@@ -134,3 +95,5 @@ alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
 alias archive-agent='/Users/vmasrani/dev/archive-agent/Archive-Agent/archive-agent.sh'
 alias cc='claude'
 alias ccc='claude --continue'
+alias upd='update-packages'
+alias updq='update-packages --quiet'
