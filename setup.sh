@@ -57,4 +57,11 @@ install_if_missing parquet-tools install_parquet_tools # Parquet file viewer and
 install_if_missing shellcheck install_shellcheck # Shell script linter
 install_if_missing claude install_claude_code_cli # Claude code CLI
 
+# Install new fixes
+install_meslo_font # MesloLGS NF font for Powerlevel10k theme
+install_iterm2 # iTerm2 terminal emulator (macOS only)
+install_nvm # Node Version Manager with LTS Node.js
+install_bun # Bun JavaScript runtime and package manager
+update_helix_grammars # Update Helix tree-sitter grammars
+
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."

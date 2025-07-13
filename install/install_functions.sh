@@ -58,6 +58,7 @@ install_dotfiles() {
     mkdir -p "$HOME/dev/projects"
     mkdir -p "$HOME/.config/helix"
     mkdir -p "$HOME/.local/bin"
+    mkdir -p "$HOME/.claude"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
@@ -79,6 +80,7 @@ install_dotfiles() {
         "$dotfiles/tools/colorize-columns.sh:$bin/colorize-columns"
         "$dotfiles/tools/convert_ebook.py:$bin/convert_ebook"
         "$dotfiles/tools/imgcat.sh:$bin/imgcat"
+        "$dotfiles/tools/update-packages.sh:$bin/update-packages"
         # "$dotfiles/tmux/show-tmux-popup.sh:$bin/show-tmux-popup"
 
         # Preview files
@@ -105,6 +107,7 @@ install_dotfiles() {
         # Shell dotfiles
         "$dotfiles/shell/.p10k.zsh:$home/.p10k.zsh"
         "$dotfiles/shell/.aliases-and-envs.zsh:$home/.aliases-and-envs.zsh"
+        "$dotfiles/shell/.paths.zsh:$home/.paths.zsh"
         "$dotfiles/shell/.bash_logout:$home/.bash_logout"
         "$dotfiles/shell/.bash_profile:$home/.bash_profile"
         "$dotfiles/shell/.bashrc:$home/.bashrc"
@@ -117,6 +120,8 @@ install_dotfiles() {
         "$dotfiles/shell/.zshrc:$home/.zshrc"
         "$dotfiles/shell/lscolors.sh:$home/lscolors.sh"
         "$dotfiles/shell/helper_functions.sh:$home/helper_functions.sh"
+        "$dotfiles/shell/agent_functions.sh:$home/agent_functions.sh"
+        "$dotfiles/shell/update_startup.sh:$home/update_startup.sh"
 
         # local dotfiles
         "$dotfiles/local/.local_env.sh:$home/.local_env.sh"
@@ -129,6 +134,8 @@ install_dotfiles() {
         "$dotfiles/editors/hx_languages.toml:$home/.config/helix/languages.toml"
         "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
 
+        # claude commands directory (symlink entire directory)
+        "$dotfiles/claude/commands:$home/.claude/commands"
 
     )
 
@@ -391,5 +398,80 @@ install_finditfaster() {
 install_zprezto() {
     git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
     echo "zprezto installed successfully."
+}
+
+install_meslo_font() {
+    if ! fc-list -q "MesloLGS NF"; then
+        echo "Installing MesloLGS NF font..."
+        if [[ "$OS_TYPE" == "mac" ]]; then
+            brew install --cask font-meslo-lg-nerd-font
+        else
+            # Direct download method for Linux
+            mkdir -p "$HOME/.local/share/fonts"
+            curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
+                 --output "$HOME/.local/share/fonts/MesloLGS NF Regular.ttf"
+            curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold.ttf" \
+                 --output "$HOME/.local/share/fonts/MesloLGS NF Bold.ttf"
+            curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf" \
+                 --output "$HOME/.local/share/fonts/MesloLGS NF Italic.ttf"
+            curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf" \
+                 --output "$HOME/.local/share/fonts/MesloLGS NF Bold Italic.ttf"
+            fc-cache -f -v
+        fi
+        echo "MesloLGS NF font installed successfully."
+    else
+        echo "MesloLGS NF font is already installed."
+    fi
+}
+
+install_iterm2() {
+    if [[ "$OS_TYPE" == "mac" ]]; then
+        if [ ! -d "/Applications/iTerm.app" ]; then
+            echo "Installing iTerm2..."
+            brew install --cask iterm2
+            echo "iTerm2 installed successfully."
+        else
+            echo "iTerm2 is already installed."
+        fi
+    else
+        echo "iTerm2 is only available on macOS."
+    fi
+}
+
+install_nvm() {
+    if [ ! -d "$HOME/.nvm" ]; then
+        echo "Installing NVM..."
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+        nvm install --lts
+        nvm use --lts
+        echo "NVM installed successfully with latest LTS Node.js."
+    else
+        echo "NVM is already installed."
+    fi
+}
+
+install_bun() {
+    if ! command_exists "bun"; then
+        echo "Installing Bun..."
+        if [[ "$OS_TYPE" == "mac" ]]; then
+            brew tap oven-sh/bun
+            brew install bun
+        else
+            curl -fsSL https://bun.sh/install | bash
+        fi
+        echo "Bun installed successfully."
+    else
+        echo "Bun is already installed."
+    fi
+}
+
+update_helix_grammars() {
+    echo "Updating Helix tree-sitter grammars..."
+    hx --grammar fetch
+    hx --grammar build
+    echo "Helix grammars updated successfully."
 }
 

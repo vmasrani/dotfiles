@@ -14,6 +14,9 @@ if [[ -f $1 ]]; then
     *.pt)
       torch-preview "$1"
       ;;
+    *.epub)
+      markitdown "$1" | glow -p -w 80 -s dark
+      ;;
     *.sh)
       bat -n --color=always "$1"
       ;;
