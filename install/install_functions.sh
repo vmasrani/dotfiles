@@ -73,16 +73,8 @@ install_dotfiles() {
 
     # Create an array of source:target pairs
     declare -a file_pairs=(
-        "$dotfiles/tools/rfz.sh:$bin/rfz"
-        "$dotfiles/tools/copy.sh:$bin/copy"
-        "$dotfiles/tools/sshget:$bin/sshget"
-        "$dotfiles/tools/fzf-helix.sh:$bin/fzf-helix"
-        "$dotfiles/tools/rsync-all.sh:$bin/rsync-all"
-        "$dotfiles/tools/colorize-columns.sh:$bin/colorize-columns"
-        "$dotfiles/tools/convert_ebook.py:$bin/convert_ebook"
-        "$dotfiles/tools/imgcat.sh:$bin/imgcat"
-        "$dotfiles/tools/update-packages.sh:$bin/update-packages"
-        # "$dotfiles/tmux/show-tmux-popup.sh:$bin/show-tmux-popup"
+        # Symlink entire tools directory to $HOME
+        "$dotfiles/tools:$home/tools"
 
         # Preview files
         "$dotfiles/preview/fzf-preview.sh:$bin/fzf-preview"

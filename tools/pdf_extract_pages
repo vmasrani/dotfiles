@@ -1,0 +1,69 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.14"
+# dependencies = [
+#     "pypdf",
+# ]
+# ///
+import sys
+import argparse
+from io import BytesIO
+from pathlib import Path
+from pypdf import PdfReader, PdfWriter
+
+
+def extract_pages(input_pdf_bytes, num_pages):
+    """Extract first n pages from PDF bytes."""
+    reader = PdfReader(BytesIO(input_pdf_bytes))
+    writer = PdfWriter()
+
+    total_pages = len(reader.pages)
+    pages_to_extract = min(num_pages, total_pages)
+
+    for i in range(pages_to_extract):
+        writer.add_page(reader.pages[i])
+
+    output_buffer = BytesIO()
+    writer.write(output_buffer)
+    return output_buffer.getvalue()
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Extract first n pages from a PDF')
+    parser.add_argument('-n', '--pages', type=int, default=10,
+                        help='Number of pages to extract (default: 10)')
+    parser.add_argument('-f', '--file', type=str, help='PDF file to read from')
+    parser.add_argument('-o', '--output', type=str, help='Output file name')
+
+    args = parser.parse_args()
+
+    if args.pages <= 0:
+        print("Error: Number of pages must be positive", file=sys.stderr)
+        sys.exit(1)
+
+    if args.file:
+        input_pdf_path = Path(args.file)
+        if not input_pdf_path.is_file():
+            print(f"Error: File {args.file} does not exist", file=sys.stderr)
+            sys.exit(1)
+        input_pdf = input_pdf_path.read_bytes()
+    else:
+        input_pdf = sys.stdin.buffer.read()
+        if not input_pdf:
+            print("Error: No PDF data received from stdin", file=sys.stderr)
+            sys.exit(1)
+
+    try:
+        output_pdf = extract_pages(input_pdf, args.pages)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.write_bytes(output_pdf)
+        else:
+            sys.stdout.buffer.write(output_pdf)
+    except Exception as e:
+        print(f"Error processing PDF: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

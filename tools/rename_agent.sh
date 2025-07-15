@@ -20,23 +20,10 @@ fi
 extension="${file##*.}"
 
 # Create prompt for Claude
-prompt="Rename this file into 'Author Name - Title:Subtitle' format.
-The original filename is: $file.
-If there's not enough information in the text, return the original filename or a cleaned-up version of it.
+prompt="$(cat $HOME/.claude/commands/file-renamer.md)
+The original filename is: $file."
 
-Return ONLY the new filename with no extension, NO OTHER COMMENTARY.
-
-Examples of correct output:
-1. 'J.K. Rowling - Harry Potter: The Philosopher's Stone'
-2. 'George Orwell - 1984'
-3. 'Isaac Asimov - Foundation'
-
-Example of incorrect output:
-\"Based on the filename \"Robert P. George - Natural ....\"
-\"I'm sorry, I can't rename the file because I don't have enough information to determine the author and title.\"
-"
-
-new_name=$(markitdown "$file" 2>/dev/null | head -n 100 | claude -p "$prompt" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+new_name=$(cat "$file" | pdf_extract_pages | markitdown | claude -p "$prompt" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
 # Show truncated name for display
 truncated_name=$(echo "$new_name" | awk '{ if (length($0) > 50) print substr($0, 1, 47) "..."; else print $0 }')

@@ -1,4 +1,4 @@
-!/bin/bash
+#!/bin/bash
 
  # Check if fd is installed
  if ! command -v fd &> /dev/null; then
