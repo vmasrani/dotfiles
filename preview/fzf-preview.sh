@@ -43,7 +43,7 @@ if [[ -f $1 ]]; then
       chafa --size=60x60 "/tmp/thumbnail.png"
       ;;
     *.ipynb)
-      uvx --from rich-cli rich --ipynb "$1"
+      rich --ipynb "$1"
       ;;
     *)
       if tldr "$1" &> /dev/null; then
