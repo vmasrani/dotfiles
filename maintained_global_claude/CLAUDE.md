@@ -24,7 +24,9 @@
 
     ```python
     from mlh.hypers import Hypers
+    from dataclasses import dataclass
 
+    @dataclass
     class Args(Hypers):
         command_line_arg_1:str = "default_value" 
         command_line_arg_2:float = 0.1
@@ -38,9 +40,30 @@
 
     ```
 
+
     This will automatically make `--command_line_arg_1 ` etc available on the command line
 
+    The uv front matter should looke like: 
+
+    ```
+    #!/usr/bin/env -S uv run --script
+    # /// script
+    # requires-python = ">=3.8"
+    # dependencies = [
+    #     "pymupdf",
+    #     "pillow",
+    #     "machine-learning-helpers",
+    #     "pytesseract",
+    # ]
+    #
+    # [tool.uv.sources]
+    # machine-learning-helpers = { git = "https://github.com/vmasrani/machine_learning_helpers.git" }
+    # ///
+
+    ```
 
 ## Bash/ZSH functions 
 - I always use zsh 
 - when writing scripts, use 'gum' to make output pretty 
+- always use fd instead of find 
+- always use rg instead of grep 
