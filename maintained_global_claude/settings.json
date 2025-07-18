@@ -8,6 +8,8 @@
       "Bash(mkdir:*)",
       "Bash(uv:*)",
       "Bash(find:*)",
+      "Bash(fd:*)",
+      "Bash(rg:*)",
       "Bash(mv:*)",
       "Bash(grep:*)",
       "Bash(npm:*)",
@@ -21,17 +23,6 @@
     "deny": []
   },
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "",
-        "hooks": [
-        //   {
-        //     "type": "command",
-        //     "command": "uv run ~/.claude/hooks/pre_tool_use.py"
-        //   }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "",
