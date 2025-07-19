@@ -80,3 +80,6 @@ bindkey '^[[1;3C' forward-word
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
+
+
+alias claude="/home/vaden/.claude/local/claude"

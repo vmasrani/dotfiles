@@ -59,7 +59,7 @@ install_dotfiles() {
     mkdir -p "$HOME/dev/projects"
     mkdir -p "$HOME/.config/helix"
     mkdir -p "$HOME/.local/bin"
-    mkdir -p "$HOME/.claude"
+    # mkdir -p "$HOME/.claude"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
@@ -125,7 +125,7 @@ install_dotfiles() {
         "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
 
         # claude commands directory (symlink entire directory)
-        "$dotfiles/claude/commands:$home/.claude/commands"
+        "$dotfiles/maintained_global_claude:$home/.claude"
 
     )
 
@@ -285,8 +285,15 @@ install_yq() {
 
 
 
-install_xsel() {
-    install_on_brew_or_mac "xclip xsel"
+install_clipboard_utilities() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        install_on_brew_or_mac "xclip xsel"
+        echo "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
+        echo "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
+        echo "  On macOS, you may need to install XQuartz: brew install --cask xquartz"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        echo "pbcopy and pbpaste are built into macOS - no additional installation needed"
+    fi
 }
 
 

@@ -1,8 +1,7 @@
 {
   "env": {
-    "USE_BUILTIN_RIPGREP": 1
+    "USE_BUILTIN_RIPGREP": "1"
   },
-  "model": "sonnet",
   "permissions": {
     "allow": [
       "Bash(mkdir:*)",
