@@ -1,5 +1,8 @@
 local
-
+**/.credentials.json
+**/.update.lock
+**/logs/
+.claude/
 # Ignore specific subdirectories in maintained_global_claude
 maintained_global_claude/.checksums
 maintained_global_claude/ide/

@@ -60,6 +60,7 @@ install_if_missing shellcheck install_shellcheck # Shell script linter
 install_if_missing claude install_claude_code_cli # Claude code CLI
 install_if_missing chafa install_chafa # ASCII art image renderer
 install_if_missing rich install_uvx_tools
+install_if_missing xclip install_clipboard_utilities # Clipboard utilities for tmux integration
 
 
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
