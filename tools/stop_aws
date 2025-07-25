@@ -14,8 +14,8 @@ fi
 
 KEY_PATH="$HOME/.ssh/vaden-vodasafe-aws.pem"
 SSH_USER="vaden"  # Change to ubuntu, admin, etc. as needed
-VOLUME_ID="vol-0b96a6d8df56c0f85"  # Optional: if replacing root volume
-AVAILABILITY_ZONE="us-west-2c"
+VOLUME_ID="vol-0f6433d9d70214a83"  # Optional: if replacing root volume
+AVAILABILITY_ZONE="ca-central-1"
 DEVICE_NAME="/dev/sda1"
 
 echo "Stopping instance $INSTANCE_ID..."
