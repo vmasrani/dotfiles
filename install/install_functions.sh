@@ -475,6 +475,12 @@ install_nvm() {
     fi
 }
 
+install_unzip() {
+    echo "Installing unzip..."
+    install_on_brew_or_mac unzip unzip
+    echo "unzip installed successfully."
+}
+
 install_bun() {
     echo "Installing Bun..."
     if [[ "$OS_TYPE" == "mac" ]]; then
@@ -486,6 +492,11 @@ install_bun() {
     echo "Bun installed successfully."
 }
 
+install_pm2() {
+    echo "Installing PM2..."
+    npm install pm2 -g
+    echo "PM2 installed successfully."
+}
 
 install_uvx_tools() {
     uv tool install rich-cli

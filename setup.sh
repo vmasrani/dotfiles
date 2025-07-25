@@ -35,9 +35,11 @@ install_if_dir_missing ~/bin/_diff-so-fancy install_diff_so_fancy               
 install_if_dir_missing ~/.cursor-server/extensions install_finditfaster          # Fast file finder extension for Cursor editor
 
 # install binaries
+install_if_missing unzip install_unzip # Unzip utility required for various installations
 install_if_missing bun install_bun # Bun JavaScript runtime and package manager
 install_if_missing nvm install_nvm # Node Version Manager with LTS Node.js
 install_if_missing npm install_npm # Node.js package manager
+install_if_missing pm2 install_pm2 # Process manager for Node.js applications
 install_if_missing go install_go # Go programming language and toolchain
 install_if_missing bfs install_bfs # Breadth-first search for filesystem traversal
 install_if_missing eza install_eza # Modern replacement for ls with color and git integration
