@@ -69,7 +69,14 @@ def main():
                 output_format="mp3_44100_128",
             )
 
+            # Set volume to 50% before playing
+            os.system("osascript -e 'set volume output volume 50'")
+            
             play(audio)
+            
+            # Restore original volume
+            os.system("osascript -e 'set volume output volume 56'")
+            
             print("✅ Playback complete!")
 
         except Exception as e:
