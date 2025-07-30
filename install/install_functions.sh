@@ -289,6 +289,7 @@ install_yq() {
 
 install_clipboard_utilities() {
     if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt install xclip xsel
         install_on_brew_or_mac "xclip xsel"
         echo "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
         echo "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
@@ -430,6 +431,7 @@ install_meslo_font() {
         if [[ "$OS_TYPE" == "mac" ]]; then
             brew install --cask font-meslo-lg-nerd-font
         else
+            sudo apt install fontconfig
             # Direct download method for Linux
             mkdir -p "$HOME/.local/share/fonts"
             curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
