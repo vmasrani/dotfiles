@@ -59,7 +59,7 @@ install_dotfiles() {
     mkdir -p "$HOME/dev/projects"
     mkdir -p "$HOME/.config/helix"
     mkdir -p "$HOME/.local/bin"
-    # mkdir -p "$HOME/.claude"
+    mkdir -p "$HOME/.claude"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
@@ -125,8 +125,10 @@ install_dotfiles() {
         "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
 
         # claude commands directory (symlink entire directory)
-        "$dotfiles/maintained_global_claude:$home/.claude"
-
+        "$dotfiles/maintained_global_claude/commands:$home/.claude"
+        "$dotfiles/maintained_global_claude/hooks:$home/.claude"
+        "$dotfiles/maintained_global_claude/local:$home/.claude"
+        "$dotfiles/maintained_global_claude/settings.json:$home/.claude"
     )
 
     # Create all symlinks in a single loop
