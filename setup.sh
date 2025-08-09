@@ -50,6 +50,7 @@ install_if_missing tldr install_tealdeer # Simplified and community-driven man p
 install_if_missing hx install_helix # Modern terminal-based text editor
 install_if_missing glow install_glow # Markdown terminal viewer with style
 install_if_missing lazygit install_lazygit # Terminal UI for git commands
+install_if_missing btop install_btop # Resource monitor with CPU, memory, disk, network stats
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
 install_if_missing rg install_rg # Fast recursive grep alternative
