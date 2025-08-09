@@ -82,3 +82,5 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 
 
 
+
+alias claude="/home/vaden/.claude/local/claude"
