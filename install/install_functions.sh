@@ -251,6 +251,14 @@ install_lazygit() {
     go install github.com/jesseduffield/lazygit@latest
 }
 
+install_btop() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo snap install btop
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install btop
+    fi
+    echo "btop installed successfully."
+}
 
 install_bfs() {
     install_on_brew_or_mac "bfs" "tavianator/tap/bfs"
