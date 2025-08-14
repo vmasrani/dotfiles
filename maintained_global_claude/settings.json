@@ -21,6 +21,10 @@
     ],
     "deny": []
   },
+  "statusLine": {
+    "type": "command",
+    "command": "zsh ~/.claude/statusline.sh"
+  },
   "hooks": {
     "PostToolUse": [
       {
