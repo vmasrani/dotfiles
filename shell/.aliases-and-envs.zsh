@@ -17,11 +17,23 @@ alias less='less -M -X -g -i -J --underline-special --SILENT'
 # ===================================================================
 # FILE LISTING ALIASES (EZA)
 # ===================================================================
-alias L='eza -aHl --icons --git --grid --time-style relative --group-directories-first'
-alias l='eza -aHl --icons --git --time-style relative --group-directories-first'
-alias lt='eza -aHl --icons --git --sort=modified --time-style relative --group-directories-first'
-alias lf='eza -aHl --icons --git --sort=size --total-size --time-style relative --group-directories-first'
-alias ld='eza -aHlD --icons --git --time-style relative --group-directories-first'
+alias L='eza -aHl --icons --grid --time-style relative --group-directories-first'
+alias l='eza -aHl --icons --time-style relative --group-directories-first'
+alias lt='eza -aHl --icons --sort=modified --time-style relative --group-directories-first'
+alias lf='eza -aHl --icons --sort=size --total-size --time-style relative --group-directories-first'
+alias ld='eza -aHlD --icons --time-style relative --group-directories-first'
+
+# alias L='eza -aHl --icons --git --grid --time-style relative --group-directories-first'
+# alias l='eza -aHl --icons --git --time-style relative --group-directories-first'
+# alias lt='eza -aHl --icons --git --sort=modified --time-style relative --group-directories-first'
+# alias lf='eza -aHl --icons --git --sort=size --total-size --time-style relative --group-directories-first'
+# alias ld='eza -aHlD --icons --git --time-style relative --group-directories-first'
+
+
+
+
+
+
 alias p='fzf-preview'
 
 # ===================================================================
@@ -40,7 +52,7 @@ alias .8='cd ../../../../../../../../'      # Go back 8 directory levels
 alias .9='cd ../../../../../../../../../'   # Go back 9 directory levels
 
 #tree alias's"
-export EZA_TREE_IGNORE='.venv|.git|.mypy_cache|__pycache__|.pytest_cache'
+export EZA_TREE_IGNORE='.venv|.git|.mypy_cache|__pycache__|.pytest_cache|node_modules'
 
 alias t='eza -aHl --icons --tree --no-user --no-permissions -I "$EZA_TREE_IGNORE"'
 alias t1='eza -aHl --icons --tree --no-user --no-permissions -L 1 -I "$EZA_TREE_IGNORE"'

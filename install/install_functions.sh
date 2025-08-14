@@ -59,7 +59,7 @@ install_dotfiles() {
     mkdir -p "$HOME/dev/projects"
     mkdir -p "$HOME/.config/helix"
     mkdir -p "$HOME/.local/bin"
-    # mkdir -p "$HOME/.claude"
+    mkdir -p "$HOME/.claude"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
@@ -125,8 +125,10 @@ install_dotfiles() {
         "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
 
         # claude commands directory (symlink entire directory)
-        "$dotfiles/maintained_global_claude:$home/.claude"
-
+        "$dotfiles/maintained_global_claude/commands:$home/.claude"
+        "$dotfiles/maintained_global_claude/hooks:$home/.claude"
+        "$dotfiles/maintained_global_claude/local:$home/.claude"
+        "$dotfiles/maintained_global_claude/settings.json:$home/.claude"
     )
 
     # Create all symlinks in a single loop
@@ -251,6 +253,14 @@ install_lazygit() {
     go install github.com/jesseduffield/lazygit@latest
 }
 
+install_btop() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo snap install btop
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install btop
+    fi
+    echo "btop installed successfully."
+}
 
 install_bfs() {
     install_on_brew_or_mac "bfs" "tavianator/tap/bfs"
@@ -287,6 +297,7 @@ install_yq() {
 
 install_clipboard_utilities() {
     if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt install xclip xsel
         install_on_brew_or_mac "xclip xsel"
         echo "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
         echo "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
@@ -428,6 +439,7 @@ install_meslo_font() {
         if [[ "$OS_TYPE" == "mac" ]]; then
             brew install --cask font-meslo-lg-nerd-font
         else
+            sudo apt install fontconfig
             # Direct download method for Linux
             mkdir -p "$HOME/.local/share/fonts"
             curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
@@ -475,6 +487,12 @@ install_nvm() {
     fi
 }
 
+install_unzip() {
+    echo "Installing unzip..."
+    install_on_brew_or_mac unzip unzip
+    echo "unzip installed successfully."
+}
+
 install_bun() {
     echo "Installing Bun..."
     if [[ "$OS_TYPE" == "mac" ]]; then
@@ -486,6 +504,11 @@ install_bun() {
     echo "Bun installed successfully."
 }
 
+install_pm2() {
+    echo "Installing PM2..."
+    npm install pm2 -g
+    echo "PM2 installed successfully."
+}
 
 install_uvx_tools() {
     uv tool install rich-cli
