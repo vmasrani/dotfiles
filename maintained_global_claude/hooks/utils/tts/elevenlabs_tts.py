@@ -70,12 +70,12 @@ def main():
             )
 
             # Set volume to 50% before playing
-            os.system("osascript -e 'set volume output volume 50'")
+            # os.system("osascript -e 'set volume output volume 50'")
             
             play(audio)
             
             # Restore original volume
-            os.system("osascript -e 'set volume output volume 56'")
+            # os.system("osascript -e 'set volume output volume 56'")
             
             print("✅ Playback complete!")
 
