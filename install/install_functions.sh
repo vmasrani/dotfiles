@@ -59,7 +59,7 @@ install_dotfiles() {
     mkdir -p "$HOME/dev/projects"
     mkdir -p "$HOME/.config/helix"
     mkdir -p "$HOME/.local/bin"
-    # mkdir -p "$HOME/.claude"
+    mkdir -p "$HOME/.claude"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
@@ -125,8 +125,10 @@ install_dotfiles() {
         "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
 
         # claude commands directory (symlink entire directory)
-        "$dotfiles/maintained_global_claude:$home/.claude"
-
+        "$dotfiles/maintained_global_claude/commands:$home/.claude"
+        "$dotfiles/maintained_global_claude/hooks:$home/.claude"
+        "$dotfiles/maintained_global_claude/local:$home/.claude"
+        "$dotfiles/maintained_global_claude/settings.json:$home/.claude"
     )
 
     # Create all symlinks in a single loop
@@ -251,6 +253,14 @@ install_lazygit() {
     go install github.com/jesseduffield/lazygit@latest
 }
 
+install_btop() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo snap install btop
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install btop
+    fi
+    echo "btop installed successfully."
+}
 
 install_bfs() {
     install_on_brew_or_mac "bfs" "tavianator/tap/bfs"
