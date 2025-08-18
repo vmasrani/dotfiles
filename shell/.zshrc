@@ -81,4 +81,7 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 
+# HACK
+export OLLAMA_CONTEXT_LENGTH=40000
 
+alias claude="/home/vaden/.claude/local/claude"
