@@ -262,6 +262,16 @@ install_btop() {
     echo "btop installed successfully."
 }
 
+install_ctop() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-amd64
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-amd64
+    fi
+    sudo chmod +x /usr/local/bin/ctop
+    echo "ctop installed successfully."
+}
+
 install_bfs() {
     install_on_brew_or_mac "bfs" "tavianator/tap/bfs"
 }
@@ -513,4 +523,40 @@ install_pm2() {
 install_uvx_tools() {
     uv tool install rich-cli
     uv tool install "markitdown[all]"
+}
+
+install_uwu() {
+    echo "Installing uwu..."
+    local temp_dir="/tmp/uwu_build_$$"
+    
+    # Clone and build in temp directory
+    git clone https://github.com/context-labs/uwu.git "$temp_dir"
+    cd "$temp_dir"
+    
+    # Check if bun is installed
+    if ! command_exists "bun"; then
+        echo "Bun is required for uwu. Installing bun first..."
+        install_bun
+    fi
+    
+    # Install dependencies and build
+    bun install
+    bun run build
+    
+    # Make binary executable and move to PATH
+    chmod +x dist/uwu-cli
+    
+    if [[ "$OS_TYPE" == "mac" ]]; then
+        # On macOS, use /usr/local/bin without sudo
+        mv dist/uwu-cli /usr/local/bin/uwu-cli
+    else
+        # On Linux, need sudo for /usr/local/bin
+        sudo mv dist/uwu-cli /usr/local/bin/uwu-cli
+    fi
+    
+    # Clean up temp directory
+    cd /
+    rm -rf "$temp_dir"
+    
+    echo "uwu installed successfully."
 }
