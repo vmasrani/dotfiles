@@ -109,3 +109,7 @@ alias cc='claude'
 alias ccc='claude --continue'
 alias upd='update-packages'
 alias updq='update-packages --quiet'
+
+
+# uwu shorcut 
+alias ::='uwu-cli'
