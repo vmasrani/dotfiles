@@ -137,8 +137,24 @@ install_dotfiles() {
     for pair in "${file_pairs[@]}"; do
         source="${pair%%:*}"
         target="${pair#*:}"
-        echo "Linking $(basename "$source") to $target"
-        ln -sf "$source" "$target"
+        
+        # Check if target already exists and points to the correct source
+        if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
+            echo "Symlink already exists: $(basename "$source") -> $target"
+        else
+            echo "Linking $(basename "$source") to $target"
+            # Only remove if it's a broken symlink
+            if [ -L "$target" ] && [ ! -e "$target" ]; then
+                rm -f "$target"
+            fi
+            # Create symlink only if target doesn't exist
+            if [ ! -e "$target" ]; then
+                ln -sf "$source" "$target"
+            else
+                echo "Warning: $target already exists and is not a symlink to $source"
+            fi
+        fi
+        
         # Only chmod +x if it's a file, not a directory
         if [ -f "$source" ]; then
             chmod +x "$source"
