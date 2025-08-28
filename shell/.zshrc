@@ -40,6 +40,7 @@ export ZSH_DISABLE_COMPFIX="true"
 # Source Core Configuration Files
 source ~/helper_functions.sh
 source ~/lscolors.sh
+source ~/.paths.zsh
 source ~/.aliases-and-envs.zsh
 source ~/.local_env.sh  # Should contain API keys and local-specific settings
 
@@ -83,11 +84,10 @@ bindkey '^[[1;3C' forward-word
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
+# PATH is already configured in .paths.zsh with proper ordering
 
 export OLLAMA_CONTEXT_LENGTH=40000
 
 # HACK
 export OLLAMA_CONTEXT_LENGTH=40000
 
-alias claude="/home/vaden/.claude/local/claude"

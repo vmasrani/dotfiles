@@ -81,6 +81,9 @@ install_dotfiles() {
         "$dotfiles/preview/torch-preview.sh:$bin/torch-preview"
         "$dotfiles/preview/npy-preview.py:$bin/npy-preview"
         "$dotfiles/preview/feather-preview.py:$bin/feather-preview"
+        
+        # Claude wrapper (cross-platform)
+        "$dotfiles/tools/claude-wrapper.sh:$bin/claude"
 
         # editor dotfiles
         "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
@@ -124,11 +127,10 @@ install_dotfiles() {
         "$dotfiles/editors/hx_languages.toml:$home/.config/helix/languages.toml"
         "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
 
-        # claude commands directory (symlink entire directory)
-        "$dotfiles/maintained_global_claude/commands:$home/.claude"
-        "$dotfiles/maintained_global_claude/hooks:$home/.claude"
-        "$dotfiles/maintained_global_claude/local:$home/.claude"
-        "$dotfiles/maintained_global_claude/settings.json:$home/.claude"
+        # claude directories and files (symlink contents to ~/.claude)
+        "$dotfiles/maintained_global_claude/commands:$home/.claude/commands"
+        "$dotfiles/maintained_global_claude/hooks:$home/.claude/hooks"
+        "$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
     )
 
     # Create all symlinks in a single loop
@@ -137,7 +139,10 @@ install_dotfiles() {
         target="${pair#*:}"
         echo "Linking $(basename "$source") to $target"
         ln -sf "$source" "$target"
-        chmod +x "$source"
+        # Only chmod +x if it's a file, not a directory
+        if [ -f "$source" ]; then
+            chmod +x "$source"
+        fi
     done
 
 if [ -d "$HOME/.cursor" ]; then
@@ -262,6 +267,16 @@ install_btop() {
     echo "btop installed successfully."
 }
 
+install_ctop() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-amd64
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-amd64
+    fi
+    sudo chmod +x /usr/local/bin/ctop
+    echo "ctop installed successfully."
+}
+
 install_bfs() {
     install_on_brew_or_mac "bfs" "tavianator/tap/bfs"
 }
@@ -271,7 +286,18 @@ install_shellcheck() {
 }
 
 install_claude_code_cli() {
+    # Install via npm
     npm install -g @anthropic-ai/claude-code
+    
+    # Run the migration to move Claude to ~/.claude
+    echo "Running Claude migration to ~/.claude..."
+    if command -v claude >/dev/null 2>&1; then
+        claude migrate || echo "Migration completed or already done"
+    fi
+    
+    # Create a symlink to our cross-platform wrapper
+    ln -sf "$HOME/dotfiles/tools/claude-wrapper.sh" "$HOME/bin/claude"
+    echo "Claude wrapper installed to ~/bin/claude"
 }
 
 install_chafa() {
@@ -513,4 +539,40 @@ install_pm2() {
 install_uvx_tools() {
     uv tool install rich-cli
     uv tool install "markitdown[all]"
+}
+
+install_uwu() {
+    echo "Installing uwu..."
+    local temp_dir="/tmp/uwu_build_$$"
+    
+    # Clone and build in temp directory
+    git clone https://github.com/context-labs/uwu.git "$temp_dir"
+    cd "$temp_dir"
+    
+    # Check if bun is installed
+    if ! command_exists "bun"; then
+        echo "Bun is required for uwu. Installing bun first..."
+        install_bun
+    fi
+    
+    # Install dependencies and build
+    bun install
+    bun run build
+    
+    # Make binary executable and move to PATH
+    chmod +x dist/uwu-cli
+    
+    if [[ "$OS_TYPE" == "mac" ]]; then
+        # On macOS, use /usr/local/bin without sudo
+        mv dist/uwu-cli /usr/local/bin/uwu-cli
+    else
+        # On Linux, need sudo for /usr/local/bin
+        sudo mv dist/uwu-cli /usr/local/bin/uwu-cli
+    fi
+    
+    # Clean up temp directory
+    cd /
+    rm -rf "$temp_dir"
+    
+    echo "uwu installed successfully."
 }

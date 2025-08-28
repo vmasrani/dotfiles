@@ -9,6 +9,13 @@ command_exists() {
     command -v "$1" > /dev/null
 }
 
+uwu() {
+  local cmd
+  cmd="$(uwu-cli "$@")" || return
+  vared -p "" -c cmd
+  print -s -- "$cmd"   # add to history
+  eval "$cmd"
+}
 
 
 move_and_symlink() {
