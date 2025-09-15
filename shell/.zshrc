@@ -40,9 +40,10 @@ export ZSH_DISABLE_COMPFIX="true"
 # Source Core Configuration Files
 source ~/helper_functions.sh
 source ~/lscolors.sh
-source ~/.paths.zsh
 source ~/.aliases-and-envs.zsh
 source ~/.local_env.sh  # Should contain API keys and local-specific settings
+
+# source ~/.paths.zsh
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
