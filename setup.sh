@@ -39,17 +39,20 @@ install_if_missing unzip install_unzip # Unzip utility required for various inst
 install_if_missing bun install_bun # Bun JavaScript runtime and package manager
 install_if_missing nvm install_nvm # Node Version Manager with LTS Node.js
 install_if_missing npm install_npm # Node.js package manager
+install_if_missing yarn install_yarn # Yarn package manager
 install_if_missing pm2 install_pm2 # Process manager for Node.js applications
 install_if_missing go install_go # Go programming language and toolchain
 install_if_missing bfs install_bfs # Breadth-first search for filesystem traversal
 install_if_missing eza install_eza # Modern replacement for ls with color and git integration
 install_if_missing fzf install_fzf # Command-line fuzzy finder for files, history, and more
 install_if_missing cargo install_cargo # Rust package manager and build system
-install_if_missing uv install_uv # Python package manager
+install_if_missing uv install_uv # Python package manager (must be before uvx_tools)
 install_if_missing tldr install_tealdeer # Simplified and community-driven man pages
 install_if_missing hx install_helix # Modern terminal-based text editor
 install_if_missing glow install_glow # Markdown terminal viewer with style
 install_if_missing lazygit install_lazygit # Terminal UI for git commands
+install_if_missing btop install_btop # Resource monitor with CPU, memory, disk, network stats
+install_if_missing ctop install_ctop # Container metrics and monitoring
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
 install_if_missing rg install_rg # Fast recursive grep alternative
@@ -61,8 +64,12 @@ install_if_missing parquet-tools install_parquet_tools # Parquet file viewer and
 install_if_missing shellcheck install_shellcheck # Shell script linter
 install_if_missing claude install_claude_code_cli # Claude code CLI
 install_if_missing chafa install_chafa # ASCII art image renderer
-install_if_missing rich install_uvx_tools
 install_if_missing xclip install_clipboard_utilities # Clipboard utilities for tmux integration
+install_if_missing uwu-cli install_uwu # uwu-cli for terminal UI
+install_if_missing codex install_codex # OpenAI Codex CLI
+
+# install tools that depend on uv (must be after uv installation)
+install_if_missing rich install_uvx_tools # Rich CLI and markitdown tools via uv
 
 
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
