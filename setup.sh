@@ -66,6 +66,7 @@ install_if_missing claude install_claude_code_cli # Claude code CLI
 install_if_missing chafa install_chafa # ASCII art image renderer
 install_if_missing xclip install_clipboard_utilities # Clipboard utilities for tmux integration
 install_if_missing uwu-cli install_uwu # uwu-cli for terminal UI
+install_if_missing codex install_codex # OpenAI Codex CLI
 
 # install tools that depend on uv (must be after uv installation)
 install_if_missing rich install_uvx_tools # Rich CLI and markitdown tools via uv
