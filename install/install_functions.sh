@@ -556,6 +556,12 @@ install_pm2() {
     echo "PM2 installed successfully."
 }
 
+install_yarn() {
+    echo "Installing Yarn..."
+    npm install --global yarn
+    echo "Yarn installed successfully."
+}
+
 install_uvx_tools() {
     uv tool install rich-cli
     uv tool install "markitdown[all]"
@@ -595,4 +601,10 @@ install_uwu() {
     rm -rf "$temp_dir"
 
     echo "uwu installed successfully."
+}
+
+install_codex() {
+    echo "Installing OpenAI Codex CLI..."
+    npm install -g @openai/codex
+    echo "Codex installed successfully."
 }
