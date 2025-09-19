@@ -60,6 +60,7 @@ install_dotfiles() {
     mkdir -p "$HOME/.config/helix"
     mkdir -p "$HOME/.local/bin"
     mkdir -p "$HOME/.claude"
+    mkdir -p "$HOME/.codex"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
@@ -81,7 +82,7 @@ install_dotfiles() {
         "$dotfiles/preview/torch-preview.sh:$bin/torch-preview"
         "$dotfiles/preview/npy-preview.py:$bin/npy-preview"
         "$dotfiles/preview/feather-preview.py:$bin/feather-preview"
-        
+
         # Claude wrapper (cross-platform)
         "$dotfiles/tools/claude-wrapper.sh:$bin/claude"
 
@@ -131,13 +132,17 @@ install_dotfiles() {
         "$dotfiles/maintained_global_claude/commands:$home/.claude/commands"
         "$dotfiles/maintained_global_claude/hooks:$home/.claude/hooks"
         "$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
+        "$dotfiles/maintained_global_claude/hooks/utils/llm/oai.py:$home/tools/oai"
+
+        # codex config
+        "$dotfiles/codex/config.toml:$home/.codex/config.toml"
     )
 
     # Create all symlinks in a single loop
     for pair in "${file_pairs[@]}"; do
         source="${pair%%:*}"
         target="${pair#*:}"
-        
+
         # Check if target already exists and points to the correct source
         if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
             echo "Symlink already exists: $(basename "$source") -> $target"
@@ -154,7 +159,7 @@ install_dotfiles() {
                 echo "Warning: $target already exists and is not a symlink to $source"
             fi
         fi
-        
+
         # Only chmod +x if it's a file, not a directory
         if [ -f "$source" ]; then
             chmod +x "$source"
@@ -216,7 +221,6 @@ install_cargo() {
 
 install_uv() {
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    uv venv --python 3.12 $HOME/ml3
 
 }
 
@@ -304,13 +308,13 @@ install_shellcheck() {
 install_claude_code_cli() {
     # Install via npm
     npm install -g @anthropic-ai/claude-code
-    
+
     # Run the migration to move Claude to ~/.claude
     echo "Running Claude migration to ~/.claude..."
     if command -v claude >/dev/null 2>&1; then
         claude migrate || echo "Migration completed or already done"
     fi
-    
+
     # Create a symlink to our cross-platform wrapper
     ln -sf "$HOME/dotfiles/tools/claude-wrapper.sh" "$HOME/bin/claude"
     echo "Claude wrapper installed to ~/bin/claude"
@@ -560,35 +564,35 @@ install_uvx_tools() {
 install_uwu() {
     echo "Installing uwu..."
     local temp_dir="/tmp/uwu_build_$$"
-    
+
     # Clone and build in temp directory
     git clone https://github.com/context-labs/uwu.git "$temp_dir"
     cd "$temp_dir"
-    
+
     # Check if bun is installed
     if ! command_exists "bun"; then
         echo "Bun is required for uwu. Installing bun first..."
         install_bun
     fi
-    
+
     # Install dependencies and build
     bun install
     bun run build
-    
+
     # Make binary executable and move to PATH
     chmod +x dist/uwu-cli
-    
+
     if [[ "$OS_TYPE" == "mac" ]]; then
         # On macOS, use /usr/local/bin without sudo
-        mv dist/uwu-cli /usr/local/bin/uwu-cli
+        sudo mv dist/uwu-cli /usr/local/bin/uwu-cli
     else
         # On Linux, need sudo for /usr/local/bin
         sudo mv dist/uwu-cli /usr/local/bin/uwu-cli
     fi
-    
+
     # Clean up temp directory
     cd /
     rm -rf "$temp_dir"
-    
+
     echo "uwu installed successfully."
 }

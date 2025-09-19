@@ -1,0 +1,16 @@
+model = "gpt-5-codex"
+[projects."/Users/vmasrani/dev/concordance"]
+trust_level = "trusted"
+
+[projects."/Users/vmasrani/dev/git_repos_to_maintain/machine_learning_helpers"]
+trust_level = "trusted"
+
+[projects."/Users/vmasrani/dev/projects/animagic/webtools/project-template"]
+trust_level = "trusted"
+
+[projects."/Users/vmasrani/dev/projects/animagic/webtools/reflex-app"]
+trust_level = "trusted"
+
+[mcp_servers.context7]
+args = ["-y", "@upstash/context7-mcp", "--api-key", "ctx7sk-e92132e7-a04e-437a-9867-ddeca394f98c"]
+command = "npx"
