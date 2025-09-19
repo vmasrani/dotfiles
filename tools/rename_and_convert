@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-# Orchestrate renaming an ebook/PDF and then converting to PDF
+# Convert to PDF if needed, then rename the PDF
 # Usage: rename_and_convert <input.epub|.mobi|.pdf>
 
 set -euo pipefail
@@ -8,9 +8,9 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 TOOLS_DIR="/Users/vmasrani/dotfiles/tools"
 
-input="$1"
+input="${1:-}"
 
-if [[ -z "${input:-}" ]]; then
+if [[ -z "$input" ]]; then
   echo "Usage: $0 <input.epub|.mobi|.pdf>" >&2
   exit 1
 fi
@@ -23,14 +23,12 @@ fi
 ext="${input##*.}"
 ext_lc="${ext:l}"
 
-# If MOBI, convert first to PDF so downstream tools work consistently
 case "$ext_lc" in
-mobi)
-    echo "Converting MOBI to PDF first..." >&2
+  epub|mobi)
     pdf_path=$("$TOOLS_DIR"/convert_ebook "$input" | tail -n1)
     input="$pdf_path"
     ;;
-  epub|pdf)
+  pdf)
     ;;
   *)
     echo "Error: Unsupported extension '.$ext_lc'. Use .epub, .mobi, or .pdf" >&2
@@ -38,19 +36,5 @@ mobi)
     ;;
 esac
 
-# Rename the file using the LLM-assisted tool
-renamed_path=$("$TOOLS_DIR"/rename_pdf "$input")
-
-# Ensure we have a PDF output; if renamed result is EPUB, convert it
-renamed_ext="${renamed_path##*.}"
-renamed_ext_lc="${renamed_ext:l}"
-
-if [[ "$renamed_ext_lc" != "pdf" ]]; then
-  echo "Converting renamed file to PDF..." >&2
-  final_pdf=$("$TOOLS_DIR"/convert_ebook "$renamed_path" | tail -n1)
-  echo "$final_pdf"
-else
-  echo "$renamed_path"
-fi
-
-
+renamed_pdf=$("$TOOLS_DIR"/rename_pdf "$input")
+echo "$renamed_pdf"

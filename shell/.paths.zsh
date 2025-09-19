@@ -28,7 +28,9 @@ PATH_ADDITIONS=(
     "/usr/local/go/bin"             # Go installation
     "$HOME/.cargo/bin"              # Rust/Cargo binaries
     "$HOME/.nvm"                    # nvm installation
+    "/opt/homebrew/bin"             # Homebrew binaries
 )
+
 
 # Add paths to PATH if they exist and aren't already present
 for path_dir in "${PATH_ADDITIONS[@]}"; do

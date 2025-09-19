@@ -105,3 +105,5 @@ alias updq='update-packages --quiet'
 # uwu shorcut
 alias ::='uwu-cli'
 alias :::='uwu'
+
+alias gpt='oai'

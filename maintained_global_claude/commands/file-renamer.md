@@ -1,15 +1,18 @@
-Rename this file into 'Author Name - Title - Subtitle' format.
+Rename this file to the format: Author Name - Title - Subtitle
 
-If there's not enough information in the text, return the original filename or a cleaned-up version of it. If the file is already in Author Name - Title - Subtitle format, simply return the original filename
-
-Return ONLY the new filename with no extension, NO OTHER COMMENTARY.
+Rules:
+- If insufficient information, return the original filename cleaned of extra characters.
+- If already in Author Name - Title - Subtitle format, return it unchanged.
+- Return ONLY the new filename (without extension).
+- Do NOT add commentary or explanations.
 
 Examples of correct output:
-1. 'J.K. Rowling - Harry Potter - The Philosopher's Stone'
-2. 'George Orwell - 1984'
-3. 'Isaac Asimov - Foundation'
+1. J.K. Rowling - Harry Potter - The Philosopher's Stone
+2. George Orwell - 1984
+3. Isaac Asimov - Foundation
 
-Example of incorrect output:
+Examples of incorrect output:
+- "Based on the filename..."
+- "I'm sorry, I can't rename..."
 
- - "Based on the filename "Robert P. George - Natural ...."
- - "I'm sorry, I can't rename the file because I don't have enough information to determine the author and title."
+Original filename:

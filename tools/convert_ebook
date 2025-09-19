@@ -1,57 +1,146 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.14"
-# dependencies = [
-#     "convertio",
-# ]
+# requires-python = ">=3.12"
 # ///
 
 import sys
-from pathlib import Path
 import time
-from convertio import Client
+from pathlib import Path
+import json
+import urllib.request
+from urllib.parse import quote
+import urllib.error
+import urllib.request
+from urllib.parse import quote, urlsplit, urlunsplit
+import urllib.error
+
+API_BASE = "https://api.convertio.co"
 
 
-def convert_to_pdf(api, source):
-    output_file = source.with_suffix('.pdf')
+def read_api_key() -> str:
+    api_key_path = Path.home() / ".convertio_api_key"
+    return api_key_path.read_text().strip()
+
+
+def http_json_post(url: str, payload: dict) -> dict:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req) as resp:
+        assert resp.status == 200
+        return json.load(resp)
+
+
+def http_json_put_file(url: str, file_path: Path) -> dict:
+    blob = file_path.read_bytes()
+    req = urllib.request.Request(url, data=blob, headers={"Content-Type": "application/octet-stream"}, method="PUT")
+    with urllib.request.urlopen(req) as resp:
+        assert resp.status == 200
+        return json.load(resp)
+
+
+def http_json_get(url: str) -> dict:
+    with urllib.request.urlopen(url) as resp:
+        assert resp.status == 200
+        return json.load(resp)
+
+
+def start_conversion(api_key: str, filename: str, input_format: str, output_format: str) -> str:
+    url = f"{API_BASE}/convert"
+    payload = {
+        "apikey": api_key,
+        "input": "upload",
+        "filename": filename,
+        "inputformat": input_format,
+        "outputformat": output_format,
+    }
+    data = http_json_post(url, payload)
+    assert data.get("status") == "ok"
+    return data["data"]["id"]
+
+
+def upload_file(conversion_id: str, filename: str, file_path: Path) -> None:
+    encoded = quote(filename, safe="")
+    url = f"{API_BASE}/convert/{conversion_id}/{encoded}"
+    data = http_json_put_file(url, file_path)
+    assert data.get("status") == "ok"
+
+
+def get_status(conversion_id: str) -> dict:
+    url = f"{API_BASE}/convert/{conversion_id}/status"
+    return http_json_get(url)
+
+
+def wait_for_finish(conversion_id: str, poll_seconds: float = 1.0) -> dict:
+    while True:
+        status_payload = get_status(conversion_id)
+        if status_payload.get("status") != "ok":
+            raise RuntimeError(status_payload.get("error", "Unknown error from Convertio"))
+        step = status_payload["data"].get("step")
+        if step == "finish":
+            return status_payload["data"]
+        time.sleep(poll_seconds)
+
+
+def download_output_file(output_url: str, dest_path: Path) -> None:
+    parts = urlsplit(output_url)
+    safe_url = urlunsplit((
+        parts.scheme,
+        parts.netloc,
+        quote(parts.path, safe="/%"),
+        quote(parts.query, safe="=&%"),
+        quote(parts.fragment, safe="")
+    ))
+    with urllib.request.urlopen(safe_url) as r:
+        with dest_path.open("wb") as f:
+            _ = [f.write(chunk) for chunk in iter(lambda: r.read(1024 * 1024), b"") if chunk]
+
+def convert_to_pdf(api_key: str, source: Path) -> Path:
+    output_file = source.with_suffix(".pdf")
     print("Converting to pdf...")
-    conversion_id = api.convert_by_filename(str(source), 'pdf')
-    while api.check_conversion(conversion_id).step != 'finish':
-        time.sleep(1)
-    api.download(conversion_id, str(output_file))
+    input_format = source.suffix.lstrip(".").lower()
+    conversion_id = start_conversion(api_key, source.name, input_format, "pdf")
+    upload_file(conversion_id, source.name, source)
+    result = wait_for_finish(conversion_id)
+    output_url = result["output"]["url"]
+    download_output_file(output_url, output_file)
     print("Conversion to pdf successful.")
     return output_file
 
-def main():
+
+def main() -> None:
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <input_file>")
+        print(f"Usage: {Path(sys.argv[0]).name} <input_file>")
         sys.exit(1)
 
-    input_file = Path(sys.argv[1]).expanduser().resolve()
-    if not input_file.exists():
-        print(f"Error: The file '{input_file}' does not exist.")
+    input_path = Path(sys.argv[1]).expanduser().resolve()
+    if not input_path.exists():
+        print(f"Error: The file '{input_path}' does not exist.")
         sys.exit(1)
 
-    suffix = input_file.suffix.lower()
-    if suffix == '.pdf':
+    suffix = input_path.suffix.lower()
+    if suffix == ".pdf":
         print("Already a PDF. Nothing to do.")
         return
 
-    if suffix not in {'.epub', '.mobi'}:
+    if suffix not in {".epub", ".mobi"}:
         print(f"Error: Unsupported input format '{suffix}'. Only .epub, .mobi, or .pdf are supported.")
         sys.exit(1)
 
-    with open(Path.home() / '.convertio_api_key') as f:
-        api_key = f.read().strip()
-
-    api = Client(api_key)
-
-    pdf_file = convert_to_pdf(api, input_file)
+    api_key = read_api_key()
+    try:
+        pdf_file = convert_to_pdf(api_key, input_path)
+    except urllib.error.HTTPError as e:
+        if e.code == 422:
+            print("Error: You've reached your conversion limit for the last 24 hours (HTTP 422: Unprocessable Entity).")
+            sys.exit(1)
+        else:
+            raise
     if not pdf_file.exists():
         print(f"Error: The PDF file '{pdf_file}' was not created.")
         sys.exit(1)
 
     print(f"Created '{pdf_file}' next to the original.")
+
 
 if __name__ == "__main__":
     main()
