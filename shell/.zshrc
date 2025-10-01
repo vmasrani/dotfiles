@@ -55,6 +55,10 @@ source ~/.fzf-config.zsh
 # Numeric sort
 setopt numeric_glob_sort
 
+# History tweaks beyond prezto defaults
+setopt APPEND_HISTORY
+setopt HIST_REDUCE_BLANKS
+
 # Better vim mode
 
 # Better searching in command mode
@@ -87,4 +91,3 @@ export OLLAMA_CONTEXT_LENGTH=40000
 
 # HACK
 export OLLAMA_CONTEXT_LENGTH=40000
-
