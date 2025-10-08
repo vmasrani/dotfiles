@@ -1,4 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = ["pandas", "pyarrow"]
+# ///
 import sys
 import pandas as pd
 

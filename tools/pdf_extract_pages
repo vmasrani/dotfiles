@@ -3,6 +3,7 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "pypdf",
+#     "pymupdf",
 # ]
 # ///
 import sys
@@ -10,59 +11,59 @@ import argparse
 from io import BytesIO
 from pathlib import Path
 from pypdf import PdfReader, PdfWriter
+import fitz  # PyMuPDF
 
 
-def extract_pages(input_pdf_bytes, num_pages):
-    """Extract first n pages from PDF bytes."""
-    reader = PdfReader(BytesIO(input_pdf_bytes))
+def epub_to_pdf_bytes(epub_bytes: bytes) -> bytes:
+    doc = fitz.open(stream=epub_bytes, filetype="epub")
+    pdf_bytes = doc.convert_to_pdf()
+    doc.close()
+    return pdf_bytes
+
+
+def extract_pages_from_pdf_bytes(pdf_bytes: bytes, num_pages: int) -> bytes:
+    reader = PdfReader(BytesIO(pdf_bytes))
     writer = PdfWriter()
-
     total_pages = len(reader.pages)
     pages_to_extract = min(num_pages, total_pages)
-
-    for i in range(pages_to_extract):
-        writer.add_page(reader.pages[i])
-
+    [writer.add_page(reader.pages[i]) for i in range(pages_to_extract)]
     output_buffer = BytesIO()
     writer.write(output_buffer)
     return output_buffer.getvalue()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Extract first n pages from a PDF')
+    parser = argparse.ArgumentParser(description='Extract first n pages from a PDF or EPUB')
     parser.add_argument('-n', '--pages', type=int, default=10,
                         help='Number of pages to extract (default: 10)')
-    parser.add_argument('-f', '--file', type=str, help='PDF file to read from')
     parser.add_argument('-o', '--output', type=str, help='Output file name')
-
+    parser.add_argument('file', type=str,
+                        help='Input file (.pdf or .epub). Type is inferred from file extension.')
     args = parser.parse_args()
 
     if args.pages <= 0:
         print("Error: Number of pages must be positive", file=sys.stderr)
         sys.exit(1)
 
-    if args.file:
-        input_pdf_path = Path(args.file)
-        if not input_pdf_path.is_file():
-            print(f"Error: File {args.file} does not exist", file=sys.stderr)
-            sys.exit(1)
-        input_pdf = input_pdf_path.read_bytes()
-    else:
-        input_pdf = sys.stdin.buffer.read()
-        if not input_pdf:
-            print("Error: No PDF data received from stdin", file=sys.stderr)
-            sys.exit(1)
-
-    try:
-        output_pdf = extract_pages(input_pdf, args.pages)
-        if args.output:
-            output_path = Path(args.output)
-            output_path.write_bytes(output_pdf)
-        else:
-            sys.stdout.buffer.write(output_pdf)
-    except Exception as e:
-        print(f"Error processing PDF: {e}", file=sys.stderr)
+    input_path = Path(args.file).expanduser().resolve()
+    if not input_path.is_file():
+        print(f"Error: File {args.file} does not exist", file=sys.stderr)
         sys.exit(1)
+
+    suffix = input_path.suffix.lower()
+    if suffix == '.pdf':
+        input_bytes = input_path.read_bytes()
+    elif suffix == '.epub':
+        input_bytes = epub_to_pdf_bytes(input_path.read_bytes())
+    else:
+        print(f"Error: Unsupported file type '{suffix}'. Only .pdf or .epub are supported.", file=sys.stderr)
+        sys.exit(1)
+
+    output_pdf = extract_pages_from_pdf_bytes(input_bytes, args.pages)
+    if args.output:
+        Path(args.output).write_bytes(output_pdf)
+    else:
+        sys.stdout.buffer.write(output_pdf)
 
 
 if __name__ == "__main__":

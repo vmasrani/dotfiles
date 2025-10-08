@@ -9,14 +9,13 @@
 # confirmations, etc.) must go above this block; everything else may go below.
 
 # Fix for Cursor Agent terminal hangs - skip loading rest of config in Agent mode
-if [[ "$CURSOR_AGENT" == "1" || "$COMPOSER_NO_INTERACTION" == "1" || "$PIP_NO_INPUT" == "true" ]]; then
-  return
-fi
+# if [[ "$CURSOR_AGENT" == "1" || "$COMPOSER_NO_INTERACTION" == "1" || "$PIP_NO_INPUT" == "true" ]]; then
+#   return
+# fi
 
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
-
 #
 # Executes commands at the start of an interactive session.
 #
@@ -40,15 +39,13 @@ export ZSH_DISABLE_COMPFIX="true"
 # Source Core Configuration Files
 source ~/helper_functions.sh
 source ~/lscolors.sh
-source ~/.paths.zsh
 source ~/.aliases-and-envs.zsh
 source ~/.local_env.sh  # Should contain API keys and local-specific settings
+source ~/.paths.zsh
 
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
-
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 nvm use --lts > /dev/null
 
 # fzf
@@ -57,6 +54,10 @@ source ~/.fzf-config.zsh
 
 # Numeric sort
 setopt numeric_glob_sort
+
+# History tweaks beyond prezto defaults
+setopt APPEND_HISTORY
+setopt HIST_REDUCE_BLANKS
 
 # Better vim mode
 
@@ -90,4 +91,3 @@ export OLLAMA_CONTEXT_LENGTH=40000
 
 # HACK
 export OLLAMA_CONTEXT_LENGTH=40000
-
