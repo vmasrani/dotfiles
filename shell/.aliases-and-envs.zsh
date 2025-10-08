@@ -23,15 +23,6 @@ alias lt='eza -aHl --icons --sort=modified --time-style relative --group-directo
 alias lf='eza -aHl --icons --sort=size --total-size --time-style relative --group-directories-first'
 alias ld='eza -aHlD --icons --time-style relative --group-directories-first'
 
-# alias L='eza -aHl --icons --git --grid --time-style relative --group-directories-first'
-# alias l='eza -aHl --icons --git --time-style relative --group-directories-first'
-# alias lt='eza -aHl --icons --git --sort=modified --time-style relative --group-directories-first'
-# alias lf='eza -aHl --icons --git --sort=size --total-size --time-style relative --group-directories-first'
-# alias ld='eza -aHlD --icons --git --time-style relative --group-directories-first'
-
-
-
-
 
 
 alias p='fzf-preview'
@@ -111,5 +102,8 @@ alias upd='update-packages'
 alias updq='update-packages --quiet'
 
 
-# uwu shorcut 
+# uwu shorcut
 alias ::='uwu-cli'
+alias :::='uwu'
+
+alias gpt='oai'

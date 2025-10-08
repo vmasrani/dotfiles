@@ -20,15 +20,9 @@ fi
 extension="${file##*.}"
 
 # Create prompt for Claude
-prompt="$(cat $HOME/.claude/commands/file-renamer.md)
-The original filename is: $file."
-
-new_name=$(cat "$file" | pdf_extract_pages | markitdown | claude -p "$prompt" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-# Show truncated name for display
-truncated_name=$(echo "$new_name" | awk '{ if (length($0) > 50) print substr($0, 1, 47) "..."; else print $0 }')
-
-echo -e "\033[32mClaude: $file -> $truncated_name\033[0m"
+system_prompt="$(cat $HOME/.claude/commands/file-renamer.md) $file."
+text="$(pdf_extract_pages "$file" | markitdown)"
+new_name=$(oai "$system_prompt $text")
 
 # Check if we got a valid response
 if [[ -z "$new_name" ]]; then
@@ -41,6 +35,13 @@ if [[ ${#new_name} -gt 100 ]]; then
     exit 1
 fi
 
-# Rename the file
-new_filename="${new_name}.${extension}"
-mv -if "$file" "$new_filename"
+# Rename the file in-place (same directory)
+dir="${file:h}"
+new_filename="${dir}/${new_name}.${extension}"
+mv -if -- "$file" "$new_filename"
+
+# Remove red and add green after processing
+tag --remove Red  "$new_filename"
+tag --add Green "$new_filename"
+echo "$new_filename"
+

@@ -1,4 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = ["torch"]
+# ///
 import sys
 from pprint import pprint
 from torch import load, __version__
