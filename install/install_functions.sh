@@ -278,6 +278,11 @@ install_lazygit() {
     go install github.com/jesseduffield/lazygit@latest
 }
 
+install_lazydocker() {
+    export PATH="$HOME/go/bin:$PATH"
+    go install github.com/jesseduffield/lazydocker@latest
+}
+
 install_btop() {
     if [[ "$OS_TYPE" == "linux" ]]; then
         sudo snap install btop
@@ -337,6 +342,11 @@ install_yq() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install yq
     fi
+}
+
+install_csvcut() {
+    install_on_brew_or_mac "csvkit"
+    echo "csvkit installed successfully; csvcut is now available."
 }
 
 
