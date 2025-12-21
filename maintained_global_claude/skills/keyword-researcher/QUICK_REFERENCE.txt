@@ -1,0 +1,245 @@
+INSTAGRAM EXTRACTION - QUICK REFERENCE GUIDE
+==============================================
+
+RUNNING THE TOOLS
+=================
+
+Extract from Sample HTML (No Dependencies):
+  uv run instagram_post_extractor.py --html-file sample_instagram_post.html
+
+Extract from Live Instagram (Requires Auth):
+  uv run instagram_post_extractor.py --url https://www.instagram.com/explore \
+    --username your_email@gmail.com --password your_password
+
+Advanced Scraper with Features:
+  uv run advanced_instagram_scraper.py --mode profile --username username \
+    --login-user email@gmail.com --login-pass password --save-cookies
+
+Analyze Instagram Structure:
+  uv run instagram_structure_research.py --headless=false
+
+
+KEY CSS SELECTORS
+=================
+
+Post Container:
+  article
+  [role="article"]
+
+Username:
+  [data-testid="user-link"] span
+  header a[href^="/"] span:first-of-type
+
+Caption:
+  [data-testid="post-caption"]
+
+Likes:
+  button[aria-label="Like"] span
+
+Comments:
+  button[aria-label="Comment"] span
+
+Timestamp:
+  time
+  time[datetime]
+
+Post URL:
+  a[href*="/p/"]
+  a[href*="/reel/"]
+
+Images:
+  img[alt]
+
+Videos:
+  video[src]
+
+
+EXTRACTED DATA FIELDS
+====================
+
+post.username          - "travel_photography"
+post.author_url        - "/travel_photography/"
+post.caption           - "Amazing sunset..."
+post.post_url          - "/p/ABC123/"
+post.post_id           - "ABC123"
+post.timestamp         - "2024-01-15T18:30:00Z"
+post.likes_count       - 3427
+post.comments_count    - 215
+post.image_urls        - ["https://..."]
+post.video_urls        - ["https://..."]
+post.media_type        - "image" | "video" | "carousel"
+
+
+COMMON ISSUES & FIXES
+====================
+
+No posts found
+  → Add: page.wait_for_load_state("networkidle")
+
+No engagement metrics
+  → Login with credentials
+
+Empty HTML
+  → Use 'article' selector instead of classes
+
+Rate limited / 429 errors
+  → Add 500-2000ms delays between requests
+
+Login fails
+  → Account may be locked; try manual login first
+
+Selectors not matching
+  → Instagram changed structure; check DevTools
+
+
+AUTHENTICATION PATTERN
+======================
+
+page.goto("https://www.instagram.com/accounts/login/")
+page.wait_for_selector('input[name="username"]')
+page.fill('input[name="username"]', username)
+page.fill('input[name="password"]', password)
+page.click('button[type="button"]')
+page.wait_for_url("https://www.instagram.com/")
+
+
+EXTRACTION PATTERN
+==================
+
+from bs4 import BeautifulSoup
+from instagram_post_extractor import InstagramPostExtractor
+
+html = open('page.html').read()
+extractor = InstagramPostExtractor()
+posts = extractor.extract_from_html(html)
+
+for post in posts:
+    print(f"{post.username}: {post.caption}")
+    print(f"  Likes: {post.likes_count}")
+
+
+PLAYWRIGHT PATTERN
+==================
+
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=False)
+    page = browser.new_page()
+    page.goto("https://www.instagram.com/explore/")
+    page.wait_for_load_state("networkidle")
+    page.evaluate("window.scrollBy(0, window.innerHeight)")
+    html = page.content()
+    browser.close()
+
+
+FILES IN THIS DIRECTORY
+=======================
+
+Tools:
+  instagram_structure_research.py    - Research and HTML analysis
+  instagram_post_extractor.py        - Extract posts from HTML
+  advanced_instagram_scraper.py      - Production scraper with features
+  test_extractor.py                  - Test suite
+
+Sample Data:
+  sample_instagram_post.html         - Test HTML fixtures
+  test_results.json                  - Test output
+
+Documentation:
+  INSTAGRAM_STRUCTURE_GUIDE.md       - Technical details
+  INSTAGRAM_RESEARCH_README.md       - Usage guide
+  INSTAGRAM_RESEARCH_SUMMARY.md      - Complete findings
+  QUICK_REFERENCE.txt                - This file
+
+
+RATE LIMITS
+===========
+
+Detected by Instagram:
+  >10 requests/minute
+
+Safe rate:
+  1 request every 2-5 seconds
+
+Use random delays:
+  random.randint(500, 2000) milliseconds
+
+
+PERFORMANCE
+===========
+
+Load single post HTML:      <1 second
+Parse 3 sample posts:       <1 second
+Load Instagram profile:     3-5 seconds
+Load + 3 scrolls:           15-20 seconds
+Load + 5 scrolls:           25-35 seconds
+
+
+STABLE VS UNSTABLE SELECTORS
+=============================
+
+STABLE (Use these):
+  article                  - Post container
+  [data-testid="..."]      - Specific elements
+  [aria-label="..."]       - Buttons
+  <time>                   - Timestamp
+  role="..." attributes    - Elements
+
+AVOID (These change):
+  .x1iyjqo2, .xs83m0k      - Obfuscated classes
+  Any class starting with x - All unstable
+
+
+AUTHENTICATION NOTES
+====================
+
+Email: Usually Gmail or work email
+Password: Main account password
+2FA: May need manual handling
+Risk: Account lockout after ~100 requests
+Cookies: Can be saved/reused for ~1 month
+
+
+LEGAL
+=====
+
+Scraping Instagram violates Terms of Service
+For commercial use: Use official Instagram Graph API
+Personal use: Research and education only
+Risk: Account ban, legal action
+Better: Use approved Graph API instead
+
+
+GETTING HELP
+============
+
+1. Test with sample HTML first
+2. Check if HTML structure matches docs
+3. Use verbose logging to debug
+4. Inspect elements with browser DevTools
+5. Read INSTAGRAM_STRUCTURE_GUIDE.md for details
+
+
+COMMAND CHEAT SHEET
+===================
+
+Test extraction:
+  uv run instagram_post_extractor.py --html-file sample_instagram_post.html
+
+Run tests:
+  uv run test_extractor.py
+
+Extract profile:
+  uv run instagram_post_extractor.py --url https://www.instagram.com/username
+
+Analyze structure:
+  uv run instagram_structure_research.py --analyze-only --sample-html-file page.html
+
+Advanced hashtag scrape:
+  uv run advanced_instagram_scraper.py --mode hashtag --hashtag travel \
+    --login-user email@gmail.com --login-pass password --save-cookies
+
+Use saved cookies:
+  uv run advanced_instagram_scraper.py --mode profile --username username \
+    --load-cookies cookies.json

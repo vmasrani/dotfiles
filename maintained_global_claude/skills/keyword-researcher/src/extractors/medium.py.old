@@ -1,0 +1,685 @@
+"""
+Medium feed reader.
+
+Extracts article data from Medium using article elements and data attributes.
+
+Note: Medium has heavy JavaScript and may require longer timeouts.
+"""
+
+from playwright.sync_api import sync_playwright, Page
+import re
+import json
+
+from src.core.base import FeedReader
+from src.utils.parsing import parse_html
+
+
+class MediumFeedReader(FeedReader):
+    """Parser for Medium articles and search results."""
+
+    def read_feed(self) -> str:
+        """Override to use longer timeout and different wait strategy for Medium."""
+        print("\n" + "="*80)
+        print("MEDIUM FEED READER - Starting browser session")
+        print("="*80)
+        print(f"URL: {self.url}\n")
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                ]
+            )
+
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1920, 'height': 1080},
+                locale='en-US',
+                timezone_id='America/New_York',
+            )
+
+            page = context.new_page()
+
+            page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+            """)
+
+            print("Navigating to Medium...")
+            page.goto(self.url, wait_until="domcontentloaded", timeout=90000)
+            print("Page loaded, waiting 5 seconds for JavaScript...")
+            page.wait_for_timeout(5000)
+
+            print("Scrolling page to load more content...")
+            for i in range(3):
+                print(f"  Scroll {i+1}/3")
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(1500)
+            print("Scrolling complete\n")
+
+            result = self.parse_feed(page)
+            context.close()
+            browser.close()
+            return result
+
+    def parse_feed(self, page: Page) -> str:
+        """Extract Medium articles and convert to markdown."""
+        print("-"*80)
+        print("PARSING FEED")
+        print("-"*80)
+
+        content = page.content()
+        soup = parse_html(content)
+
+        print(f"HTML content length: {len(content)} characters")
+
+        articles = []
+        article_elems = soup.find_all('article')
+        print(f"\nFound {len(article_elems)} <article> elements")
+
+        if not article_elems:
+            print("No <article> elements found, trying div[data-post-id]...")
+            article_elems = soup.find_all('div', attrs={'data-post-id': True})
+            print(f"Found {len(article_elems)} div[data-post-id] elements")
+
+        if not article_elems:
+            print("\nNo article elements found. Trying alternative selectors...")
+
+            # Try other common Medium selectors
+            alt_selectors = [
+                ('div', {'class': lambda x: x and 'streamItem' in str(x)}),
+                ('div', {'data-testid': 'story-preview'}),
+                ('div', {'class': lambda x: x and 'postArticle' in str(x)}),
+            ]
+
+            for selector_type, selector_attrs in alt_selectors:
+                article_elems = soup.find_all(selector_type, selector_attrs)
+                if article_elems:
+                    print(f"Found {len(article_elems)} elements using {selector_type} {selector_attrs}")
+                    break
+
+            if not article_elems:
+                print("\nDEBUG: Dumping all top-level divs with classes:")
+                all_divs = soup.find_all('div', class_=True)[:20]  # First 20 divs
+                for div in all_divs:
+                    classes = ' '.join(div.get('class', []))
+                    print(f"  div.{classes}")
+
+                return "No Medium articles found.\n"
+
+        print(f"\nProcessing {len(article_elems)} article elements...\n")
+
+        for i, article_elem in enumerate(article_elems, 1):
+            print(f"{'='*80}")
+            print(f"ARTICLE {i}/{len(article_elems)}")
+            print(f"{'='*80}")
+            article = self._extract_article(article_elem, i)
+            if article:
+                articles.append(article)
+                print(f"✓ Article extracted successfully\n")
+            else:
+                print(f"✗ Article skipped (no title found)\n")
+
+        print(f"\n{'='*80}")
+        print(f"EXTRACTION COMPLETE: {len(articles)}/{len(article_elems)} articles extracted")
+        print(f"{'='*80}\n")
+
+        return self._format_markdown(articles)
+
+    def _extract_article(self, article_elem, article_num: int) -> dict:
+        """Extract data from a single Medium article."""
+        article = {}
+
+        print(f"\n[Article {article_num}] Extracting metadata...")
+
+        # Print the raw HTML structure for debugging
+        print("\n  Raw HTML structure (first 500 chars):")
+        html_str = str(article_elem)[:500]
+        print(f"    {html_str}...")
+
+        # Print full text content for better debugging
+        print("\n  Full article text (first 1000 chars):")
+        full_text = article_elem.get_text(separator='|')
+        print(f"    {full_text[:1000]}...")
+
+        # Extract ALL attributes (not just data-*) for comprehensive debugging
+        print("\n  ALL element attributes:")
+        for attr, value in article_elem.attrs.items():
+            value_str = str(value)[:100] if len(str(value)) > 100 else str(value)
+            print(f"    {attr}: {value_str}")
+
+        # Extract ALL data attributes for debugging
+        print("\n  Data attributes (detailed):")
+        data_attrs = {k: v for k, v in article_elem.attrs.items() if k.startswith('data-')}
+        if data_attrs:
+            for attr, value in data_attrs.items():
+                print(f"    {attr}: {value}")
+                article[f'raw_{attr}'] = value  # Store all data attributes
+        else:
+            print("    No data-* attributes found")
+
+        # Try to extract JSON data if available
+        if 'data-post-id' in article_elem.attrs:
+            article['post_id'] = article_elem.attrs['data-post-id']
+            print(f"    Found post_id: {article['post_id']}")
+
+        # Extract title
+        print("\n  Title:")
+        h2_elem = article_elem.find('h2')
+        h3_elem = article_elem.find('h3')
+        h1_elem = article_elem.find('h1')
+
+        title_elem = h2_elem or h3_elem or h1_elem
+
+        if title_elem:
+            article['title'] = title_elem.get_text(strip=True)
+            print(f"    ✓ {article['title'][:100]}...")
+
+            # Find URL from title link
+            link = title_elem.find_parent('a') or title_elem.find('a')
+            if link:
+                href = link.get('href', '')
+                article['url'] = f"https://medium.com{href}" if href.startswith('/') else href
+                print(f"    URL: {article['url']}")
+            else:
+                print(f"    ✗ No link found for title")
+        else:
+            print(f"    ✗ No title found (tried h1, h2, h3)")
+
+        # Extract author with multiple strategies
+        print("\n  Author:")
+        author_link = article_elem.find('a', attrs={'data-action': 'show-user-card'})
+        if not author_link:
+            author_link = article_elem.find('a', href=re.compile(r'/@'))
+        if not author_link:
+            # Try finding by rel="author"
+            author_link = article_elem.find('a', rel='author')
+        if not author_link:
+            # Try finding any link with "author" in class
+            author_link = article_elem.find('a', class_=lambda x: x and 'author' in str(x).lower())
+
+        if author_link:
+            article['author'] = author_link.get_text(strip=True)
+            print(f"    ✓ {article['author']}")
+
+            # Get author URL
+            author_href = author_link.get('href', '')
+            if author_href:
+                article['author_url'] = f"https://medium.com{author_href}" if author_href.startswith('/') else author_href
+                print(f"    Author URL: {article['author_url']}")
+        else:
+            print(f"    ✗ No author found")
+            article['author'] = None
+
+        # Extract publication name
+        print("\n  Publication:")
+        pub_link = article_elem.find('a', attrs={'data-action': 'show-publication-card'})
+        if not pub_link:
+            # Try other patterns
+            all_links = article_elem.find_all('a', href=True)
+            for link in all_links:
+                href = link.get('href', '')
+                # Publication URLs typically don't have @ or /p/
+                if '/' in href and '/@' not in href and '/p/' not in href and href.count('/') <= 2:
+                    text = link.get_text(strip=True)
+                    if text and text != article.get('author') and len(text) > 2:
+                        pub_link = link
+                        break
+
+        if pub_link:
+            article['publication'] = pub_link.get_text(strip=True)
+            print(f"    ✓ {article['publication']}")
+            pub_href = pub_link.get('href', '')
+            if pub_href:
+                article['publication_url'] = f"https://medium.com{pub_href}" if pub_href.startswith('/') else pub_href
+                print(f"    Publication URL: {article['publication_url']}")
+        else:
+            print(f"    ✗ No publication found")
+
+        # Extract excerpt/description
+        print("\n  Excerpt:")
+        p_elems = article_elem.find_all('p')
+        if p_elems:
+            # Get the longest p element (likely the excerpt)
+            excerpts = [(p.get_text(strip=True), len(p.get_text(strip=True))) for p in p_elems]
+            excerpts = sorted(excerpts, key=lambda x: x[1], reverse=True)
+            if excerpts and excerpts[0][1] > 0:
+                article['excerpt'] = excerpts[0][0]
+                print(f"    ✓ {article['excerpt'][:100]}...")
+        else:
+            print(f"    ✗ No excerpt found")
+
+        # Extract read time with multiple patterns
+        print("\n  Read time:")
+        time_elem = article_elem.find('span', string=re.compile(r'min read', re.IGNORECASE))
+        if not time_elem:
+            # Try finding by looking for text containing "min"
+            all_spans = article_elem.find_all('span')
+            for span in all_spans:
+                text = span.get_text(strip=True)
+                if 'min' in text.lower() and any(char.isdigit() for char in text):
+                    time_elem = span
+                    break
+
+        if not time_elem:
+            # Try looking for pattern like "5 min read" in all text
+            all_text = article_elem.get_text(separator=' ')
+            time_match = re.search(r'(\d+)\s*min\s*read', all_text, re.IGNORECASE)
+            if time_match:
+                article['read_time'] = f"{time_match.group(1)} min read"
+                print(f"    ✓ {article['read_time']} (regex match)")
+                time_elem = True
+
+        if time_elem and not article.get('read_time'):
+            article['read_time'] = time_elem.get_text(strip=True)
+            print(f"    ✓ {article['read_time']}")
+        elif not article.get('read_time'):
+            print(f"    ✗ No read time found")
+
+        # Extract date/timestamp
+        print("\n  Date/Timestamp:")
+        time_tag = article_elem.find('time')
+        if time_tag:
+            article['date'] = time_tag.get_text(strip=True)
+            print(f"    ✓ {article['date']}")
+            if time_tag.get('datetime'):
+                article['datetime'] = time_tag.get('datetime')
+                print(f"    ISO datetime: {article['datetime']}")
+        else:
+            # Try finding date-like text - but be more selective to avoid clap/response text
+            date_patterns = [
+                re.compile(r'\d+[dhwmy]\s+ago', re.IGNORECASE),  # 2d ago, 14h ago, etc
+                re.compile(r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\b', re.IGNORECASE),
+                re.compile(r'\b\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b', re.IGNORECASE),
+                re.compile(r'\d+\s+(day|days|hour|hours|week|weeks|month|months|year|years)\s+ago', re.IGNORECASE),
+            ]
+
+            all_text_elems = article_elem.find_all(['span', 'div', 'p', 'time'])
+            for elem in all_text_elems:
+                text = elem.get_text(strip=True)
+                # Skip if text contains clap or response indicators
+                if 'clap' in text.lower() or 'response' in text.lower():
+                    continue
+                for pattern in date_patterns:
+                    match = pattern.search(text)
+                    if match:
+                        article['date'] = match.group(0)
+                        print(f"    ✓ {article['date']} (pattern match from: {text[:50]}...)")
+                        break
+                if article.get('date'):
+                    break
+
+            # If still not found, try searching in the full text with pipe separator
+            if not article.get('date'):
+                full_text = article_elem.get_text(separator='|')
+                print(f"    Searching in full text for date patterns...")
+                for pattern in date_patterns:
+                    matches = list(pattern.finditer(full_text))
+                    print(f"    Found {len(matches)} matches for pattern {pattern.pattern}")
+                    for match in matches:
+                        matched_text = match.group(0)
+                        # Get context around the match
+                        context_start = max(0, match.start() - 30)
+                        context_end = min(len(full_text), match.end() + 30)
+                        context = full_text[context_start:context_end]
+                        print(f"    Checking match '{matched_text}' in context: '{context}'")
+
+                        # Check if this date appears BEFORE clap/response in the text
+                        # (dates typically appear before engagement metrics)
+                        clap_pos = full_text.find('clap icon')
+                        response_pos = full_text.find('response icon')
+
+                        if clap_pos != -1 and match.start() < clap_pos:
+                            article['date'] = matched_text
+                            print(f"    ✓ {article['date']} (found before claps in full text)")
+                            break
+                        elif response_pos != -1 and match.start() < response_pos:
+                            article['date'] = matched_text
+                            print(f"    ✓ {article['date']} (found before responses in full text)")
+                            break
+                        elif 'clap' not in context.lower() and 'response' not in context.lower():
+                            article['date'] = matched_text
+                            print(f"    ✓ {article['date']} (no clap/response in context)")
+                            break
+
+                    if article.get('date'):
+                        break
+
+            if not article.get('date'):
+                print(f"    ✗ No date found")
+
+        # Extract claps/reactions
+        print("\n  Claps/Reactions:")
+        clap_elem = article_elem.find('button', attrs={'data-action': 'show-recommends'})
+        if not clap_elem:
+            # Try other clap indicators
+            clap_patterns = [
+                article_elem.find('button', attrs={'aria-label': re.compile(r'clap', re.IGNORECASE)}),
+                article_elem.find('span', attrs={'aria-label': re.compile(r'clap', re.IGNORECASE)}),
+                article_elem.find('div', attrs={'aria-label': re.compile(r'clap', re.IGNORECASE)}),
+            ]
+            for pattern in clap_patterns:
+                if pattern:
+                    clap_elem = pattern
+                    break
+
+        # Try searching for clap icon in the raw text
+        if not clap_elem:
+            all_text = article_elem.get_text(separator='|')
+            print(f"    Searching for clap patterns in text...")
+            print(f"    Text snippet: {all_text[:200]}...")
+            # Look for patterns like "clap icon|152" or "A clap icon|1K"
+            clap_match = re.search(r'clap\s+icon\|([0-9KkMm.]+)', all_text, re.IGNORECASE)
+            if clap_match:
+                claps_num = clap_match.group(1)
+                article['claps_count'] = claps_num
+                article['claps'] = f"{claps_num} claps"
+                print(f"    ✓ {article['claps']} (regex match from text)")
+                clap_elem = True
+            else:
+                # Try alternative pattern
+                clap_match = re.search(r'(\d+[KkMm]?)\s*clap', all_text, re.IGNORECASE)
+                if clap_match:
+                    claps_num = clap_match.group(1)
+                    article['claps_count'] = claps_num
+                    article['claps'] = f"{claps_num} claps"
+                    print(f"    ✓ {article['claps']} (alt regex match from text)")
+                    clap_elem = True
+
+        if clap_elem and not article.get('claps'):
+            article['claps'] = clap_elem.get_text(strip=True)
+            print(f"    ✓ {article['claps']}")
+            # Try to get numeric value from aria-label
+            aria_label = clap_elem.get('aria-label', '')
+            if aria_label:
+                print(f"    Aria-label: {aria_label}")
+                # Extract number from aria-label
+                numbers = re.findall(r'\d+', aria_label)
+                if numbers:
+                    article['claps_count'] = numbers[0]
+                    print(f"    Claps count: {article['claps_count']}")
+
+        if not article.get('claps'):
+            print(f"    ✗ No claps found")
+
+        # Extract comment/response count
+        print("\n  Comments/Responses:")
+        comment_elem = article_elem.find('button', attrs={'data-action': 'show-responses'})
+        if not comment_elem:
+            # Try other comment indicators
+            comment_patterns = [
+                article_elem.find('a', attrs={'aria-label': re.compile(r'response|comment', re.IGNORECASE)}),
+                article_elem.find('button', attrs={'aria-label': re.compile(r'response|comment', re.IGNORECASE)}),
+                article_elem.find('span', string=re.compile(r'response|comment', re.IGNORECASE)),
+            ]
+            for pattern in comment_patterns:
+                if pattern:
+                    comment_elem = pattern
+                    break
+
+        # Try searching for response icon in the raw text
+        if not comment_elem:
+            all_text = article_elem.get_text(separator='|')
+            print(f"    Searching for response patterns in text...")
+            # Look for patterns like "response icon|2" or "A response icon|5"
+            response_match = re.search(r'response\s+icon\|([0-9KkMm.]+)', all_text, re.IGNORECASE)
+            if response_match:
+                response_num = response_match.group(1)
+                article['comments_count'] = response_num
+                article['comments'] = f"{response_num} responses"
+                print(f"    ✓ {article['comments']} (regex match from text)")
+                comment_elem = True
+            else:
+                # Try alternative pattern
+                response_match = re.search(r'(\d+[KkMm]?)\s*response', all_text, re.IGNORECASE)
+                if response_match:
+                    response_num = response_match.group(1)
+                    article['comments_count'] = response_num
+                    article['comments'] = f"{response_num} responses"
+                    print(f"    ✓ {article['comments']} (alt regex match from text)")
+                    comment_elem = True
+
+        if comment_elem and not article.get('comments'):
+            article['comments'] = comment_elem.get_text(strip=True)
+            print(f"    ✓ {article['comments']}")
+            aria_label = comment_elem.get('aria-label', '')
+            if aria_label:
+                print(f"    Aria-label: {aria_label}")
+                numbers = re.findall(r'\d+', aria_label)
+                if numbers:
+                    article['comments_count'] = numbers[0]
+                    print(f"    Comments count: {article['comments_count']}")
+
+        if not article.get('comments'):
+            print(f"    ✗ No comments found")
+
+        # Extract member-only status
+        print("\n  Member-only status:")
+        member_icon = article_elem.find('svg', attrs={'data-testid': 'lockIcon'})
+        if not member_icon:
+            member_icon = article_elem.find(attrs={'aria-label': re.compile(r'member', re.IGNORECASE)})
+        if not member_icon:
+            # Check for star icon or "Member-only" text
+            member_text = article_elem.find(string=re.compile(r'member.?only', re.IGNORECASE))
+            if member_text:
+                member_icon = True
+
+        if member_icon:
+            article['member_only'] = True
+            print(f"    ✓ Member-only content")
+        else:
+            article['member_only'] = False
+            print(f"    Public content")
+
+        # Extract tags/topics
+        print("\n  Tags:")
+        tag_elems = article_elem.find_all('a', href=re.compile(r'/tag/'))
+        if tag_elems:
+            article['tags'] = [tag.get_text(strip=True) for tag in tag_elems]
+            print(f"    ✓ {', '.join(article['tags'])}")
+        else:
+            print(f"    ✗ No tags found")
+
+        # Extract image/thumbnail
+        print("\n  Image/Thumbnail:")
+        img = article_elem.find('img')
+        if img:
+            img_src = img.get('src') or img.get('data-src')
+            if img_src:
+                article['image'] = img_src
+                print(f"    ✓ {img_src[:80]}...")
+            img_alt = img.get('alt')
+            if img_alt:
+                article['image_alt'] = img_alt
+                print(f"    Alt text: {img_alt}")
+        else:
+            print(f"    ✗ No image found")
+
+        # Extract subtitle/description if different from excerpt
+        print("\n  Subtitle/Description:")
+        h3_subtitle = article_elem.find('h3')
+        if h3_subtitle and h3_subtitle != title_elem:
+            subtitle_text = h3_subtitle.get_text(strip=True)
+            if subtitle_text and subtitle_text != article.get('excerpt'):
+                article['subtitle'] = subtitle_text
+                print(f"    ✓ {article['subtitle'][:100]}...")
+        else:
+            print(f"    ✗ No distinct subtitle found")
+
+        # Extract any additional metadata from spans
+        print("\n  Additional metadata scan:")
+        all_spans = article_elem.find_all('span')
+        for span in all_spans:
+            text = span.get_text(strip=True)
+            # Look for follower count, publication info, etc.
+            if 'follower' in text.lower():
+                article['followers'] = text
+                print(f"    Followers: {text}")
+            # Look for bookmark count
+            if 'bookmark' in text.lower():
+                article['bookmarks'] = text
+                print(f"    Bookmarks: {text}")
+
+        # Extract word count if available
+        print("\n  Word count:")
+        for span in all_spans:
+            text = span.get_text(strip=True)
+            if 'word' in text.lower() and any(char.isdigit() for char in text):
+                article['word_count'] = text
+                print(f"    ✓ {article['word_count']}")
+                break
+        if not article.get('word_count'):
+            print(f"    ✗ No word count found")
+
+        # Try to extract any JSON-LD structured data
+        print("\n  Structured data:")
+        scripts = article_elem.find_all('script', type='application/ld+json')
+        for script in scripts:
+            try:
+                data = json.loads(script.string)
+                article['structured_data'] = data
+                print(f"    ✓ Found JSON-LD: {list(data.keys())}")
+            except:
+                pass
+        if not article.get('structured_data'):
+            print(f"    ✗ No structured data found")
+
+        # Look for any SVG icons that might indicate status
+        print("\n  Icon indicators:")
+        all_svgs = article_elem.find_all('svg')
+        for svg in all_svgs:
+            # Check for data-testid or aria-label
+            testid = svg.get('data-testid', '')
+            aria = svg.get('aria-label', '')
+            if testid or aria:
+                print(f"    Found icon: testid='{testid}' aria-label='{aria}'")
+
+        # Try to extract boost/highlight status
+        print("\n  Special status:")
+        if article_elem.find(string=re.compile(r'boost', re.IGNORECASE)):
+            article['boosted'] = True
+            print(f"    ✓ Article is boosted")
+        if article_elem.find(string=re.compile(r'featured', re.IGNORECASE)):
+            article['featured'] = True
+            print(f"    ✓ Article is featured")
+
+        print(f"\n  Summary of extracted fields ({len(article.keys())} total): {list(article.keys())}")
+
+        return article if article.get('title') else None
+
+    def _format_markdown(self, articles: list) -> str:
+        """Format Medium articles as markdown."""
+        lines = ["# Medium Articles\n"]
+        lines.append(f"Found {len(articles)} articles\n\n")
+
+        for article in articles:
+            lines.append(f"## {article.get('title', 'Untitled')}")
+
+            # Subtitle if available
+            if article.get('subtitle'):
+                lines.append(f"_{article['subtitle']}_\n")
+
+            # Primary metadata line
+            meta = []
+            if article.get('author'):
+                author_text = article['author']
+                if article.get('author_url'):
+                    author_text = f"[{author_text}]({article['author_url']})"
+                meta.append(f"by {author_text}")
+
+            if article.get('publication'):
+                pub_text = article['publication']
+                if article.get('publication_url'):
+                    pub_text = f"[{pub_text}]({article['publication_url']})"
+                meta.append(f"in {pub_text}")
+
+            if article.get('date'):
+                meta.append(article['date'])
+
+            if article.get('read_time'):
+                meta.append(article['read_time'])
+
+            if article.get('word_count'):
+                meta.append(article['word_count'])
+
+            if meta:
+                lines.append(f"**{' • '.join(meta)}**")
+
+            # Engagement metrics
+            engagement = []
+            if article.get('claps'):
+                clap_text = article['claps']
+                if article.get('claps_count'):
+                    clap_text = f"{article['claps_count']} claps"
+                engagement.append(f"👏 {clap_text}")
+
+            if article.get('comments'):
+                comment_text = article['comments']
+                if article.get('comments_count'):
+                    comment_text = f"{article['comments_count']} responses"
+                engagement.append(f"💬 {comment_text}")
+
+            if article.get('bookmarks'):
+                engagement.append(f"🔖 {article['bookmarks']}")
+
+            if article.get('member_only'):
+                engagement.append("⭐ Member-only")
+
+            if article.get('boosted'):
+                engagement.append("🚀 Boosted")
+
+            if article.get('featured'):
+                engagement.append("✨ Featured")
+
+            if engagement:
+                lines.append(f"\n_{' | '.join(engagement)}_")
+
+            # Excerpt
+            if article.get('excerpt'):
+                lines.append(f"\n{article['excerpt']}")
+
+            # Tags
+            if article.get('tags'):
+                tag_links = [f"`{tag}`" for tag in article['tags']]
+                lines.append(f"\n**Tags:** {', '.join(tag_links)}")
+
+            # Additional metadata
+            additional_meta = []
+            if article.get('followers'):
+                additional_meta.append(f"Followers: {article['followers']}")
+            if article.get('datetime'):
+                additional_meta.append(f"ISO DateTime: {article['datetime']}")
+
+            if additional_meta:
+                lines.append(f"\n**Additional Info:** {' | '.join(additional_meta)}")
+
+            # Image
+            if article.get('image'):
+                alt_text = article.get('image_alt', 'Article image')
+                lines.append(f"\n![{alt_text}]({article['image']})")
+
+            # URL
+            if article.get('url'):
+                lines.append(f"\n[Read on Medium]({article['url']})")
+
+            # Debug info (optional - can be removed if too verbose)
+            debug_info = []
+            if article.get('post_id'):
+                debug_info.append(f"Post ID: {article['post_id']}")
+
+            # Show all raw data attributes for debugging
+            raw_attrs = [k for k in article.keys() if k.startswith('raw_')]
+            if raw_attrs:
+                for attr in raw_attrs:
+                    debug_info.append(f"{attr}: {article[attr]}")
+
+            if debug_info:
+                lines.append(f"\n_Debug: {' | '.join(debug_info)}_")
+
+            lines.append("\n---\n")
+
+        return "\n".join(lines)

@@ -1,0 +1,641 @@
+"""
+YouTube feed reader.
+
+Extracts video data from YouTube search results using ytInitialData.
+"""
+
+import json
+from playwright.sync_api import Page
+
+from src.core.base import FeedReader
+
+
+class YouTubeFeedReader(FeedReader):
+    """Parser for YouTube search results."""
+
+    def parse_feed(self, page: Page) -> str:
+        """Extract YouTube videos and convert to markdown."""
+        print("\n" + "="*80)
+        print("[DEBUG] Starting parse_feed")
+        print("="*80 + "\n")
+
+        yt_data = page.evaluate("""
+            () => {
+                return window.ytInitialData;
+            }
+        """)
+
+        if not yt_data:
+            print("[DEBUG] ytInitialData not found")
+            return "No YouTube data found.\n"
+
+        print(f"[DEBUG] ytInitialData found!")
+        print(f"[DEBUG] Type: {type(yt_data)}")
+        print(f"[DEBUG] Top-level keys: {list(yt_data.keys()) if isinstance(yt_data, dict) else 'N/A'}")
+        print()
+
+        videos = self._extract_videos(yt_data)
+        print(f"\n[DEBUG] ========================================")
+        print(f"[DEBUG] Final video count extracted: {len(videos)}")
+        print(f"[DEBUG] ========================================\n")
+        return self._format_markdown(videos)
+
+    def _safe_get_text(self, obj, *keys):
+        """Safely navigate nested dict and extract text from runs or simpleText."""
+        print(f"[DEBUG]   _safe_get_text called with keys: {keys}")
+        try:
+            current = obj
+            for key in keys:
+                if current is None:
+                    print(f"[DEBUG]   _safe_get_text: None encountered at key '{key}'")
+                    return None
+                current = current.get(key) if isinstance(current, dict) else None
+                print(f"[DEBUG]   _safe_get_text: After key '{key}', type: {type(current)}")
+
+            if current is None:
+                print(f"[DEBUG]   _safe_get_text: Final result is None")
+                return None
+
+            # Handle different text formats
+            if isinstance(current, str):
+                print(f"[DEBUG]   _safe_get_text: Found string: '{current}'")
+                return current
+            elif isinstance(current, dict):
+                # Check for simpleText
+                if 'simpleText' in current:
+                    result = current['simpleText']
+                    print(f"[DEBUG]   _safe_get_text: Found simpleText: '{result}'")
+                    return result
+                # Check for runs (array of text segments)
+                elif 'runs' in current and isinstance(current['runs'], list) and len(current['runs']) > 0:
+                    result = current['runs'][0].get('text')
+                    print(f"[DEBUG]   _safe_get_text: Found runs[0].text: '{result}'")
+                    return result
+                # Check for accessibility data
+                elif 'accessibility' in current:
+                    result = current.get('accessibility', {}).get('accessibilityData', {}).get('label')
+                    print(f"[DEBUG]   _safe_get_text: Found accessibility label: '{result}'")
+                    return result
+
+            print(f"[DEBUG]   _safe_get_text: Could not extract text from {type(current)}")
+            return None
+        except Exception as e:
+            print(f"[DEBUG]   _safe_get_text: Exception: {type(e).__name__}: {e}")
+            return None
+
+    def _extract_videos(self, yt_data: dict) -> list:
+        """Extract video data from ytInitialData with comprehensive metadata."""
+        videos = []
+
+        try:
+            print("[DEBUG] ========================================")
+            print("[DEBUG] Navigating ytInitialData structure")
+            print("[DEBUG] ========================================")
+
+            contents = yt_data.get('contents', {})
+            print(f"[DEBUG] Step 1 - 'contents' keys: {list(contents.keys())}")
+
+            contents = contents.get('twoColumnSearchResultsRenderer', {})
+            print(f"[DEBUG] Step 2 - 'twoColumnSearchResultsRenderer' keys: {list(contents.keys())}")
+
+            contents = contents.get('primaryContents', {})
+            print(f"[DEBUG] Step 3 - 'primaryContents' keys: {list(contents.keys())}")
+
+            contents = contents.get('sectionListRenderer', {})
+            print(f"[DEBUG] Step 4 - 'sectionListRenderer' keys: {list(contents.keys())}")
+
+            contents = contents.get('contents', [])
+            print(f"[DEBUG] Step 5 - 'contents' is list with {len(contents)} sections\n")
+
+            for section_idx, section in enumerate(contents):
+                items = section.get('itemSectionRenderer', {}).get('contents', [])
+                print(f"[DEBUG] ----------------------------------------")
+                print(f"[DEBUG] Processing section {section_idx} with {len(items)} items")
+                print(f"[DEBUG] ----------------------------------------")
+
+                for idx, item in enumerate(items):
+                    print(f"\n[DEBUG] >>> Item {idx} - Available keys: {list(item.keys())}")
+
+                    video_renderer = item.get('videoRenderer')
+                    if video_renderer:
+                        print(f"[DEBUG] >>> Found videoRenderer!")
+                        print(f"[DEBUG] >>> videoRenderer keys: {list(video_renderer.keys())}")
+
+                        # Print full structure for first video to see what's available
+                        if len(videos) == 0:
+                            print(f"\n[DEBUG] >>> FULL STRUCTURE OF FIRST VIDEO:")
+                            print(f"[DEBUG] >>> {json.dumps(video_renderer, indent=2)[:2000]}...")  # First 2000 chars
+
+                        # Extract title
+                        print(f"\n[DEBUG] Extracting title...")
+                        title = self._safe_get_text(video_renderer, 'title')
+                        print(f"[DEBUG] Title result: {title}")
+
+                        # Extract video ID
+                        print(f"\n[DEBUG] Extracting videoId...")
+                        video_id = video_renderer.get('videoId')
+                        print(f"[DEBUG] Video ID: {video_id}")
+
+                        # Extract channel/author
+                        print(f"\n[DEBUG] Extracting channel...")
+                        channel = self._safe_get_text(video_renderer, 'ownerText')
+                        print(f"[DEBUG] Channel: {channel}")
+
+                        # Extract channel ID
+                        print(f"\n[DEBUG] Extracting channel ID...")
+                        channel_id = None
+                        owner_text = video_renderer.get('ownerText', {})
+                        if 'runs' in owner_text and len(owner_text['runs']) > 0:
+                            channel_id = owner_text['runs'][0].get('navigationEndpoint', {}).get('browseEndpoint', {}).get('browseId')
+                        print(f"[DEBUG] Channel ID: {channel_id}")
+
+                        # Extract view count
+                        print(f"\n[DEBUG] Extracting view count...")
+                        views = self._safe_get_text(video_renderer, 'viewCountText')
+                        print(f"[DEBUG] Views: {views}")
+
+                        # Extract short view count (abbreviated)
+                        print(f"\n[DEBUG] Extracting short view count...")
+                        short_view_count = self._safe_get_text(video_renderer, 'shortViewCountText')
+                        print(f"[DEBUG] Short view count: {short_view_count}")
+
+                        # Extract published time
+                        print(f"\n[DEBUG] Extracting published time...")
+                        published = self._safe_get_text(video_renderer, 'publishedTimeText')
+                        print(f"[DEBUG] Published: {published}")
+
+                        # Extract video length/duration
+                        print(f"\n[DEBUG] Extracting video length...")
+                        length = self._safe_get_text(video_renderer, 'lengthText')
+                        print(f"[DEBUG] Length: {length}")
+
+                        # Extract thumbnail URLs
+                        print(f"\n[DEBUG] Extracting thumbnails...")
+                        thumbnails = video_renderer.get('thumbnail', {}).get('thumbnails', [])
+                        print(f"[DEBUG] Found {len(thumbnails)} thumbnails")
+                        thumbnail_urls = [t.get('url') for t in thumbnails if t.get('url')]
+                        if thumbnail_urls:
+                            print(f"[DEBUG] Thumbnail URLs: {thumbnail_urls[:2]}...")  # Show first 2
+
+                        # Extract description snippet
+                        print(f"\n[DEBUG] Extracting description snippet...")
+                        description = None
+                        desc_snippet = video_renderer.get('descriptionSnippet', {})
+                        if 'runs' in desc_snippet:
+                            # Concatenate all runs for full description
+                            description = ' '.join([r.get('text', '') for r in desc_snippet['runs']])
+                        print(f"[DEBUG] Description: {description[:100] if description else None}...")
+
+                        # Extract badges (LIVE, NEW, CC, etc.)
+                        print(f"\n[DEBUG] Extracting badges...")
+                        badges = []
+                        badge_list = video_renderer.get('badges', [])
+                        for badge in badge_list:
+                            badge_renderer = badge.get('metadataBadgeRenderer', {})
+                            badge_label = badge_renderer.get('label') or badge_renderer.get('style')
+                            if badge_label:
+                                badges.append(badge_label)
+                        print(f"[DEBUG] Badges: {badges}")
+
+                        # Extract owner badges (verified, etc.)
+                        print(f"\n[DEBUG] Extracting owner badges...")
+                        owner_badges = []
+                        owner_badge_list = video_renderer.get('ownerBadges', [])
+                        for badge in owner_badge_list:
+                            badge_renderer = badge.get('metadataBadgeRenderer', {})
+                            badge_tooltip = badge_renderer.get('tooltip')
+                            badge_style = badge_renderer.get('style')
+                            if badge_tooltip:
+                                owner_badges.append(badge_tooltip)
+                            elif badge_style:
+                                owner_badges.append(badge_style)
+                        print(f"[DEBUG] Owner badges: {owner_badges}")
+
+                        # Extract detailed timestamp
+                        print(f"\n[DEBUG] Extracting detailed timestamp...")
+                        detailed_metadata = video_renderer.get('detailedMetadataSnippets', [])
+                        detailed_text = None
+                        if detailed_metadata:
+                            print(f"[DEBUG] Found {len(detailed_metadata)} detailed metadata snippets")
+                            if len(detailed_metadata) > 0:
+                                snippet = detailed_metadata[0].get('snippetText', {})
+                                if 'runs' in snippet:
+                                    detailed_text = ' '.join([r.get('text', '') for r in snippet['runs']])
+                        print(f"[DEBUG] Detailed metadata: {detailed_text[:100] if detailed_text else None}...")
+
+                        # Extract subscriber count (if available)
+                        print(f"\n[DEBUG] Extracting subscriber count...")
+                        subscriber_count = self._safe_get_text(video_renderer, 'subscriberCountText')
+                        print(f"[DEBUG] Subscriber count: {subscriber_count}")
+
+                        # Extract rich thumbnail data
+                        print(f"\n[DEBUG] Extracting rich thumbnail...")
+                        rich_thumbnail = video_renderer.get('richThumbnail', {})
+                        moving_thumbnail_urls = []
+                        if rich_thumbnail:
+                            moving_thumbs = rich_thumbnail.get('movingThumbnailRenderer', {}).get('movingThumbnailDetails', {}).get('thumbnails', [])
+                            moving_thumbnail_urls = [t.get('url') for t in moving_thumbs if t.get('url')]
+                        print(f"[DEBUG] Rich thumbnail URLs: {len(moving_thumbnail_urls)} found")
+
+                        # Extract menu items (might contain additional metadata)
+                        print(f"\n[DEBUG] Extracting menu items...")
+                        menu = video_renderer.get('menu', {})
+                        menu_renderer = menu.get('menuRenderer', {})
+                        menu_items = menu_renderer.get('items', [])
+                        print(f"[DEBUG] Menu has {len(menu_items)} items")
+
+                        # Extract navigation endpoint (contains additional IDs)
+                        print(f"\n[DEBUG] Extracting navigation endpoint...")
+                        nav_endpoint = video_renderer.get('navigationEndpoint', {})
+                        watch_endpoint = nav_endpoint.get('watchEndpoint', {})
+                        playlist_id = watch_endpoint.get('playlistId')
+                        print(f"[DEBUG] Playlist ID: {playlist_id}")
+
+                        # Extract show action menu
+                        print(f"\n[DEBUG] Extracting show action menu...")
+                        show_action_menu = video_renderer.get('showActionMenu', True)
+                        print(f"[DEBUG] Show action menu: {show_action_menu}")
+
+                        # Extract thumbnail overlays (might have additional info)
+                        print(f"\n[DEBUG] Extracting thumbnail overlays...")
+                        thumbnail_overlays = video_renderer.get('thumbnailOverlays', [])
+                        print(f"[DEBUG] Found {len(thumbnail_overlays)} thumbnail overlays")
+
+                        # Try to extract any timestamp info from overlays
+                        overlay_info = []
+                        for overlay in thumbnail_overlays:
+                            if 'thumbnailOverlayTimeStatusRenderer' in overlay:
+                                time_text = self._safe_get_text(overlay['thumbnailOverlayTimeStatusRenderer'], 'text')
+                                if time_text:
+                                    overlay_info.append(f"Duration: {time_text}")
+                            if 'thumbnailOverlayToggleButtonRenderer' in overlay:
+                                # Might have watch later, add to queue, etc.
+                                toggle_renderer = overlay['thumbnailOverlayToggleButtonRenderer']
+                                print(f"[DEBUG] Toggle button found in overlay")
+                            if 'thumbnailOverlayNowPlayingRenderer' in overlay:
+                                overlay_info.append("NOW PLAYING")
+                        print(f"[DEBUG] Overlay info: {overlay_info}")
+
+                        # Extract like count (if available - might be in engagement panel or not present)
+                        print(f"\n[DEBUG] Extracting like count...")
+                        like_count = None
+                        if 'videoActions' in video_renderer:
+                            video_actions = video_renderer.get('videoActions', {})
+                            menu_renderer = video_actions.get('menuRenderer', {})
+                            top_level_buttons = menu_renderer.get('topLevelButtons', [])
+                            for button in top_level_buttons:
+                                if 'toggleButtonRenderer' in button:
+                                    toggle = button['toggleButtonRenderer']
+                                    if 'defaultText' in toggle:
+                                        like_count = self._safe_get_text(toggle, 'defaultText')
+                                        break
+                        print(f"[DEBUG] Like count: {like_count}")
+
+                        # Extract comment count (if available)
+                        print(f"\n[DEBUG] Extracting comment count...")
+                        comment_count = None
+                        if 'commentCountText' in video_renderer:
+                            comment_count = self._safe_get_text(video_renderer, 'commentCountText')
+                        print(f"[DEBUG] Comment count: {comment_count}")
+
+                        # Extract accessibility data (contains additional descriptive info)
+                        print(f"\n[DEBUG] Extracting accessibility data...")
+                        accessibility_title = None
+                        if 'title' in video_renderer:
+                            title_obj = video_renderer['title']
+                            if 'accessibility' in title_obj:
+                                accessibility_title = title_obj.get('accessibility', {}).get('accessibilityData', {}).get('label')
+                        print(f"[DEBUG] Accessibility title: {accessibility_title}")
+
+                        # Extract long byline text (might have channel info with subscribers)
+                        print(f"\n[DEBUG] Extracting long byline text...")
+                        long_byline = None
+                        long_byline_obj = video_renderer.get('longBylineText', {})
+                        if 'runs' in long_byline_obj:
+                            long_byline = ' '.join([r.get('text', '') for r in long_byline_obj['runs']])
+                        print(f"[DEBUG] Long byline: {long_byline}")
+
+                        # Extract short byline text (alternative channel representation)
+                        print(f"\n[DEBUG] Extracting short byline text...")
+                        short_byline = None
+                        short_byline_obj = video_renderer.get('shortBylineText', {})
+                        if 'runs' in short_byline_obj:
+                            short_byline = ' '.join([r.get('text', '') for r in short_byline_obj['runs']])
+                        print(f"[DEBUG] Short byline: {short_byline}")
+
+                        # Extract expandable metadata (sometimes contains timestamps/chapters)
+                        print(f"\n[DEBUG] Extracting expandable metadata...")
+                        expandable_metadata = None
+                        expandable_obj = video_renderer.get('expandableMetadata', {})
+                        if expandable_obj:
+                            expandable_renderer = expandable_obj.get('expandableMetadataRenderer', {})
+                            if 'expandedContent' in expandable_renderer:
+                                expanded = expandable_renderer['expandedContent']
+                                if 'horizontalCardListRenderer' in expanded:
+                                    cards = expanded['horizontalCardListRenderer'].get('cards', [])
+                                    expandable_metadata = f"{len(cards)} cards available"
+                        print(f"[DEBUG] Expandable metadata: {expandable_metadata}")
+
+                        # Extract inline playback endpoint (contains additional video info)
+                        print(f"\n[DEBUG] Extracting inline playback endpoint...")
+                        inline_playback = None
+                        inline_endpoint = video_renderer.get('inlinePlaybackEndpoint', {})
+                        if inline_endpoint:
+                            command_metadata = inline_endpoint.get('commandMetadata', {})
+                            web_cmd = command_metadata.get('webCommandMetadata', {})
+                            inline_playback = web_cmd.get('url')
+                        print(f"[DEBUG] Inline playback URL: {inline_playback}")
+
+                        # Extract channel thumbnail info
+                        print(f"\n[DEBUG] Extracting channel thumbnails...")
+                        channel_thumbnail_urls = []
+                        channel_thumb_renderers = video_renderer.get('channelThumbnailSupportedRenderers', {})
+                        channel_thumb_renderer = channel_thumb_renderers.get('channelThumbnailWithLinkRenderer', {})
+                        channel_thumbnails = channel_thumb_renderer.get('thumbnail', {}).get('thumbnails', [])
+                        channel_thumbnail_urls = [t.get('url') for t in channel_thumbnails if t.get('url')]
+                        print(f"[DEBUG] Channel thumbnail URLs: {len(channel_thumbnail_urls)} found")
+
+                        # Extract tracking params (sometimes useful for metadata analysis)
+                        print(f"\n[DEBUG] Extracting tracking params...")
+                        tracking_params = video_renderer.get('trackingParams')
+                        print(f"[DEBUG] Tracking params present: {tracking_params is not None}")
+
+                        # Extract search video result entity key
+                        print(f"\n[DEBUG] Extracting search result entity key...")
+                        entity_key = video_renderer.get('searchVideoResultEntityKey')
+                        print(f"[DEBUG] Entity key: {entity_key}")
+
+                        # Extract avatar info (channel avatar metadata)
+                        print(f"\n[DEBUG] Extracting avatar info...")
+                        avatar_decorator = video_renderer.get('avatar', {})
+                        avatar_thumbnails = []
+                        if avatar_decorator:
+                            decorator_data = avatar_decorator.get('decoratedAvatarViewModel', {})
+                            avatar_obj = decorator_data.get('avatar', {})
+                            avatar_image = avatar_obj.get('avatarViewModel', {}).get('image', {})
+                            avatar_sources = avatar_image.get('sources', [])
+                            avatar_thumbnails = [s.get('url') for s in avatar_sources if s.get('url')]
+                        print(f"[DEBUG] Avatar thumbnails: {len(avatar_thumbnails)} found")
+
+                        # Try to extract engagement data from menu (likes, shares, etc.)
+                        print(f"\n[DEBUG] Extracting menu engagement data...")
+                        menu_engagement = []
+                        menu_obj = video_renderer.get('menu', {})
+                        menu_renderer_obj = menu_obj.get('menuRenderer', {})
+                        menu_items = menu_renderer_obj.get('items', [])
+                        for menu_item in menu_items:
+                            if 'menuServiceItemRenderer' in menu_item:
+                                item_renderer = menu_item['menuServiceItemRenderer']
+                                item_text = self._safe_get_text(item_renderer, 'text')
+                                if item_text:
+                                    menu_engagement.append(item_text)
+                        print(f"[DEBUG] Menu engagement items: {menu_engagement}")
+
+                        # Build comprehensive video dictionary
+                        print(f"\n[DEBUG] Building video dictionary...")
+                        video = {
+                            'title': title,
+                            'video_id': video_id,
+                            'url': f"https://www.youtube.com/watch?v={video_id}" if video_id else None,
+                            'channel': channel,
+                            'channel_id': channel_id,
+                            'channel_url': f"https://www.youtube.com/channel/{channel_id}" if channel_id else None,
+                            'views': views,
+                            'short_view_count': short_view_count,
+                            'published': published,
+                            'length': length,
+                            'description': description,
+                            'thumbnail_urls': thumbnail_urls,
+                            'rich_thumbnail_urls': moving_thumbnail_urls,
+                            'badges': badges,
+                            'owner_badges': owner_badges,
+                            'is_verified': 'Verified' in owner_badges or 'BADGE_STYLE_TYPE_VERIFIED' in owner_badges,
+                            'detailed_metadata': detailed_text,
+                            'subscriber_count': subscriber_count,
+                            'playlist_id': playlist_id,
+                            'overlay_info': overlay_info,
+                            'like_count': like_count,
+                            'comment_count': comment_count,
+                            'accessibility_title': accessibility_title,
+                            'long_byline': long_byline,
+                            'short_byline': short_byline,
+                            'expandable_metadata': expandable_metadata,
+                            'inline_playback_url': inline_playback,
+                            'channel_thumbnail_urls': channel_thumbnail_urls,
+                            'avatar_thumbnails': avatar_thumbnails,
+                            'menu_engagement': menu_engagement,
+                            'has_tracking_params': tracking_params is not None,
+                            'entity_key': entity_key,
+                        }
+
+                        print(f"[DEBUG] Video summary:")
+                        print(f"[DEBUG]   - Title: {title}")
+                        print(f"[DEBUG]   - Channel: {channel} (Verified: {video['is_verified']})")
+                        print(f"[DEBUG]   - Views: {views}")
+                        print(f"[DEBUG]   - Length: {length}")
+                        print(f"[DEBUG]   - Published: {published}")
+                        print(f"[DEBUG]   - Badges: {badges}")
+                        print(f"[DEBUG]   - Like count: {like_count}")
+                        print(f"[DEBUG]   - Comment count: {comment_count}")
+                        print(f"[DEBUG]   - Accessibility title: {accessibility_title[:80] if accessibility_title else None}...")
+                        print(f"[DEBUG]   - Channel thumbnails: {len(channel_thumbnail_urls)}")
+
+                        if video.get('title'):
+                            videos.append(video)
+                            print(f"[DEBUG] >>> Video added to list! Total videos so far: {len(videos)}")
+                        else:
+                            print(f"[DEBUG] >>> Video skipped (no title)")
+                    else:
+                        print(f"[DEBUG] >>> No videoRenderer found (might be ad or shelf)")
+
+        except Exception as e:
+            print(f"\n[DEBUG] !!!! EXCEPTION in _extract_videos !!!!")
+            print(f"[DEBUG] Exception type: {type(e).__name__}")
+            print(f"[DEBUG] Exception message: {e}")
+            import traceback
+            print(f"[DEBUG] Traceback:")
+            print(traceback.format_exc())
+
+        # Print comprehensive metadata capture summary
+        if videos:
+            print(f"\n[DEBUG] ========================================")
+            print(f"[DEBUG] METADATA CAPTURE SUMMARY")
+            print(f"[DEBUG] ========================================")
+            print(f"[DEBUG] Total videos extracted: {len(videos)}")
+            print(f"[DEBUG]")
+
+            # Count how many videos have each metadata field
+            field_counts = {}
+            field_names = [
+                'title', 'video_id', 'channel', 'channel_id', 'views', 'short_view_count',
+                'published', 'length', 'description', 'badges', 'owner_badges', 'is_verified',
+                'detailed_metadata', 'subscriber_count', 'like_count', 'comment_count',
+                'accessibility_title', 'long_byline', 'short_byline', 'expandable_metadata',
+                'thumbnail_urls', 'rich_thumbnail_urls', 'channel_thumbnail_urls', 'avatar_thumbnails',
+                'inline_playback_url', 'playlist_id', 'entity_key', 'menu_engagement', 'overlay_info'
+            ]
+
+            for field in field_names:
+                count = sum(1 for v in videos if v.get(field))
+                field_counts[field] = count
+                percentage = (count / len(videos)) * 100
+                status = "✓" if count == len(videos) else "○" if count > 0 else "✗"
+                print(f"[DEBUG] {status} {field:25s}: {count:2d}/{len(videos)} ({percentage:5.1f}%)")
+
+            print(f"[DEBUG] ========================================\n")
+
+        return videos
+
+    def _format_markdown(self, videos: list) -> str:
+        """Format YouTube videos as markdown with ALL metadata."""
+        print(f"\n[DEBUG] ========================================")
+        print(f"[DEBUG] Formatting {len(videos)} videos to markdown")
+        print(f"[DEBUG] ========================================\n")
+
+        lines = ["# YouTube Search Results\n"]
+        lines.append(f"Found {len(videos)} videos\n\n")
+
+        for idx, video in enumerate(videos):
+            print(f"[DEBUG] Formatting video {idx + 1}: {video.get('title', 'Untitled')[:50]}...")
+
+            # Title with verification badge
+            title_line = f"## {video.get('title', 'Untitled')}"
+            if video.get('is_verified'):
+                title_line += " ✓"
+            lines.append(title_line)
+
+            # Primary metadata line
+            meta = []
+            if video.get('channel'):
+                channel_text = video['channel']
+                if video.get('owner_badges'):
+                    channel_text += f" ({', '.join(video['owner_badges'])})"
+                meta.append(channel_text)
+            if video.get('views'):
+                meta.append(f"👁 {video['views']}")
+            if video.get('published'):
+                meta.append(f"📅 {video['published']}")
+            if video.get('length'):
+                meta.append(f"⏱ {video['length']}")
+
+            if meta:
+                lines.append(f"**{' • '.join(meta)}**")
+
+            # Additional metadata sections
+            metadata_sections = []
+
+            # Engagement metrics
+            engagement = []
+            if video.get('like_count'):
+                engagement.append(f"👍 {video['like_count']}")
+            if video.get('comment_count'):
+                engagement.append(f"💬 {video['comment_count']}")
+            if engagement:
+                metadata_sections.append(f"**Engagement:** {' • '.join(engagement)}")
+
+            # Video IDs and URLs
+            if video.get('video_id'):
+                metadata_sections.append(f"**Video ID:** `{video['video_id']}`")
+            if video.get('url'):
+                metadata_sections.append(f"**URL:** {video['url']}")
+
+            # Channel info
+            if video.get('channel_id'):
+                metadata_sections.append(f"**Channel ID:** `{video['channel_id']}`")
+            if video.get('channel_url'):
+                metadata_sections.append(f"**Channel URL:** {video['channel_url']}")
+
+            # View counts (both formats)
+            if video.get('short_view_count'):
+                metadata_sections.append(f"**Short View Count:** {video['short_view_count']}")
+
+            # Subscriber count
+            if video.get('subscriber_count'):
+                metadata_sections.append(f"**Subscriber Count:** {video['subscriber_count']}")
+
+            # Byline info (alternative channel representations)
+            if video.get('long_byline'):
+                metadata_sections.append(f"**Long Byline:** {video['long_byline']}")
+            if video.get('short_byline'):
+                metadata_sections.append(f"**Short Byline:** {video['short_byline']}")
+
+            # Badges
+            if video.get('badges'):
+                metadata_sections.append(f"**Badges:** {', '.join(video['badges'])}")
+
+            # Playlist info
+            if video.get('playlist_id'):
+                metadata_sections.append(f"**Playlist ID:** `{video['playlist_id']}`")
+
+            # Overlay info
+            if video.get('overlay_info'):
+                metadata_sections.append(f"**Overlay Info:** {', '.join(video['overlay_info'])}")
+
+            # Accessibility title (may contain additional descriptive info)
+            if video.get('accessibility_title') and video.get('accessibility_title') != video.get('title'):
+                metadata_sections.append(f"**Accessibility Title:** {video['accessibility_title']}")
+
+            # Expandable metadata (chapters, timestamps, etc.)
+            if video.get('expandable_metadata'):
+                metadata_sections.append(f"**Expandable Content:** {video['expandable_metadata']}")
+
+            # Inline playback URL
+            if video.get('inline_playback_url'):
+                metadata_sections.append(f"**Inline Playback URL:** {video['inline_playback_url']}")
+
+            # Entity key (search result identifier)
+            if video.get('entity_key'):
+                metadata_sections.append(f"**Entity Key:** `{video['entity_key']}`")
+
+            # Thumbnails
+            if video.get('thumbnail_urls'):
+                metadata_sections.append(f"**Thumbnails:** {len(video['thumbnail_urls'])} available")
+                # Show first thumbnail URL
+                if len(video['thumbnail_urls']) > 0:
+                    metadata_sections.append(f"  - Main: {video['thumbnail_urls'][0]}")
+
+            # Rich thumbnails (animated previews)
+            if video.get('rich_thumbnail_urls'):
+                metadata_sections.append(f"**Rich Thumbnails:** {len(video['rich_thumbnail_urls'])} animated previews")
+
+            # Channel thumbnails
+            if video.get('channel_thumbnail_urls'):
+                metadata_sections.append(f"**Channel Thumbnails:** {len(video['channel_thumbnail_urls'])} available")
+                if len(video['channel_thumbnail_urls']) > 0:
+                    metadata_sections.append(f"  - Main: {video['channel_thumbnail_urls'][0]}")
+
+            # Avatar thumbnails (alternative channel avatar sources)
+            if video.get('avatar_thumbnails'):
+                metadata_sections.append(f"**Avatar Thumbnails:** {len(video['avatar_thumbnails'])} available")
+                if len(video['avatar_thumbnails']) > 0:
+                    metadata_sections.append(f"  - Main: {video['avatar_thumbnails'][0]}")
+
+            # Menu engagement options
+            if video.get('menu_engagement'):
+                metadata_sections.append(f"**Menu Options:** {', '.join(video['menu_engagement'])}")
+
+            # Add metadata sections with newlines
+            if metadata_sections:
+                lines.append("")
+                lines.extend(metadata_sections)
+
+            # Description
+            if video.get('description'):
+                lines.append(f"\n**Description:**")
+                lines.append(f"{video['description']}")
+
+            # Detailed metadata
+            if video.get('detailed_metadata'):
+                lines.append(f"\n**Detailed Info:**")
+                lines.append(f"{video['detailed_metadata']}")
+
+            # Watch link
+            if video.get('url'):
+                lines.append(f"\n[▶️ Watch on YouTube]({video['url']})")
+
+            lines.append("\n---\n")
+
+            print(f"[DEBUG] Video {idx + 1} formatted with {len(metadata_sections)} metadata sections")
+
+        print(f"[DEBUG] Markdown formatting complete. Total lines: {len(lines)}\n")
+        return "\n".join(lines)

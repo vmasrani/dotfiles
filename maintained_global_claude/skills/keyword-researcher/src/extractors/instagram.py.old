@@ -1,0 +1,158 @@
+"""
+Instagram feed reader.
+
+Extracts post data from Instagram pages.
+
+Note: Instagram requires authentication for most content and has heavy
+JavaScript rendering. This implementation works best with authenticated sessions.
+"""
+
+from playwright.sync_api import Page
+import re
+
+from src.core.base import FeedReader
+from src.utils.parsing import parse_html, extract_text
+
+
+class InstagramFeedReader(FeedReader):
+    """
+    Parser for Instagram feeds and profiles.
+
+    Instagram's structure is heavily JavaScript-based and changes frequently.
+    """
+
+    def parse_feed(self, page: Page) -> str:
+        """Extract Instagram posts and convert to markdown."""
+        content = page.content()
+        print(f"[DEBUG] parse_feed: Content length = {len(content)} characters")
+        soup = parse_html(content)
+
+        posts = []
+
+        # Try multiple selectors for Instagram content
+        article_elems = soup.find_all('article')
+        print(f"[DEBUG] parse_feed: Found {len(article_elems)} <article> elements")
+
+        if not article_elems:
+            # Try alternate selectors
+            article_elems = soup.find_all('div', {'role': 'button'})
+            print(f"[DEBUG] parse_feed: Found {len(article_elems)} <div role='button'> elements")
+
+        if not article_elems:
+            # Check for login redirect or other blocking content
+            if 'instagram.com/accounts/login' in content or 'Log in to see photos' in content:
+                print("[DEBUG] parse_feed: Instagram login page detected")
+                return (
+                    "# Instagram Access Denied\n\n"
+                    "**Authentication Required**: Instagram requires you to be logged in to view content.\n\n"
+                    "## Why This Happens\n"
+                    "- Instagram blocks unauthenticated access to hashtag pages\n"
+                    "- Instagram's content is heavily JavaScript-rendered\n"
+                    "- Instagram actively blocks bot/scraper access\n\n"
+                    "## Solution\n"
+                    "To extract Instagram content, you would need to:\n"
+                    "1. Log in with valid Instagram credentials\n"
+                    "2. Store authentication cookies in the browser context\n"
+                    "3. Make requests with proper Instagram User-Agent headers\n\n"
+                    "**Note**: Instagram's Terms of Service restrict automated data extraction.\n"
+                )
+            else:
+                print("[DEBUG] parse_feed: No article elements found, returning early")
+                return (
+                    "# Instagram Content Not Available\n\n"
+                    "**Authentication Required**: Instagram restricts access to its content.\n\n"
+                    "## Technical Details\n"
+                    f"- Page loaded ({len(content):,} bytes)\n"
+                    "- No post elements found in DOM\n"
+                    "- This typically indicates:\n"
+                    "  - User is not authenticated\n"
+                    "  - Instagram rejected the request\n"
+                    "  - Content is geo-restricted or removed\n\n"
+                    "## Why Instagram Requires Authentication\n"
+                    "1. **Anti-bot Measures**: Instagram blocks bulk content extraction\n"
+                    "2. **User Privacy**: Prevents unauthenticated viewing of posts\n"
+                    "3. **Content Control**: Allows Instagram to monetize content access\n"
+                )
+
+        for idx, article in enumerate(article_elems[:20]):
+            print(f"[DEBUG] parse_feed: Extracting post {idx}")
+            post = self._extract_post(article)
+            if post:
+                posts.append(post)
+
+        print(f"[DEBUG] parse_feed: Final count = {len(posts)} posts extracted")
+        return self._format_markdown(posts)
+
+    def _extract_post(self, article) -> dict:
+        """Extract data from a single Instagram post."""
+        post = {}
+
+        username_link = article.find('a', href=re.compile(r'/[^/]+/$'))
+        if username_link:
+            post['username'] = extract_text(username_link)
+            post['author_url'] = f"https://instagram.com{username_link.get('href', '')}"
+            print(f"[DEBUG] _extract_post: Found username = {post['username']}")
+        else:
+            print("[DEBUG] _extract_post: Username not found")
+
+        caption_elem = article.find('h1') or article.find('span', string=True)
+        post['caption'] = extract_text(caption_elem)
+        print(f"[DEBUG] _extract_post: Caption found = {bool(post['caption'])}")
+
+        img_elem = article.find('img')
+        if img_elem:
+            post['image_url'] = img_elem.get('src')
+            post['alt_text'] = img_elem.get('alt')
+            print(f"[DEBUG] _extract_post: Found image URL = {bool(post['image_url'])}")
+        else:
+            print("[DEBUG] _extract_post: Image element not found")
+
+        link_elem = article.find('a', href=re.compile(r'/p/[^/]+/'))
+        if link_elem:
+            href = link_elem.get('href', '')
+            post['url'] = f"https://instagram.com{href}" if href.startswith('/') else href
+            print(f"[DEBUG] _extract_post: Found URL = {post['url']}")
+        else:
+            print("[DEBUG] _extract_post: Post URL not found")
+
+        likes_elem = article.find('span', string=re.compile(r'\d+\s*like'))
+        post['likes'] = extract_text(likes_elem)
+        print(f"[DEBUG] _extract_post: Likes found = {bool(post['likes'])}")
+
+        time_elem = article.find('time')
+        post['timestamp'] = time_elem.get('datetime') if time_elem else None
+        print(f"[DEBUG] _extract_post: Timestamp found = {bool(post['timestamp'])}")
+
+        is_valid = post.get('caption') or post.get('username')
+        print(f"[DEBUG] _extract_post: Post is valid = {bool(is_valid)}")
+        return post if is_valid else None
+
+    def _format_markdown(self, posts: list) -> str:
+        """Format Instagram posts as markdown."""
+        lines = ["# Instagram Feed\n"]
+        lines.append(f"Found {len(posts)} posts\n\n")
+
+        for post in posts:
+            if post.get('username'):
+                lines.append(f"## @{post['username']}")
+            else:
+                lines.append("## Instagram Post")
+
+            meta = []
+            if post.get('timestamp'):
+                meta.append(post['timestamp'])
+            if post.get('likes'):
+                meta.append(post['likes'])
+
+            if meta:
+                lines.append(f"**{' • '.join(meta)}**")
+
+            if post.get('caption'):
+                lines.append(f"\n{post['caption']}")
+
+            if post.get('url'):
+                lines.append(f"\n[View on Instagram]({post['url']})")
+
+            lines.append("\n---\n")
+
+        return "\n".join(lines)

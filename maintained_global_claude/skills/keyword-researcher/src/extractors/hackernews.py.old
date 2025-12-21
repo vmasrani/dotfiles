@@ -1,0 +1,255 @@
+"""
+Hacker News feed reader.
+
+Extracts story data from Hacker News using their Algolia API.
+"""
+
+import requests
+from playwright.sync_api import Page
+
+from src.core.base import FeedReader
+
+
+class HackerNewsFeedReader(FeedReader):
+    """Parser for Hacker News feeds and search results using Algolia API."""
+
+    def parse_feed(self, page: Page) -> str:
+        """Extract HN stories from the Algolia API and convert to markdown."""
+        try:
+            print(f"\n[DEBUG] ========== STARTING HN API FETCH ==========")
+            print(f"[DEBUG] Fetching URL: {self.url}")
+            response = requests.get(self.url)
+            print(f"[DEBUG] API response status: {response.status_code}")
+
+            if response.status_code != 200:
+                return f"Error fetching from Hacker News API: {response.status_code}\n"
+
+            data = response.json()
+            print(f"[DEBUG] API response top-level keys: {list(data.keys())}")
+            print(f"[DEBUG] Total hits available (nbHits): {data.get('nbHits', 'N/A')}")
+            print(f"[DEBUG] Number of pages (nbPages): {data.get('nbPages', 'N/A')}")
+            print(f"[DEBUG] Current page: {data.get('page', 'N/A')}")
+            print(f"[DEBUG] Hits per page: {data.get('hitsPerPage', 'N/A')}")
+            print(f"[DEBUG] Processing time: {data.get('processingTimeMS', 'N/A')}ms")
+
+            hits = data.get('hits', [])
+            print(f"[DEBUG] Found {len(hits)} stories in this response")
+
+            if not hits:
+                return "No Hacker News stories found.\n"
+
+            print(f"\n[DEBUG] ========== EXTRACTING STORIES ==========")
+            stories = [self._extract_story(hit, idx) for idx, hit in enumerate(hits) if hit]
+            stories = [s for s in stories if s]
+
+            print(f"\n[DEBUG] ========== EXTRACTION COMPLETE ==========")
+            print(f"[DEBUG] Extracted {len(stories)} valid stories out of {len(hits)} hits")
+            return self._format_markdown(stories, data)
+
+        except Exception as e:
+            print(f"\n[DEBUG] ========== ERROR OCCURRED ==========")
+            print(f"[DEBUG] Error type: {type(e).__name__}")
+            print(f"[DEBUG] Error message: {e}")
+            import traceback
+            print(f"[DEBUG] Traceback:\n{traceback.format_exc()}")
+            return f"Error parsing Hacker News feed: {e}\n"
+
+    def _extract_story(self, hit: dict, idx: int) -> dict:
+        """Extract data from a single HN API hit."""
+        print(f"\n[DEBUG] --- Processing Story #{idx + 1} ---")
+        print(f"[DEBUG] Available keys in hit: {list(hit.keys())}")
+
+        story = {}
+
+        # Title (required)
+        if 'title' in hit:
+            story['title'] = hit['title']
+            print(f"[DEBUG]   ✓ Title: {story['title'][:80]}...")
+        else:
+            print(f"[DEBUG]   ✗ No title found - skipping story")
+            return None
+
+        # URL (external link)
+        if 'url' in hit:
+            story['url'] = hit['url']
+            print(f"[DEBUG]   ✓ URL: {story['url'][:80]}...")
+
+            # Extract domain from URL
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(story['url'])
+                story['domain'] = parsed.netloc or parsed.path
+                print(f"[DEBUG]   ✓ Domain: {story['domain']}")
+            except Exception as e:
+                print(f"[DEBUG]   ⚠ Could not parse domain: {e}")
+        else:
+            print(f"[DEBUG]   ⚠ No external URL (might be Ask HN, Show HN, etc.)")
+
+        # HN Discussion URL (always present via objectID)
+        if 'objectID' in hit:
+            story['objectID'] = hit['objectID']
+            story['hn_url'] = f"https://news.ycombinator.com/item?id={hit['objectID']}"
+            print(f"[DEBUG]   ✓ HN URL: {story['hn_url']}")
+            print(f"[DEBUG]   ✓ Object ID: {story['objectID']}")
+
+        # Story ID (usually same as objectID)
+        if 'story_id' in hit:
+            story['story_id'] = hit['story_id']
+            print(f"[DEBUG]   ✓ Story ID: {story['story_id']}")
+
+        # Points/upvotes
+        if 'points' in hit:
+            story['points'] = hit['points']
+            print(f"[DEBUG]   ✓ Points: {story['points']}")
+        else:
+            print(f"[DEBUG]   ⚠ No points found")
+
+        # Author
+        if 'author' in hit:
+            story['author'] = hit['author']
+            print(f"[DEBUG]   ✓ Author: {story['author']}")
+        else:
+            print(f"[DEBUG]   ⚠ No author found")
+
+        # Comment count
+        if 'num_comments' in hit:
+            story['num_comments'] = hit['num_comments']
+            story['comments'] = f"{hit['num_comments']} comments"
+            print(f"[DEBUG]   ✓ Comments: {story['comments']}")
+        else:
+            print(f"[DEBUG]   ⚠ No comment count found")
+
+        # Timestamps
+        if 'created_at' in hit:
+            story['created_at'] = hit['created_at']
+            print(f"[DEBUG]   ✓ Created at: {story['created_at']}")
+        else:
+            print(f"[DEBUG]   ⚠ No created_at timestamp")
+
+        if 'created_at_i' in hit:
+            story['created_at_i'] = hit['created_at_i']
+            print(f"[DEBUG]   ✓ Created at (unix): {story['created_at_i']}")
+
+        if 'updated_at' in hit:
+            story['updated_at'] = hit['updated_at']
+            print(f"[DEBUG]   ✓ Updated at: {story['updated_at']}")
+
+        # Tags
+        if '_tags' in hit:
+            story['tags'] = hit['_tags']
+            print(f"[DEBUG]   ✓ Tags: {story['tags']}")
+
+        # Children (comment IDs)
+        if 'children' in hit:
+            story['children'] = hit['children']
+            story['num_children'] = len(hit['children'])
+            print(f"[DEBUG]   ✓ Children (comment IDs): {story['num_children']} items")
+
+        # Highlight results (search match info)
+        if '_highlightResult' in hit:
+            story['_highlightResult'] = hit['_highlightResult']
+            print(f"[DEBUG]   ✓ Highlight results available")
+            if 'title' in hit['_highlightResult']:
+                matched_words = hit['_highlightResult']['title'].get('matchedWords', [])
+                if matched_words:
+                    story['matched_words'] = matched_words
+                    print(f"[DEBUG]   ✓ Matched words in title: {matched_words}")
+
+        # Capture any additional fields we might have missed
+        known_fields = {'title', 'url', 'objectID', 'story_id', 'points', 'author',
+                       'num_comments', 'created_at', 'created_at_i', 'updated_at',
+                       '_tags', 'children', '_highlightResult'}
+        extra_fields = set(hit.keys()) - known_fields
+        if extra_fields:
+            print(f"[DEBUG]   ℹ Additional fields found: {extra_fields}")
+            for field in extra_fields:
+                story[field] = hit[field]
+                print(f"[DEBUG]     - {field}: {hit[field]}")
+
+        print(f"[DEBUG]   ✓ Story extraction complete: {len(story)} fields captured")
+        return story
+
+    def _format_markdown(self, stories: list, api_data: dict) -> str:
+        """Format HN stories as markdown with comprehensive metadata."""
+        print(f"\n[DEBUG] ========== FORMATTING MARKDOWN ==========")
+
+        lines = ["# Hacker News Search Results\n"]
+
+        # Add API metadata
+        lines.append(f"**Search Query:** {api_data.get('query', 'N/A')}")
+        lines.append(f"**Total Results:** {api_data.get('nbHits', 'N/A')}")
+        lines.append(f"**Results Shown:** {len(stories)} (Page {api_data.get('page', 0) + 1} of {api_data.get('nbPages', 'N/A')})")
+        lines.append(f"**Processing Time:** {api_data.get('processingTimeMS', 'N/A')}ms\n")
+        lines.append("---\n")
+
+        print(f"[DEBUG] Formatting {len(stories)} stories into markdown")
+
+        for idx, story in enumerate(stories):
+            print(f"[DEBUG] Formatting story #{idx + 1}: {story.get('title', 'Untitled')[:50]}...")
+
+            # Title
+            lines.append(f"## {story.get('title', 'Untitled')}\n")
+
+            # Primary metadata line (points, author, time, comments)
+            meta = []
+            if story.get('points') is not None:
+                meta.append(f"**{story['points']}** points")
+            if story.get('author'):
+                meta.append(f"by **{story['author']}**")
+            if story.get('created_at'):
+                # Format timestamp nicely
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(story['created_at'].replace('Z', '+00:00'))
+                    formatted_time = dt.strftime("%Y-%m-%d %H:%M UTC")
+                    meta.append(f"on {formatted_time}")
+                except:
+                    meta.append(f"on {story['created_at']}")
+            if story.get('num_comments') is not None:
+                meta.append(f"**{story['num_comments']}** comments")
+
+            if meta:
+                lines.append(f"{' • '.join(meta)}\n")
+
+            # Domain (if external URL)
+            if story.get('domain'):
+                lines.append(f"**Domain:** {story['domain']}\n")
+
+            # Matched search terms
+            if story.get('matched_words'):
+                lines.append(f"**Matched Keywords:** {', '.join(story['matched_words'])}\n")
+
+            # Tags
+            if story.get('tags'):
+                tag_str = ', '.join([t for t in story['tags'] if not t.startswith('author_') and not t.startswith('story_')])
+                if tag_str:
+                    lines.append(f"**Tags:** {tag_str}\n")
+
+            # IDs (for debugging/reference)
+            if story.get('objectID'):
+                lines.append(f"**Story ID:** {story['objectID']}\n")
+
+            # Links
+            links = []
+            if story.get('url'):
+                links.append(f"[View Article]({story['url']})")
+            if story.get('hn_url'):
+                links.append(f"[HN Discussion]({story['hn_url']})")
+
+            if links:
+                lines.append(f"\n{' | '.join(links)}\n")
+
+            # Additional metadata (timestamps, etc.)
+            additional = []
+            if story.get('updated_at') and story.get('updated_at') != story.get('created_at'):
+                additional.append(f"Last updated: {story['updated_at']}")
+            if story.get('num_children'):
+                additional.append(f"Comment tree size: {story['num_children']} nodes")
+
+            if additional:
+                lines.append(f"\n*{' • '.join(additional)}*\n")
+
+            lines.append("\n---\n")
+
+        print(f"[DEBUG] Markdown formatting complete: {len(lines)} lines generated")
+        return "\n".join(lines)

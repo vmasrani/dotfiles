@@ -1,0 +1,66 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "ddgs",
+#     "typer",
+#     "rich",
+#     "ipdb",
+#     "pandas>=2.0.0",
+#     "sqlalchemy>=2.0.0",
+# ]
+# ///
+from ddgs import DDGS
+import typer
+from rich import print
+import ipdb
+from datetime import datetime
+from pathlib import Path
+import json
+import pandas as pd
+from sqlalchemy import create_engine
+
+def search(query: str, max_results: int = 10) -> list[dict]:
+    return DDGS().text(query, region='us-en', max_results=max_results)
+
+
+def save_results_to_db(items: list[dict], query: str, db_path: Path) -> None:
+    if not items:
+        print("No results to save.")
+        return
+
+    queried_at = datetime.now().isoformat()
+    rows = [
+        {
+            "query": query,
+            "queried_at": queried_at,
+            "title": item.get("title", ""),
+            "link": item.get("href", ""),
+            "snippet": item.get("body", ""),
+        }
+        for item in items
+    ]
+
+    df = pd.DataFrame(rows)
+    engine = create_engine(f"sqlite:///{db_path}")
+    df.to_sql("search_results", engine, if_exists="append", index=False)
+    print(f"Saved {len(rows)} results to {db_path}")
+
+
+def main(
+    query: str,
+    max_results: int = typer.Option(50, "--max", "-m", help="Max results"),
+    db: str = typer.Option(None, "--db", help="Path to SQLite database to save results."),
+):
+    """Search the web using DuckDuckGo."""
+    results = search(query, max_results)
+
+    if db:
+        save_results_to_db(results, query, Path(db))
+
+    for r in results:
+        print(f"\n{r['title']}\n{r['href']}\n{r['body']}")
+
+if __name__ == "__main__":
+    typer.run(main)
+

@@ -1,0 +1,70 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "tabstack>=0.1.0",
+#     "typer>=0.12.0",
+#     "rich>=13.7.1",
+#     "tqdm>=4.66.0",
+# ]
+# ///
+
+import asyncio
+import os
+from pathlib import Path
+from urllib.parse import urlparse
+from tabstack import Tabstack
+import typer
+from rich.console import Console
+from tqdm.asyncio import tqdm_asyncio
+
+console = Console()
+app = typer.Typer(add_completion=False)
+
+@app.command()
+def fetch_url(urls: list[str], save_local: bool = typer.Option(False, "--save-local", help="Save results to urls/ directory")):
+    asyncio.run(fetch_urls_async(urls, save_local))
+
+async def fetch_one(tabs, url: str):
+    try:
+        return await tabs.extract.markdown(url)
+    except Exception as e:
+        return e
+
+def url_to_filename(url: str) -> str:
+    parsed = urlparse(url)
+    name = parsed.netloc + parsed.path.rstrip("/").replace("/", "_")
+    return f"{name}.md"
+
+async def fetch_urls_async(urls: list[str], save_local: bool = False):
+    if save_local:
+        output_dir = Path("urls")
+        output_dir.mkdir(exist_ok=True)
+
+    async with Tabstack(
+            api_key=os.getenv('TABSTACK_API_KEY'),
+            max_connections=100,
+            max_keepalive_connections=20,
+            keepalive_expiry=30.0,
+            timeout=60.0
+        ) as tabs:
+        tasks = [fetch_one(tabs, url) for url in urls]
+        results = await tqdm_asyncio.gather(*tasks, desc="Fetching")
+
+        for url, result in zip(urls, results):
+            if isinstance(result, Exception):
+                console.print(f"[red]Failed:[/red] {url} - {result}")
+            elif save_local:
+                filepath = output_dir / url_to_filename(url)
+                filepath.write_text(result.content)
+                console.print(f"[green]Saved:[/green] {filepath}")
+            else:
+                console.print(f"[green]# {url}[/green]\n")
+                console.print(result.content)
+                console.print("\n---\n")
+
+def main():
+    app()
+
+if __name__ == "__main__":
+    main()
