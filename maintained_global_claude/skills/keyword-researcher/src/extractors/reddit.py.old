@@ -1,0 +1,339 @@
+"""
+Reddit feed reader.
+
+Extracts post data from Reddit search results and subreddit feeds.
+"""
+
+from playwright.sync_api import Page
+import re
+import json
+
+from src.core.base import FeedReader
+from src.utils.parsing import parse_html
+
+
+class RedditFeedReader(FeedReader):
+    """
+    Parser for Reddit feeds and search results.
+
+    Uses div[data-testid="search-post-with-content-preview"] for search results.
+    """
+
+    def parse_feed(self, page: Page) -> str:
+        """Extract Reddit posts and convert to markdown."""
+        print("\n" + "="*80)
+        print("DEBUG: Starting Reddit feed parsing")
+        print("="*80)
+
+        content = page.content()
+        soup = parse_html(content)
+
+        posts = []
+
+        # Try to find search result posts first
+        post_containers = soup.find_all('div', {'data-testid': 'search-post-with-content-preview'})
+        print(f"\nDEBUG: Found {len(post_containers)} posts with 'search-post-with-content-preview' testid")
+
+        if not post_containers:
+            # Fallback to article elements for other Reddit pages
+            post_containers = soup.find_all('article')
+            print(f"DEBUG: Fallback - Found {len(post_containers)} article elements")
+
+        if not post_containers:
+            print("DEBUG: No post containers found!")
+            return "No Reddit posts found.\n"
+
+        print(f"\nDEBUG: Processing {len(post_containers)} post containers\n")
+        for idx, container in enumerate(post_containers):
+            print(f"\n{'='*80}")
+            print(f"DEBUG: Processing post #{idx + 1}")
+            print(f"{'='*80}")
+            post = self._extract_post(container, idx)
+            if post:
+                posts.append(post)
+                print(f"DEBUG: Successfully extracted post #{idx + 1}")
+            else:
+                print(f"DEBUG: Failed to extract post #{idx + 1} (no title found)")
+
+        print(f"\n{'='*80}")
+        print(f"DEBUG: Finished parsing - extracted {len(posts)} valid posts")
+        print(f"{'='*80}\n")
+
+        return self._format_markdown(posts)
+
+    def _extract_post(self, container, idx=0) -> dict:
+        """Extract data from a single Reddit post."""
+        post = {}
+
+        print(f"\n--- Starting extraction for post #{idx + 1} ---")
+
+        # First, try to extract from telemetry data for reliable info
+        tracker = container.find('search-telemetry-tracker')
+        telemetry_data = {}
+        if tracker:
+            print(f"DEBUG: Found telemetry tracker")
+            context_attr = tracker.get('data-faceplate-tracking-context')
+            if context_attr:
+                try:
+                    telemetry_data = json.loads(context_attr)
+                    print(f"DEBUG: Telemetry data keys: {telemetry_data.keys()}")
+                    if 'post' in telemetry_data:
+                        print(f"DEBUG: Telemetry post keys: {telemetry_data['post'].keys()}")
+                    if 'subreddit' in telemetry_data:
+                        print(f"DEBUG: Telemetry subreddit keys: {telemetry_data['subreddit'].keys()}")
+                except Exception as e:
+                    print(f"DEBUG: Error parsing telemetry: {e}")
+        else:
+            print(f"DEBUG: No telemetry tracker found")
+
+        # Extract title - look for a[data-testid="post-title-text"]
+        title_link = container.find('a', {'data-testid': 'post-title-text'})
+        print(f"DEBUG: Title link found: {title_link is not None}")
+        if not title_link:
+            # Fallback to h3 for other page types
+            h3_elem = container.find('h3')
+            if h3_elem:
+                title_link = h3_elem.find('a')
+                print(f"DEBUG: Found title via h3 fallback: {title_link is not None}")
+
+        if title_link:
+            post['title'] = title_link.get_text(strip=True)
+            href = title_link.get('href', '')
+            post['url'] = f"https://reddit.com{href}" if href.startswith('/') else href
+            print(f"DEBUG: Extracted title: {post['title'][:50]}...")
+            print(f"DEBUG: Extracted URL: {post['url']}")
+        elif telemetry_data.get('post', {}).get('title'):
+            # Fallback to telemetry title
+            post['title'] = telemetry_data['post']['title']
+            print(f"DEBUG: Used telemetry title: {post['title'][:50]}...")
+
+        # Extract author - multiple methods
+        print(f"\nDEBUG: --- Searching for author ---")
+        # Method 1: Look for author link with data-testid
+        author_link = container.find('a', {'data-testid': 'post-author-name'})
+        if author_link:
+            post['author'] = author_link.get_text(strip=True)
+            print(f"DEBUG: Found author via post-author-name testid: {post['author']}")
+
+        # Method 2: Look for username in telemetry
+        if not post.get('author') and telemetry_data.get('author', {}).get('user_name'):
+            post['author'] = telemetry_data['author']['user_name']
+            print(f"DEBUG: Found author in telemetry: {post['author']}")
+
+        # Method 3: Look for links starting with /user/
+        if not post.get('author'):
+            user_link = container.find('a', href=re.compile(r'^/user/[^/]+/?$'))
+            if user_link:
+                author_text = user_link.get_text(strip=True)
+                post['author'] = author_text.replace('u/', '', 1) if author_text.startswith('u/') else author_text
+                print(f"DEBUG: Found author via user link: {post['author']}")
+
+        # Method 4: Look for any link with 'author' in attributes
+        if not post.get('author'):
+            author_candidates = container.find_all('a', href=re.compile(r'/user/'))
+            if author_candidates:
+                print(f"DEBUG: Found {len(author_candidates)} links with /user/ in href")
+                for candidate in author_candidates:
+                    href = candidate.get('href', '')
+                    print(f"DEBUG: Checking candidate href: {href}")
+                    # Extract username from /user/username/ or /user/username
+                    match = re.search(r'/user/([^/\?#]+)', href)
+                    if match:
+                        post['author'] = match.group(1)
+                        print(f"DEBUG: Extracted author from href: {post['author']}")
+                        break
+
+        if not post.get('author'):
+            print(f"DEBUG: No author found - Reddit search results may not include author info")
+
+        # Extract subreddit from telemetry data (most reliable)
+        print(f"\nDEBUG: --- Searching for subreddit ---")
+        if telemetry_data.get('subreddit', {}).get('name'):
+            post['subreddit'] = telemetry_data['subreddit']['name']
+            print(f"DEBUG: Found subreddit in telemetry: {post['subreddit']}")
+        else:
+            # Fallback to extracting from links
+            sub_link = container.find('a', href=re.compile(r'^/r/[^/]+/$'))
+            if sub_link:
+                subreddit_text = sub_link.get_text(strip=True)
+                post['subreddit'] = subreddit_text.replace('r/', '', 1) if subreddit_text.startswith('r/') else subreddit_text
+                print(f"DEBUG: Found subreddit via link: {post['subreddit']}")
+            else:
+                print(f"DEBUG: No subreddit found")
+
+        # Extract timestamp from faceplate-timeago or time element
+        print(f"\nDEBUG: --- Searching for timestamp ---")
+        time_elem = container.find('time')
+        if time_elem:
+            post['time'] = time_elem.get_text(strip=True)
+            print(f"DEBUG: Found timestamp: {post['time']}")
+            # Also get datetime attribute if available
+            datetime_attr = time_elem.get('datetime')
+            if datetime_attr:
+                post['datetime'] = datetime_attr
+                print(f"DEBUG: Found datetime attribute: {datetime_attr}")
+        else:
+            print(f"DEBUG: No timestamp found")
+
+        # Extract snippet/content from search result
+        print(f"\nDEBUG: --- Searching for content snippet ---")
+        snippet_link = container.find('a', {'class': lambda x: x and 'text-ellipsis' in ' '.join(x)})
+        if snippet_link and 'post-title-text' not in str(snippet_link.get('data-testid', '')):
+            post['content'] = snippet_link.get_text(strip=True)
+            print(f"DEBUG: Found content snippet: {post['content'][:100]}...")
+        else:
+            print(f"DEBUG: No content snippet found")
+
+        # Extract votes and comments count
+        print(f"\nDEBUG: --- Searching for votes and comments ---")
+        counter_row = container.find('div', {'data-testid': 'search-counter-row'})
+        if counter_row:
+            # Parse "X votes · Y comments" or "Xvotes·Ycomments"
+            counter_text = counter_row.get_text(strip=True)
+            print(f"DEBUG: Found counter-row with text: '{counter_text}'")
+            parts = counter_text.split('·')
+            if len(parts) >= 1:
+                # Clean up the votes text - add space before "votes" if missing
+                votes_text = parts[0].strip()
+                votes_text = re.sub(r'(\d+\.?\d*[KkMm]?)(votes?)', r'\1 \2', votes_text)
+                post['upvotes'] = votes_text
+                print(f"DEBUG: Extracted upvotes: {post['upvotes']}")
+            if len(parts) >= 2:
+                # Clean up the comments text - add space before "comments" if missing
+                comments_text = parts[1].strip()
+                comments_text = re.sub(r'(\d+\.?\d*[KkMm]?)(comments?)', r'\1 \2', comments_text)
+                post['comments'] = comments_text
+                print(f"DEBUG: Extracted comments: {post['comments']}")
+        else:
+            print(f"DEBUG: No counter-row found with testid='search-counter-row'")
+            # Try alternative methods to find vote/comment counts
+            print(f"DEBUG: Searching for alternative vote/comment indicators...")
+
+            # Look for any div containing "votes" or "comments"
+            all_text = container.get_text()
+            vote_matches = re.findall(r'(\d+\.?\d*[KkMm]?\s*(?:votes?|upvotes?|points?))', all_text)
+            comment_matches = re.findall(r'(\d+\.?\d*[KkMm]?\s*comments?)', all_text)
+
+            if vote_matches:
+                print(f"DEBUG: Found vote matches via regex: {vote_matches}")
+                post['upvotes'] = vote_matches[0]
+            if comment_matches:
+                print(f"DEBUG: Found comment matches via regex: {comment_matches}")
+                post['comments'] = comment_matches[0]
+
+        # Extract awards/badges
+        print(f"\nDEBUG: --- Searching for awards/badges ---")
+        awards = []
+        award_elements = container.find_all('img', {'alt': re.compile(r'award|badge', re.IGNORECASE)})
+        if award_elements:
+            for award in award_elements:
+                award_name = award.get('alt', '')
+                if award_name:
+                    awards.append(award_name)
+            print(f"DEBUG: Found {len(awards)} awards: {awards}")
+            if awards:
+                post['awards'] = ', '.join(awards)
+        else:
+            print(f"DEBUG: No awards found")
+
+        # Extract post flair if present
+        print(f"\nDEBUG: --- Searching for post flair ---")
+        flair_elem = container.find('span', {'class': lambda x: x and 'flair' in ' '.join(x).lower()})
+        if flair_elem:
+            post['flair'] = flair_elem.get_text(strip=True)
+            print(f"DEBUG: Found flair: {post['flair']}")
+        else:
+            print(f"DEBUG: No flair found")
+
+        # Extract NSFW/Spoiler tags
+        print(f"\nDEBUG: --- Searching for NSFW/Spoiler tags ---")
+        nsfw_elem = container.find(string=re.compile(r'NSFW', re.IGNORECASE))
+        spoiler_elem = container.find(string=re.compile(r'Spoiler', re.IGNORECASE))
+        if nsfw_elem:
+            post['nsfw'] = True
+            print(f"DEBUG: Post marked as NSFW")
+        if spoiler_elem:
+            post['spoiler'] = True
+            print(f"DEBUG: Post marked as Spoiler")
+
+        # Extract post type (image, video, text, link, etc.)
+        print(f"\nDEBUG: --- Determining post type ---")
+        if telemetry_data.get('post', {}).get('type'):
+            post['post_type'] = telemetry_data['post']['type']
+            print(f"DEBUG: Post type from telemetry: {post['post_type']}")
+
+        # Look for media indicators
+        if container.find('video'):
+            post['has_video'] = True
+            print(f"DEBUG: Post contains video")
+        if container.find('img', {'alt': lambda x: x and 'image' in x.lower()}):
+            post['has_image'] = True
+            print(f"DEBUG: Post contains image")
+
+        print(f"\nDEBUG: --- Final extracted data for post #{idx + 1} ---")
+        for key, value in post.items():
+            print(f"DEBUG: {key}: {str(value)[:100]}")
+        print(f"--- End of extraction for post #{idx + 1} ---\n")
+
+        return post if post.get('title') else None
+
+    def _format_markdown(self, posts: list) -> str:
+        """Format Reddit posts as markdown."""
+        lines = ["# Reddit Search Results\n"]
+        lines.append(f"Found {len(posts)} posts\n\n")
+
+        for post in posts:
+            lines.append(f"## {post.get('title', 'Untitled')}")
+
+            # Primary metadata line (subreddit, author, time)
+            meta = []
+            if post.get('subreddit'):
+                meta.append(f"r/{post['subreddit']}")
+            if post.get('author'):
+                meta.append(f"u/{post['author']}")
+            if post.get('time'):
+                meta.append(post['time'])
+
+            if meta:
+                lines.append(f"**{' • '.join(meta)}**")
+
+            # Engagement metrics (votes and comments) - this is the subtitle info
+            engagement = []
+            if post.get('upvotes'):
+                engagement.append(post['upvotes'])
+            if post.get('comments'):
+                engagement.append(post['comments'])
+
+            if engagement:
+                lines.append(f"\n_{' · '.join(engagement)}_")
+
+            # Post content/snippet
+            if post.get('content'):
+                lines.append(f"\n{post['content']}")
+
+            # Additional metadata
+            additional = []
+            if post.get('flair'):
+                additional.append(f"Flair: {post['flair']}")
+            if post.get('post_type'):
+                additional.append(f"Type: {post['post_type']}")
+            if post.get('has_video'):
+                additional.append("Has Video")
+            if post.get('has_image'):
+                additional.append("Has Image")
+            if post.get('nsfw'):
+                additional.append("NSFW")
+            if post.get('spoiler'):
+                additional.append("Spoiler")
+            if post.get('awards'):
+                additional.append(f"Awards: {post['awards']}")
+
+            if additional:
+                lines.append(f"\n`{' | '.join(additional)}`")
+
+            if post.get('url'):
+                lines.append(f"\n[View on Reddit]({post['url']})")
+
+            lines.append("\n---\n")
+
+        return "\n".join(lines)
