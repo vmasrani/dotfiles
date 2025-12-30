@@ -575,6 +575,7 @@ install_yarn() {
 install_uvx_tools() {
     uv tool install rich-cli
     uv tool install "markitdown[all]"
+    uv tool install --with lxml --with pdfminer.six visidata
 }
 
 install_uwu() {

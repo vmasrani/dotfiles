@@ -1,0 +1,159 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "requests>=2.31.0",
+#     "rich>=13.7.1",
+# ]
+# ///
+
+import json
+import os
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+import requests
+from rich.console import Console
+
+console = Console()
+
+TASK_PROMPT = """Navigate to the page and extract the main content as clean markdown.
+
+Your objectives:
+1. Dismiss any cookie consent banners, popups, or modal dialogs (click "Accept", "Dismiss", "X", etc.)
+2. Close any subscription prompts, newsletter signups, or "subscribe now" overlays
+3. If there's a paywall preview, extract whatever content is visible
+4. Scroll through the page to ensure all lazy-loaded content is visible
+5. Extract the main article/content body as clean, well-formatted markdown
+6. Include the article title, author (if available), and publication date (if available)
+7. Preserve headings, lists, code blocks, and other formatting
+8. Exclude navigation menus, sidebars, footers, and advertisements
+
+Return the extracted content as clean markdown text."""
+
+
+def sanitize_filename(url: str) -> str:
+    """Convert URL to a safe filename component."""
+    parsed = urlparse(url)
+    domain = parsed.netloc.replace("www.", "")
+    path = parsed.path.strip("/").replace("/", "_")
+    name = f"{domain}_{path}" if path else domain
+    name = re.sub(r"[^\w\-_.]", "_", name)
+    name = re.sub(r"_+", "_", name).strip("_")
+    return name[:100]
+
+
+def extract_with_automate(url: str) -> tuple[str | None, list[dict]]:
+    """Use Tabstack automate endpoint to bypass popups and extract content."""
+    api_key = os.environ.get("TABSTACK_API_KEY")
+    if not api_key:
+        console.print("[red]Error: TABSTACK_API_KEY environment variable not set[/red]")
+        sys.exit(1)
+
+    response = requests.post(
+        "https://api.tabstack.ai/v1/automate",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "task": TASK_PROMPT,
+            "url": url,
+            "maxIterations": 30,
+            "guardrails": "Browse and extract only. Do not submit forms, create accounts, or make purchases. Do not navigate away from the target page.",
+        },
+        stream=True,
+    )
+
+    response.raise_for_status()
+
+    events = []
+    final_answer = None
+    extracted_data = []
+
+    for line in response.iter_lines():
+        if not line:
+            continue
+
+        line = line.decode("utf-8")
+
+        if line.startswith("data: "):
+            data = line[6:]
+
+            if data == "[DONE]":
+                break
+
+            try:
+                event = json.loads(data)
+                events.append(event)
+
+                if "message" in event:
+                    console.print(f"[dim]Status: {event['message']}[/dim]")
+                elif "url" in event and "title" not in event:
+                    console.print(f"[cyan]→ Navigated to: {event['url']}[/cyan]")
+                elif "extractedData" in event:
+                    extracted_data.append(event["extractedData"])
+                    console.print("[green]📦 Extracted content chunk[/green]")
+                elif "finalAnswer" in event:
+                    final_answer = event["finalAnswer"]
+                    console.print("[green]✓ Extraction complete[/green]")
+                elif "error" in event:
+                    console.print(f"[red]Error: {event['error']}[/red]")
+            except json.JSONDecodeError:
+                pass
+
+    # Prefer finalAnswer, fall back to concatenated extractedData
+    if final_answer:
+        return final_answer, events
+    elif extracted_data:
+        return "\n\n".join(str(d) for d in extracted_data), events
+    return None, events
+
+
+def save_markdown(content: str, url: str, output_dir: Path) -> Path:
+    """Save extracted content to a markdown file."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    filename = sanitize_filename(url)
+    output_path = output_dir / f"{date_str}_{filename}.md"
+
+    # Add frontmatter with metadata
+    frontmatter = f"""---
+url: {url}
+extracted: {datetime.now().isoformat()}
+---
+
+"""
+    output_path.write_text(frontmatter + content)
+    return output_path
+
+
+def main():
+    if len(sys.argv) < 2:
+        console.print("[yellow]Usage: bypass_login <url> [output_dir][/yellow]")
+        console.print("[dim]Default output directory: ./urls/[/dim]")
+        sys.exit(1)
+
+    url = sys.argv[1]
+    output_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("urls")
+
+    console.print(f"[bold]Extracting content from:[/bold] {url}")
+    console.print("[dim]Dismissing popups and extracting main content...[/dim]\n")
+
+    content, events = extract_with_automate(url)
+
+    if content:
+        output_path = save_markdown(content, url, output_dir)
+        console.print(f"\n[bold green]✓ Saved to:[/bold green] {output_path}")
+        console.print(f"[dim]Total events processed: {len(events)}[/dim]")
+    else:
+        console.print("[red]Failed to extract content from URL[/red]")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

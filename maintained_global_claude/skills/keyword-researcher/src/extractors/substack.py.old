@@ -1,0 +1,462 @@
+"""
+Substack feed reader.
+
+Extracts card-based content from Substack search results using article elements
+and link href pattern matching.
+"""
+
+from playwright.sync_api import Page
+from src.core.base import FeedReader
+from src.utils.parsing import parse_html
+import re
+
+
+class SubstackFeedReader(FeedReader):
+    """Parser for Substack search results and feeds."""
+
+    def parse_feed(self, page: Page) -> str:
+        """
+        Parse Substack search results and return as markdown.
+
+        Strategy:
+        1. Primary: Use div[role="article"] selector to find posts
+        2. Extract: title, author, URL, likes, comments, time, publication, etc.
+        3. Format as markdown with links
+        """
+        print("\n" + "="*80)
+        print("STARTING SUBSTACK FEED PARSING")
+        print("="*80 + "\n")
+
+        content = page.content()
+        soup = parse_html(content)
+
+        cards = self._extract_cards(soup)
+        markdown = self._format_markdown(cards)
+
+        print("\n" + "="*80)
+        print(f"PARSING COMPLETE - Found {len(cards)} cards")
+        print("="*80 + "\n")
+
+        return markdown
+
+    def _extract_cards(self, soup) -> list:
+        """Extract card data from article elements."""
+        cards = []
+
+        articles = soup.find_all("div", {"role": "article"})
+        print(f"Found {len(articles)} article elements\n")
+
+        for idx, article_elem in enumerate(articles, 1):
+            print(f"\n{'─'*80}")
+            print(f"PROCESSING ARTICLE {idx}")
+            print(f"{'─'*80}")
+            card = self._parse_article_element(article_elem, idx)
+            if card:
+                cards.append(card)
+                print(f"✓ Successfully extracted card {idx}")
+            else:
+                print(f"✗ Failed to extract card {idx}")
+
+        return cards
+
+    def _parse_article_element(self, elem, idx: int) -> dict:
+        """Parse individual article element with comprehensive metadata extraction."""
+        print(f"\n[Card {idx}] Starting extraction...")
+
+        # Initialize card with all possible fields
+        card = {
+            'title': None,
+            'author': None,
+            'url': None,
+            'publication': None,
+            'description': None,
+            'timestamp': None,
+            'like_count': None,
+            'comment_count': None,
+            'restack_count': None,  # Substack-specific "restack" feature
+            'post_type': None,  # 'post' or 'note'
+            'author_url': None,
+            'publication_url': None,
+            'subscriber_count': None,  # If available
+            'is_paid': None,  # If post is for paid subscribers only
+        }
+
+        # DEBUG: Print raw HTML structure for first few cards
+        if idx <= 3:
+            print(f"\n[Card {idx}] RAW HTML STRUCTURE:")
+            print("="*60)
+            print(elem.prettify()[:2000])  # First 2000 chars
+            print("... (truncated)")
+            print("="*60)
+
+        # Get all links for debugging
+        all_links = elem.find_all("a", href=True)
+        print(f"[Card {idx}] Found {len(all_links)} total links")
+
+        # Debug: Print all link hrefs
+        for link_idx, link in enumerate(all_links, 1):
+            href = link.get('href', '')
+            text = link.get_text(strip=True)
+            print(f"  Link {link_idx}: href='{href[:60]}...' text='{text[:40]}...'")
+
+        # Extract title - Try multiple strategies
+        print(f"\n[Card {idx}] Extracting title...")
+
+        # Strategy 1: Look for the main link's text content (excluding author/pub names)
+        for link in all_links:
+            href = link.get('href', '')
+            classes = link.get('class', [])
+            # Main post links have the pressable class
+            if 'pressable-lg-kV7yq8' in classes or '/p/' in href or '/note/' in href:
+                link_text = link.get_text(strip=True)
+                # Filter out author names, publication names, and short text
+                if link_text and len(link_text) > 15:
+                    # Check if it's not just the timestamp or author/pub name
+                    if not re.match(r'^\d+[smhdwMy]$', link_text):
+                        card['title'] = link_text
+                        print(f"  ✓ Found title from main link: '{link_text[:60]}...'")
+                        break
+
+        # Strategy 2: div with class "reset-IxiVJZ" (fallback)
+        if not card['title']:
+            title_candidates = elem.find_all("div", class_="reset-IxiVJZ")
+            print(f"[Card {idx}] Found {len(title_candidates)} title candidates (fallback)")
+
+            for title_idx, div in enumerate(title_candidates, 1):
+                text = div.get_text(strip=True)
+                print(f"  Title candidate {title_idx}: '{text[:60]}...' (len={len(text)})")
+                # Get the longest text block that looks like a title
+                if text and len(text) > 20:
+                    # Skip if it's just author/publication name repeated
+                    if text != card.get('author') and text != card.get('publication'):
+                        card['title'] = text
+                        print(f"  ✓ Selected as title: '{text[:60]}...'")
+                        break
+
+        # Extract URL - look for main pressable container first, then /p/ or /note/ links
+        print(f"\n[Card {idx}] Extracting URL...")
+
+        # First try to find the main pressable container (usually the main post link)
+        for link in all_links:
+            classes = link.get('class', [])
+            if 'pressable-lg-kV7yq8' in classes:
+                href = link.get('href', '')
+                if href:
+                    card['url'] = href
+                    print(f"  ✓ Found URL via pressable class: {href}")
+                    # Determine post type
+                    if '/p/' in href:
+                        card['post_type'] = 'post'
+                    elif '/note/' in href:
+                        card['post_type'] = 'note'
+                    break
+
+        # Fallback: look for /p/ (post) or /note/ (note/comment) links
+        if not card['url']:
+            print(f"[Card {idx}] Trying fallback URL extraction...")
+            for link in all_links:
+                href = link.get('href', '')
+                if '/p/' in href or '/note/' in href:
+                    card['url'] = href
+                    print(f"  ✓ Found URL via fallback: {href}")
+                    # Determine post type
+                    if '/p/' in href:
+                        card['post_type'] = 'post'
+                    elif '/note/' in href:
+                        card['post_type'] = 'note'
+                    break
+
+        if card['post_type']:
+            print(f"[Card {idx}] Post type: {card['post_type']}")
+
+        # Extract author - look for link starting with /@
+        print(f"\n[Card {idx}] Extracting author...")
+        for link in all_links:
+            href = link.get('href', '')
+            if href.startswith('/@'):
+                author_text = link.get_text(strip=True)
+                if author_text:
+                    card['author'] = author_text
+                    card['author_url'] = href
+                    print(f"  ✓ Found author: {author_text} (url: {href})")
+                    break
+
+        # Extract publication name - look for links that go to substack domains
+        print(f"\n[Card {idx}] Extracting publication name...")
+        for link in all_links:
+            href = link.get('href', '')
+            text = link.get_text(strip=True)
+            # Publication links usually have format https://name.substack.com
+            if '.substack.com' in href and text and '/@' not in href and '/p/' not in href and '/note/' not in href:
+                if card['author'] != text:  # Don't duplicate if it's the author name
+                    card['publication'] = text
+                    card['publication_url'] = href
+                    print(f"  ✓ Found publication: {text} (url: {href})")
+                    break
+
+        # Extract description/snippet
+        print(f"\n[Card {idx}] Extracting description...")
+        # Look for text blocks that aren't the title
+        text_divs = elem.find_all("div")
+        for div in text_divs:
+            text = div.get_text(strip=True)
+            # Skip if it's the title or too short
+            if text and text != card['title'] and len(text) > 20 and len(text) < 500:
+                # Check if it looks like a description (not a UI element)
+                if not any(keyword in text.lower() for keyword in ['read more', 'subscribe', 'share', 'like']):
+                    if not card['description']:  # Take the first valid one
+                        card['description'] = text
+                        print(f"  ✓ Found description: '{text[:80]}...'")
+                        break
+
+        # Extract timestamp/date
+        print(f"\n[Card {idx}] Extracting timestamp...")
+        time_elem = elem.find("time")
+        if time_elem:
+            timestamp = time_elem.get_text(strip=True)
+            card['timestamp'] = timestamp
+            print(f"  ✓ Found timestamp: {timestamp}")
+            # Also check for datetime attribute
+            datetime_attr = time_elem.get('datetime')
+            if datetime_attr:
+                print(f"    datetime attribute: {datetime_attr}")
+
+        # If no time element found, look in link text (Substack often puts timestamps in links)
+        if not card['timestamp']:
+            print(f"[Card {idx}] Trying to extract timestamp from link text...")
+            for link in all_links:
+                link_text = link.get_text(strip=True)
+                # Look for patterns like "21h", "2d", "3w", etc.
+                time_match = re.match(r'^(\d+[smhdwMy])$', link_text)
+                if time_match:
+                    card['timestamp'] = time_match.group(1)
+                    print(f"  ✓ Found timestamp in link: {time_match.group(1)}")
+                    break
+
+        # Fallback: look for text that looks like a date/time in full text
+        if not card['timestamp']:
+            all_text = elem.get_text()
+            # Common patterns: "2 hours ago", "yesterday", "Jan 1", etc.
+            time_patterns = [
+                r'\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago',
+                r'yesterday|today',
+                r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+',
+            ]
+            for pattern in time_patterns:
+                match = re.search(pattern, all_text, re.IGNORECASE)
+                if match:
+                    card['timestamp'] = match.group(0)
+                    print(f"  ✓ Found timestamp via pattern: {match.group(0)}")
+                    break
+
+        # Extract engagement metrics (likes, comments, restacks)
+        print(f"\n[Card {idx}] Extracting engagement metrics...")
+
+        # Strategy: Look for buttons with aria-label containing counts
+        # Substack uses aria-labels like "Like", "Comment", "Restack" with nearby spans containing numbers
+        all_buttons = elem.find_all(['button', 'div', 'span'])
+
+        for button in all_buttons:
+            aria_label = button.get('aria-label', '').lower()
+
+            # Extract like count
+            if 'like' in aria_label and not card['like_count']:
+                # Look for number in nearby siblings or children
+                for sibling in [button] + list(button.find_all(['span', 'div'])):
+                    text = sibling.get_text(strip=True)
+                    if text and re.match(r'^\d+[KMB]?$', text):
+                        card['like_count'] = text
+                        print(f"  ✓ Found like count: {text}")
+                        break
+
+            # Extract comment count
+            if 'comment' in aria_label and not card['comment_count']:
+                # Look for number in nearby siblings or children
+                for sibling in [button] + list(button.find_all(['span', 'div'])):
+                    text = sibling.get_text(strip=True)
+                    if text and re.match(r'^\d+[KMB]?$', text):
+                        card['comment_count'] = text
+                        print(f"  ✓ Found comment count: {text}")
+                        break
+
+            # Extract restack count
+            if 'restack' in aria_label and not card['restack_count']:
+                # Look for number in nearby siblings or children
+                for sibling in [button] + list(button.find_all(['span', 'div'])):
+                    text = sibling.get_text(strip=True)
+                    if text and re.match(r'^\d+[KMB]?$', text):
+                        card['restack_count'] = text
+                        print(f"  ✓ Found restack count: {text}")
+                        break
+
+        # Fallback: scan all text for engagement patterns
+        if not card['like_count'] or not card['comment_count']:
+            print(f"[Card {idx}] Trying fallback engagement extraction...")
+            all_text_elements = elem.find_all(['span', 'div'])
+
+            for i, span in enumerate(all_text_elements):
+                text = span.get_text(strip=True)
+
+                # Look for standalone numbers that might be engagement counts
+                if text and re.match(r'^\d+[KMB]?$', text):
+                    # Check context - look at nearby elements
+                    context = ''
+                    if i > 0:
+                        context += all_text_elements[i-1].get_text(strip=True).lower()
+                    if i < len(all_text_elements) - 1:
+                        context += all_text_elements[i+1].get_text(strip=True).lower()
+
+                    # Try to assign based on context or position
+                    if not card['like_count'] and len(text) <= 6:
+                        # First number found is often the like count
+                        card['like_count'] = text
+                        print(f"  ✓ Found like count (fallback): {text}")
+                    elif not card['comment_count'] and 'comment' in context:
+                        card['comment_count'] = text
+                        print(f"  ✓ Found comment count (fallback): {text}")
+
+        # Look for any aria-labels or data attributes that might contain metadata
+        print(f"\n[Card {idx}] Checking for additional metadata in attributes...")
+        for tag in elem.find_all(True):
+            # Check aria-label
+            aria_label = tag.get('aria-label', '')
+            if aria_label:
+                print(f"  Found aria-label: {aria_label[:60]}")
+                # Extract any counts from aria-labels
+                if 'like' in aria_label.lower() and not card['like_count']:
+                    numbers = re.findall(r'\d+', aria_label)
+                    if numbers:
+                        card['like_count'] = numbers[0]
+                        print(f"    ✓ Extracted like count from aria-label: {numbers[0]}")
+                if ('comment' in aria_label.lower() or 'reply' in aria_label.lower()) and not card['comment_count']:
+                    numbers = re.findall(r'\d+', aria_label)
+                    if numbers:
+                        card['comment_count'] = numbers[0]
+                        print(f"    ✓ Extracted comment count from aria-label: {numbers[0]}")
+                if 'restack' in aria_label.lower() and not card['restack_count']:
+                    numbers = re.findall(r'\d+', aria_label)
+                    if numbers:
+                        card['restack_count'] = numbers[0]
+                        print(f"    ✓ Extracted restack count from aria-label: {numbers[0]}")
+
+            # Check data attributes
+            for attr_name in tag.attrs:
+                if attr_name.startswith('data-'):
+                    attr_value = tag[attr_name]
+                    if attr_value and isinstance(attr_value, str) and len(attr_value) < 100:
+                        print(f"  Found {attr_name}: {attr_value[:60]}")
+
+        # Detect paid content
+        print(f"\n[Card {idx}] Checking for paid content indicators...")
+        all_text = elem.get_text()
+        paid_indicators = ['paid subscribers', 'subscriber only', 'premium', 'paywall']
+        for indicator in paid_indicators:
+            if indicator in all_text.lower():
+                card['is_paid'] = True
+                print(f"  ✓ Detected paid content (indicator: '{indicator}')")
+                break
+
+        # Try to extract subscriber count if visible
+        print(f"\n[Card {idx}] Looking for subscriber count...")
+        subscriber_patterns = [
+            r'(\d+[KMB]?)\s+subscribers?',
+            r'subscribers?:\s*(\d+[KMB]?)',
+        ]
+        for pattern in subscriber_patterns:
+            match = re.search(pattern, all_text, re.IGNORECASE)
+            if match:
+                card['subscriber_count'] = match.group(1)
+                print(f"  ✓ Found subscriber count: {match.group(1)}")
+                break
+
+        # Print summary of extracted data
+        print(f"\n[Card {idx}] EXTRACTION SUMMARY:")
+        print(f"  Title: {card['title'][:60] if card['title'] else 'None'}...")
+        print(f"  Author: {card['author']}")
+        print(f"  Publication: {card['publication']}")
+        print(f"  URL: {card['url']}")
+        print(f"  Post Type: {card['post_type']}")
+        print(f"  Timestamp: {card['timestamp']}")
+        print(f"  Description: {card['description'][:60] if card['description'] else 'None'}...")
+        print(f"  Like Count: {card['like_count']}")
+        print(f"  Comment Count: {card['comment_count']}")
+        print(f"  Restack Count: {card['restack_count']}")
+        print(f"  Author URL: {card['author_url']}")
+        print(f"  Publication URL: {card['publication_url']}")
+        print(f"  Is Paid: {card['is_paid']}")
+        print(f"  Subscriber Count: {card['subscriber_count']}")
+
+        # Return card if we have at least title or URL
+        if card['title'] or card['url']:
+            return card
+
+        return None
+
+    def _format_markdown(self, cards: list) -> str:
+        """Format extracted cards as markdown with all metadata."""
+        lines = ["# Substack Search Results\n"]
+        lines.append(f"Found {len(cards)} posts\n\n")
+
+        for i, card in enumerate(cards, 1):
+            # Title
+            if card['title']:
+                lines.append(f"## {card['title']}")
+            else:
+                lines.append(f"## Result {i}")
+
+            # Metadata line: Author • Publication • Post Type • Timestamp
+            meta = []
+            if card.get('author'):
+                if card.get('author_url'):
+                    meta.append(f"[{card['author']}]({card['author_url']})")
+                else:
+                    meta.append(card['author'])
+
+            if card.get('publication') and card.get('publication') != card.get('author'):
+                if card.get('publication_url'):
+                    meta.append(f"[{card['publication']}]({card['publication_url']})")
+                else:
+                    meta.append(card['publication'])
+
+            if card.get('post_type'):
+                meta.append(card['post_type'].title())
+
+            if card.get('timestamp'):
+                meta.append(card['timestamp'])
+
+            if meta:
+                lines.append(f"**{' • '.join(meta)}**")
+
+            # Description
+            if card.get('description'):
+                lines.append(f"\n{card['description']}")
+
+            # Engagement metrics: Likes | Comments | Restacks
+            engagement = []
+            if card.get('like_count'):
+                engagement.append(f"❤ {card['like_count']} likes")
+            if card.get('comment_count'):
+                engagement.append(f"💬 {card['comment_count']} comments")
+            if card.get('restack_count'):
+                engagement.append(f"🔄 {card['restack_count']} restacks")
+
+            if engagement:
+                lines.append(f"\n_{' | '.join(engagement)}_")
+
+            # Additional metadata if available
+            additional = []
+            if card.get('subscriber_count'):
+                additional.append(f"👥 {card['subscriber_count']} subscribers")
+            if card.get('is_paid'):
+                additional.append("💰 Paid content")
+
+            if additional:
+                lines.append(f"\n_{' | '.join(additional)}_")
+
+            # URL
+            if card.get('url'):
+                lines.append(f"\n[Read on Substack]({card['url']})")
+
+            lines.append("\n---\n")
+
+        return "\n".join(lines)

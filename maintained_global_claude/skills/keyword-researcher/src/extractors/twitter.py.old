@@ -1,0 +1,588 @@
+"""
+Twitter/X feed reader.
+
+Extracts tweets from Twitter search results and timelines.
+"""
+
+from playwright.sync_api import Page
+from src.core.base import FeedReader
+
+
+class TwitterFeedReader(FeedReader):
+    """
+    Parser for Twitter/X feeds and search results.
+
+    HTML Structure:
+    - Container: <article> elements
+    - Content: [data-testid="tweetText"] selector
+    - Author: a[href^="/"] links
+    - URL: a[href*="/status/"] links
+    - Engagement: [data-testid="like|retweet|reply"] buttons
+
+    Limitations:
+    - Authentication required for search results
+    - Rate limiting (2-5 second delays recommended)
+    - Selectors may change (use data-testid when possible)
+    """
+
+    def parse_feed(self, page: Page) -> str:
+        """Extract tweets from Twitter feed and convert to markdown."""
+        print("[DEBUG] Starting parse_feed")
+        print(f"[DEBUG] Page URL: {page.url}")
+        print(f"[DEBUG] Page title: {page.title()}")
+
+        # Check if page redirected to login
+        if "login" in page.title().lower() or "login" in page.url:
+            print("[DEBUG] Page redirected to login - authentication required")
+            return self._get_auth_required_message()
+
+        tweets_md = []
+        tweets_md.append("# Twitter Search Results\n")
+
+        articles = page.query_selector_all('article')
+        print(f"[DEBUG] Number of article elements found: {len(articles)}")
+        if not articles:
+            print("[DEBUG] No articles found - checking if authentication is required")
+            return self._get_auth_required_message()
+
+        tweets_md.append(f"Found {len(articles)} tweets\n\n")
+
+        tweet_count = 0
+        for idx, article in enumerate(articles, 1):
+            print(f"[DEBUG] Attempting tweet extraction at index {idx}")
+            try:
+                tweet_md = self._extract_tweet_markdown(article)
+                if tweet_md:
+                    tweets_md.append(tweet_md)
+                    tweets_md.append("\n---\n\n")
+                    tweet_count += 1
+            except Exception as e:
+                print(f"[DEBUG] Exception extracting tweet at index {idx}: {e}")
+                continue
+
+        print(f"[DEBUG] Final count of tweets successfully extracted: {tweet_count}")
+        return "".join(tweets_md)
+
+    def _get_auth_required_message(self) -> str:
+        """Return message indicating that Twitter/X requires authentication."""
+        return (
+            "# Twitter/X Search - Authentication Required\n\n"
+            "Twitter/X requires authentication to access search results.\n\n"
+            "## Why Authentication is Required\n"
+            "Twitter/X does not allow unauthenticated access to search results. "
+            "The platform uses login-based access control to protect user data and content.\n\n"
+            "## To Enable Twitter/X Support\n"
+            "Twitter/X search requires a valid X/Twitter account with an active session. "
+            "This cannot be achieved through automated browser tools without credentials.\n\n"
+            "## Alternative Approaches\n"
+            "1. **Official Twitter API** - Use the v2 API with bearer token authentication\n"
+            "2. **Manual Session** - Save browser cookies after manual login\n"
+            "3. **Proxy Services** - Use third-party services that maintain authenticated sessions\n"
+        )
+
+    def _extract_tweet_markdown(self, article) -> str:
+        """Extract a single tweet and format as markdown with ALL available metadata."""
+        parts = []
+        metadata = {}
+
+        try:
+            print("\n[DEBUG] ========== EXTRACTING NEW TWEET ==========")
+
+            # Dump entire article HTML for deep inspection
+            article_html = article.inner_html()
+            article_outer = article.outer_html()
+            print(f"[DEBUG] Article HTML length: {len(article_html)} characters")
+            print(f"[DEBUG] Article outer HTML preview (first 500 chars): {article_outer[:500]}...")
+
+            # Dump all data-testid attributes found in this article for complete visibility
+            print("[DEBUG] === ALL data-testid ATTRIBUTES IN ARTICLE ===")
+            all_testids = article.query_selector_all('[data-testid]')
+            testid_set = set()
+            for elem in all_testids:
+                testid = elem.get_attribute('data-testid')
+                if testid and testid not in testid_set:
+                    testid_set.add(testid)
+                    print(f"[DEBUG]   - Found data-testid: {testid}")
+            print(f"[DEBUG] Total unique data-testid values: {len(testid_set)}")
+            print("[DEBUG] ============================================")
+
+            # Extract author information
+            print("[DEBUG] Step 1: Extracting author information...")
+            profile_links = article.query_selector_all('a[href^="/"]')
+            print(f"[DEBUG] Found {len(profile_links)} profile links")
+
+            if profile_links:
+                first_link = profile_links[0]
+                handle = first_link.get_attribute('href').lstrip('/').split('/')[0]
+                print(f"[DEBUG]   - Handle extracted: @{handle}")
+
+                # Try to get display name from various possible locations
+                author_span = first_link.query_selector('span')
+                name = author_span.text_content() if author_span else handle
+                print(f"[DEBUG]   - Display name: {name}")
+                metadata['author_name'] = name
+                metadata['author_handle'] = handle
+
+                # Check for verified badge (multiple types)
+                verified_elem = article.query_selector('svg[data-testid="icon-verified"]')
+                is_verified = verified_elem is not None
+                print(f"[DEBUG]   - Verified status (blue check): {is_verified}")
+                metadata['verified'] = is_verified
+
+                # Check for gold verified (organizations)
+                gold_verified = article.query_selector('svg[data-testid="icon-verified-gold"]')
+                is_gold_verified = gold_verified is not None
+                print(f"[DEBUG]   - Gold verified status: {is_gold_verified}")
+                metadata['gold_verified'] = is_gold_verified
+
+                # Check for government verified
+                gov_verified = article.query_selector('svg[data-testid="icon-verified-government"]')
+                is_gov_verified = gov_verified is not None
+                print(f"[DEBUG]   - Government verified status: {is_gov_verified}")
+                metadata['gov_verified'] = is_gov_verified
+
+                # Build author line
+                verified_badge = ""
+                if is_verified:
+                    verified_badge = " ✓"
+                elif is_gold_verified:
+                    verified_badge = " ✓🟡"
+                elif is_gov_verified:
+                    verified_badge = " ✓🏛️"
+
+                parts.append(f"**{name}**{verified_badge} (@{handle})")
+            else:
+                print("[DEBUG]   - WARNING: No profile links found")
+
+            # Extract tweet URL and timestamp
+            print("[DEBUG] Step 2: Extracting URL and timestamp...")
+            status_link = article.query_selector('a[href*="/status/"]')
+            if status_link:
+                url = status_link.get_attribute('href')
+                if not url.startswith('http'):
+                    url = f"https://twitter.com{url}"
+                print(f"[DEBUG]   - Tweet URL: {url}")
+                metadata['url'] = url
+
+                # Extract tweet ID from URL
+                tweet_id = url.split('/status/')[-1].split('?')[0] if '/status/' in url else None
+                if tweet_id:
+                    print(f"[DEBUG]   - Tweet ID: {tweet_id}")
+                    metadata['tweet_id'] = tweet_id
+
+                parts.append(f"\n[View Tweet]({url})")
+
+                # Get timestamp - try both datetime attribute and text content
+                time_elem = article.query_selector('time')
+                if time_elem:
+                    datetime_attr = time_elem.get_attribute('datetime')
+                    if datetime_attr:
+                        print(f"[DEBUG]   - Timestamp (datetime): {datetime_attr}")
+                        metadata['timestamp'] = datetime_attr
+
+                    time_text = time_elem.text_content()
+                    if time_text:
+                        print(f"[DEBUG]   - Timestamp (relative): {time_text}")
+                        metadata['timestamp_relative'] = time_text
+                        parts.append(f" - {time_text}")
+                else:
+                    print("[DEBUG]   - WARNING: No time element found")
+            else:
+                print("[DEBUG]   - WARNING: No status link found")
+
+            parts.append("\n\n")
+
+            # Extract tweet text content
+            print("[DEBUG] Step 3: Extracting tweet text...")
+            text_elem = article.query_selector('[data-testid="tweetText"]')
+            if text_elem:
+                tweet_text = text_elem.text_content() or ""
+                print(f"[DEBUG]   - Tweet text ({len(tweet_text)} chars): {tweet_text[:100]}...")
+                metadata['text'] = tweet_text
+                metadata['text_length'] = len(tweet_text)
+                parts.append(tweet_text)
+            else:
+                print("[DEBUG]   - WARNING: No tweet text found (might be media-only tweet)")
+
+            # Extract engagement metrics with detailed parsing
+            print("[DEBUG] Step 4: Extracting engagement metrics...")
+            metrics = []
+            metric_counts = {}
+
+            # Reply count
+            reply_elem = article.query_selector('[data-testid="reply"]')
+            if reply_elem:
+                reply_button = reply_elem.query_selector('button')
+                if reply_button:
+                    reply_aria = reply_button.get_attribute('aria-label') or ""
+                    print(f"[DEBUG]   - Reply aria-label: {reply_aria}")
+                    if reply_aria:
+                        metrics.append(f"💬 {reply_aria}")
+                        # Try to extract count
+                        try:
+                            count_span = reply_elem.query_selector('span[data-testid="app-text-transition-container"]')
+                            if count_span:
+                                reply_count = count_span.text_content()
+                                print(f"[DEBUG]   - Reply count: {reply_count}")
+                                metric_counts['replies'] = reply_count
+                        except Exception as e:
+                            print(f"[DEBUG]   - Could not extract reply count: {e}")
+            else:
+                print("[DEBUG]   - No reply element found")
+
+            # Retweet count
+            retweet_elem = article.query_selector('[data-testid="retweet"]')
+            if retweet_elem:
+                retweet_button = retweet_elem.query_selector('button')
+                if retweet_button:
+                    retweet_aria = retweet_button.get_attribute('aria-label') or ""
+                    print(f"[DEBUG]   - Retweet aria-label: {retweet_aria}")
+                    if retweet_aria:
+                        metrics.append(f"🔄 {retweet_aria}")
+                        # Try to extract count
+                        try:
+                            count_span = retweet_elem.query_selector('span[data-testid="app-text-transition-container"]')
+                            if count_span:
+                                retweet_count = count_span.text_content()
+                                print(f"[DEBUG]   - Retweet count: {retweet_count}")
+                                metric_counts['retweets'] = retweet_count
+                        except Exception as e:
+                            print(f"[DEBUG]   - Could not extract retweet count: {e}")
+            else:
+                print("[DEBUG]   - No retweet element found")
+
+            # Like count
+            like_elem = article.query_selector('[data-testid="like"]')
+            if like_elem:
+                like_button = like_elem.query_selector('button')
+                if like_button:
+                    like_aria = like_button.get_attribute('aria-label') or ""
+                    print(f"[DEBUG]   - Like aria-label: {like_aria}")
+                    if like_aria:
+                        metrics.append(f"❤️ {like_aria}")
+                        # Try to extract count
+                        try:
+                            count_span = like_elem.query_selector('span[data-testid="app-text-transition-container"]')
+                            if count_span:
+                                like_count = count_span.text_content()
+                                print(f"[DEBUG]   - Like count: {like_count}")
+                                metric_counts['likes'] = like_count
+                        except Exception as e:
+                            print(f"[DEBUG]   - Could not extract like count: {e}")
+            else:
+                print("[DEBUG]   - No like element found")
+
+            # Bookmark count
+            bookmark_elem = article.query_selector('[data-testid="bookmark"]')
+            if bookmark_elem:
+                bookmark_button = bookmark_elem.query_selector('button')
+                if bookmark_button:
+                    bookmark_aria = bookmark_button.get_attribute('aria-label') or ""
+                    print(f"[DEBUG]   - Bookmark aria-label: {bookmark_aria}")
+                    if bookmark_aria:
+                        metrics.append(f"🔖 {bookmark_aria}")
+            else:
+                print("[DEBUG]   - No bookmark element found")
+
+            # Views count (newer feature)
+            views_elem = article.query_selector('[data-testid="views"]')
+            if views_elem:
+                views_link = views_elem.query_selector('a')
+                if views_link:
+                    views_aria = views_link.get_attribute('aria-label') or ""
+                    print(f"[DEBUG]   - Views aria-label: {views_aria}")
+                    if views_aria:
+                        metrics.append(f"👁️ {views_aria}")
+                        # Try to extract count
+                        try:
+                            count_span = views_elem.query_selector('span[data-testid="app-text-transition-container"]')
+                            if count_span:
+                                views_count = count_span.text_content()
+                                print(f"[DEBUG]   - Views count: {views_count}")
+                                metric_counts['views'] = views_count
+                        except Exception as e:
+                            print(f"[DEBUG]   - Could not extract views count: {e}")
+            else:
+                print("[DEBUG]   - No views element found")
+
+            # Quote tweet count (separate from retweets)
+            print("[DEBUG]   - Checking for quote tweet data...")
+            # Quote tweets sometimes have separate tracking
+            quote_elem = article.query_selector('[data-testid="quoteTweet"]')
+            if quote_elem:
+                print(f"[DEBUG]   - Found quote tweet element")
+                metadata['has_quote_tweet'] = True
+
+            # Analytics/Impressions data (if available)
+            print("[DEBUG]   - Checking for analytics data...")
+            analytics_elem = article.query_selector('[data-testid="analyticsButton"]')
+            if analytics_elem:
+                print(f"[DEBUG]   - Found analytics button")
+                metadata['has_analytics'] = True
+
+            # Store metric counts in metadata
+            if metric_counts:
+                metadata['metrics'] = metric_counts
+                print(f"[DEBUG]   - Extracted metric counts: {metric_counts}")
+
+            if metrics:
+                print(f"[DEBUG]   - Total metrics collected: {len(metrics)}")
+                parts.append("\n\n_")
+                parts.append(" | ".join(metrics))
+                parts.append("_")
+            else:
+                print("[DEBUG]   - WARNING: No metrics found for this tweet")
+
+            # Extract media information
+            print("[DEBUG] Step 5: Checking for media attachments...")
+            media_info = []
+
+            # Check for images
+            images = article.query_selector_all('img[src*="pbs.twimg.com"]')
+            if images:
+                print(f"[DEBUG]   - Found {len(images)} image(s)")
+                media_info.append(f"{len(images)} image(s)")
+                metadata['has_images'] = True
+                metadata['image_count'] = len(images)
+
+                # Get image URLs
+                image_urls = [img.get_attribute('src') for img in images if img.get_attribute('src')]
+                if image_urls:
+                    print(f"[DEBUG]   - Image URLs: {image_urls[:3]}...")  # Show first 3
+                    metadata['image_urls'] = image_urls
+
+            # Check for videos
+            video_elem = article.query_selector('video')
+            if video_elem:
+                print("[DEBUG]   - Found video")
+                media_info.append("video")
+                metadata['has_video'] = True
+
+                video_src = video_elem.get_attribute('src')
+                if video_src:
+                    print(f"[DEBUG]   - Video URL: {video_src}")
+                    metadata['video_url'] = video_src
+
+            # Check for GIFs
+            gif_elem = article.query_selector('[data-testid="tweetPhoto"]')
+            if gif_elem and not images:
+                print("[DEBUG]   - Might contain GIF")
+                media_info.append("GIF")
+                metadata['has_gif'] = True
+
+            # Check for external links/cards
+            card_elem = article.query_selector('[data-testid="card.wrapper"]')
+            if card_elem:
+                print("[DEBUG]   - Found link preview card")
+                media_info.append("link preview")
+                metadata['has_link_card'] = True
+
+                # Try to extract card title
+                card_title = card_elem.query_selector('[data-testid="card.layoutLarge.title"]')
+                if card_title:
+                    title_text = card_title.text_content()
+                    print(f"[DEBUG]   - Card title: {title_text}")
+                    metadata['card_title'] = title_text
+
+            # Check for polls
+            poll_elem = article.query_selector('[data-testid="cardPoll"]')
+            if poll_elem:
+                print("[DEBUG]   - Found poll")
+                media_info.append("poll")
+                metadata['has_poll'] = True
+
+            if media_info:
+                parts.append(f"\n\n📎 Media: {', '.join(media_info)}")
+
+            # Check if this is a retweet
+            print("[DEBUG] Step 6: Checking tweet type...")
+            retweet_indicator = article.query_selector('[data-testid="socialContext"]')
+            if retweet_indicator:
+                rt_text = retweet_indicator.text_content()
+                print(f"[DEBUG]   - Social context: {rt_text}")
+                if "retweeted" in rt_text.lower():
+                    metadata['is_retweet'] = True
+                    parts.append(f"\n\n↻ {rt_text}")
+
+            # Check if this is a reply
+            reply_indicator = article.query_selector('div[data-testid="tweet"] div[dir="auto"]')
+            if reply_indicator:
+                reply_text = reply_indicator.text_content()
+                if reply_text and ("Replying to" in reply_text or "replying to" in reply_text):
+                    print(f"[DEBUG]   - Reply indicator: {reply_text}")
+                    metadata['is_reply'] = True
+                    parts.append(f"\n\n💬 {reply_text}")
+
+            # Check if this is a quote tweet
+            quoted_tweet = article.query_selector('div[role="link"]')
+            if quoted_tweet:
+                quoted_text = quoted_tweet.text_content()
+                if quoted_text and len(quoted_text) > 20:  # Likely a quoted tweet
+                    print(f"[DEBUG]   - Might be a quote tweet")
+                    metadata['is_quote_tweet'] = True
+
+            # Extract hashtags
+            print("[DEBUG] Step 7: Extracting hashtags and mentions...")
+            hashtags = article.query_selector_all('a[href^="/hashtag/"]')
+            if hashtags:
+                hashtag_list = [tag.text_content() for tag in hashtags if tag.text_content()]
+                print(f"[DEBUG]   - Found hashtags: {hashtag_list}")
+                metadata['hashtags'] = hashtag_list
+            else:
+                print("[DEBUG]   - No hashtags found")
+
+            # Extract mentions
+            mentions = article.query_selector_all('a[href^="/"][href*="@"]')
+            if mentions:
+                mention_list = [m.text_content() for m in mentions if m.text_content() and m.text_content().startswith('@')]
+                if mention_list:
+                    print(f"[DEBUG]   - Found mentions: {mention_list}")
+                    metadata['mentions'] = mention_list
+            else:
+                print("[DEBUG]   - No mentions found")
+
+            # Extract language if available
+            print("[DEBUG] Step 8: Checking for language information...")
+            lang_attr = article.get_attribute('lang')
+            if lang_attr:
+                print(f"[DEBUG]   - Language attribute: {lang_attr}")
+                metadata['language'] = lang_attr
+
+            # Check for tweet location/geo data
+            print("[DEBUG] Step 9: Checking for location data...")
+            location_elem = article.query_selector('[data-testid="tweet-location"]')
+            if location_elem:
+                location_text = location_elem.text_content()
+                print(f"[DEBUG]   - Location: {location_text}")
+                metadata['location'] = location_text
+                parts.append(f"\n\n📍 {location_text}")
+            else:
+                print("[DEBUG]   - No location data found")
+
+            # Check for thread indicator
+            print("[DEBUG] Step 10: Checking for thread indicators...")
+            thread_elem = article.query_selector('[data-testid="threadLine"]')
+            if thread_elem:
+                print(f"[DEBUG]   - Tweet is part of a thread")
+                metadata['is_thread'] = True
+                parts.append("\n\n🧵 Part of a thread")
+
+            # Check for "Show more" or expanded content indicators
+            print("[DEBUG] Step 11: Checking for content expansion indicators...")
+            show_more = article.query_selector('[data-testid="tweet-text-show-more-link"]')
+            if show_more:
+                print(f"[DEBUG]   - Tweet has 'Show more' link (content may be truncated)")
+                metadata['has_truncated_content'] = True
+
+            # Check for community notes
+            print("[DEBUG] Step 12: Checking for Community Notes...")
+            community_note = article.query_selector('[data-testid="birdwatch-pivot"]')
+            if community_note:
+                note_text = community_note.text_content()
+                print(f"[DEBUG]   - Community Note found: {note_text[:100]}...")
+                metadata['has_community_note'] = True
+                metadata['community_note_text'] = note_text
+                parts.append(f"\n\n⚠️ Community Note: {note_text}")
+
+            # Check for sensitive content warning
+            print("[DEBUG] Step 13: Checking for content warnings...")
+            sensitive_warning = article.query_selector('[data-testid="tweet-sensitive-warning"]')
+            if sensitive_warning:
+                print(f"[DEBUG]   - Sensitive content warning present")
+                metadata['has_sensitive_warning'] = True
+
+            # Check for promoted/ads
+            print("[DEBUG] Step 14: Checking if tweet is promoted...")
+            promoted_elem = article.query_selector('[data-testid="promotedIndicator"]')
+            if promoted_elem:
+                print(f"[DEBUG]   - This is a promoted tweet (ad)")
+                metadata['is_promoted'] = True
+                parts.append("\n\n💰 Promoted")
+
+            # Extract all aria-labels for comprehensive data capture
+            print("[DEBUG] Step 15: Extracting all aria-labels for complete picture...")
+            all_aria_elements = article.query_selector_all('[aria-label]')
+            aria_labels = {}
+            for elem in all_aria_elements:
+                aria_label = elem.get_attribute('aria-label')
+                if aria_label and len(aria_label) < 200:  # Avoid huge text dumps
+                    # Store by element type for context
+                    elem_tag = elem.evaluate("el => el.tagName.toLowerCase()")
+                    elem_testid = elem.get_attribute('data-testid') or 'unknown'
+                    key = f"{elem_tag}_{elem_testid}"
+                    if key not in aria_labels:
+                        aria_labels[key] = aria_label
+                        print(f"[DEBUG]   - aria-label ({key}): {aria_label[:80]}...")
+            if aria_labels:
+                metadata['all_aria_labels'] = aria_labels
+
+            # Extract all role attributes for structure understanding
+            print("[DEBUG] Step 16: Checking element roles...")
+            role_elements = article.query_selector_all('[role]')
+            roles_found = set()
+            for elem in role_elements:
+                role = elem.get_attribute('role')
+                if role:
+                    roles_found.add(role)
+            if roles_found:
+                print(f"[DEBUG]   - Roles found: {sorted(roles_found)}")
+                metadata['roles_present'] = sorted(roles_found)
+
+            # Check for edit history
+            print("[DEBUG] Step 17: Checking for edit indicators...")
+            edit_elem = article.query_selector('[data-testid="tweet-edit-history"]')
+            if edit_elem:
+                print(f"[DEBUG]   - Tweet has been edited")
+                metadata['has_edit_history'] = True
+                parts.append("\n\n✏️ Edited")
+
+            # Check for pinned tweet indicator
+            print("[DEBUG] Step 18: Checking if tweet is pinned...")
+            pinned_elem = article.query_selector('[data-testid="socialContext"]')
+            if pinned_elem:
+                pinned_text = pinned_elem.text_content()
+                if pinned_text and "pinned" in pinned_text.lower():
+                    print(f"[DEBUG]   - Tweet is pinned: {pinned_text}")
+                    metadata['is_pinned'] = True
+                    parts.append(f"\n\n📌 {pinned_text}")
+
+            # Extract all links in tweet (external URLs)
+            print("[DEBUG] Step 19: Extracting all external links...")
+            all_links = article.query_selector_all('a[href^="http"]')
+            external_links = []
+            for link in all_links:
+                href = link.get_attribute('href')
+                if href and 'twitter.com' not in href and 'x.com' not in href:
+                    external_links.append(href)
+            if external_links:
+                print(f"[DEBUG]   - External links found: {len(external_links)}")
+                print(f"[DEBUG]   - Links: {external_links[:3]}...")
+                metadata['external_links'] = external_links
+
+            # Print complete metadata summary
+            print(f"[DEBUG] ========== METADATA SUMMARY ==========")
+            print(f"[DEBUG] Total metadata fields captured: {len(metadata)}")
+            for key, value in metadata.items():
+                # Truncate long values for readability
+                if isinstance(value, str) and len(value) > 100:
+                    print(f"[DEBUG]   - {key}: {value[:100]}... (truncated)")
+                elif isinstance(value, list) and len(value) > 5:
+                    print(f"[DEBUG]   - {key}: {value[:5]}... ({len(value)} items total)")
+                elif isinstance(value, dict) and len(value) > 5:
+                    print(f"[DEBUG]   - {key}: {dict(list(value.items())[:5])}... ({len(value)} items total)")
+                else:
+                    print(f"[DEBUG]   - {key}: {value}")
+            print(f"[DEBUG] =====================================\n")
+
+        except Exception as e:
+            print(f"[DEBUG] ========== EXCEPTION ==========")
+            print(f"[DEBUG] Exception in _extract_tweet_markdown: {e}")
+            print(f"[DEBUG] Exception type: {type(e).__name__}")
+            import traceback
+            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+            print(f"[DEBUG] ==================================")
+            return ""
+
+        result = "".join(parts)
+        print(f"[DEBUG] Final markdown length: {len(result)} characters")
+        return result

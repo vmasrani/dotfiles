@@ -1,0 +1,238 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "requests>=2.32.0",
+#     "typer>=0.12.0",
+#     "pandas>=2.0.0",
+#     "sqlalchemy>=2.0.0",
+# ]
+# ///
+
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import json
+import os
+
+import pandas as pd
+import requests
+import typer
+from sqlalchemy import create_engine
+
+API_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+app = typer.Typer(add_completion=False)
+
+
+def resolve_api_key(api_key: str) -> str:
+    key = api_key or os.environ.get("GOOGLE_CUSTOM_SEARCH_API_KEY", "")
+    if not key:
+        raise SystemExit(
+            "Missing API key. Set --api-key or export GOOGLE_CUSTOM_SEARCH_API_KEY."
+        )
+    return key
+
+
+def resolve_cx(cx: str) -> str:
+    val = cx or os.environ.get("GOOGLE_CUSTOM_SEARCH_CX", "")
+    if not val:
+        raise SystemExit(
+            "Missing search engine ID (cx). Set --cx or export GOOGLE_CUSTOM_SEARCH_CX."
+        )
+    return val
+
+
+def search_google_page(
+    query: str,
+    api_key: str,
+    cx: str,
+    num: int,
+    start: int | None = None,
+) -> dict[str, Any]:
+    num = max(1, min(10, num))  # API limit: 1–10
+    params: dict[str, Any] = {
+        "key": api_key,
+        "cx": cx,
+        "q": query,
+        "num": num,
+
+        # 1) A looser “freshness guardrail” than d30.
+        # Google supports d/w/m/y units.  [oai_citation:0‡Google for Developers](https://developers.google.com/custom-search/v1/reference/rest/v1/Search?utm_source=chatgpt.com)
+        "dateRestrict": "y2",  # last 2 years (try y1 if still too old)
+
+        # 2) Locale hints help “feel” like normal Google for your region/language.
+        # gl boosts results whose country of origin matches.  [oai_citation:1‡Google Cloud](https://googleapis.dev/ruby/google-api-client/latest/Google/Apis/CustomsearchV1/CustomSearchAPIService.html?utm_source=chatgpt.com)
+        "gl": "ca",   # Canada
+        "hl": "en",   # UI language
+
+        # Keep response small
+        "fields": (
+            "items(title,link,snippet,displayLink,formattedUrl,pagemap/metatags),"
+            "queries(request,nextPage),"
+            "searchInformation(totalResults)"
+        ),
+    }
+    if start is not None:
+        params["start"] = start  # 1-based index for first result
+
+    response = requests.get(API_ENDPOINT, params=params)
+    if response.status_code != 200:
+        raise SystemExit(f"Google API error {response.status_code}: {response.text[:300]}")
+    return response.json()
+
+
+def search_google_all(
+    query: str,
+    api_key: str,
+    cx: str,
+    page_size: int,
+    max_results: int,
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+
+    page_size = max(1, min(10, page_size))
+    max_results = max(1, min(100, max_results))  # API cap ~100
+
+    start: int | None = 1
+    while start is not None and len(items) < max_results:
+        data = search_google_page(
+            query=query,
+            api_key=api_key,
+            cx=cx,
+            num=min(page_size, max_results - len(items)),
+            start=start,
+        )
+
+        batch = data.get("items") or []
+        if not batch:
+            break
+
+        items.extend(batch)
+
+        queries = data.get("queries", {}) or {}
+        next_pages = queries.get("nextPage") or []
+        if not next_pages:
+            break
+
+        next_start = next_pages[0].get("startIndex")
+        start = next_start if isinstance(next_start, int) else None
+
+    return items[:max_results]
+
+
+def _first_metatag(item: dict[str, Any]) -> dict[str, Any]:
+    pagemap = item.get("pagemap", {}) or {}
+    metatags = pagemap.get("metatags", []) or []
+    return (metatags[0] or {}) if metatags else {}
+
+
+def item_to_markdown(item: dict[str, Any], idx: int) -> str:
+    title = item.get("title", "") or ""
+    link = item.get("link", "") or ""
+    snippet = item.get("snippet", "") or ""
+
+    meta = _first_metatag(item)
+    description = (
+        meta.get("og:description", "")
+        or meta.get("description", "")
+        or meta.get("twitter:description", "")
+        or ""
+    )
+
+    lines = [
+        f"## {idx}. {title}".strip(),
+        link,
+        "",
+        snippet,
+        (description if description and description != snippet else ""),
+    ]
+    return "\n".join(line for line in lines if line).rstrip()
+
+
+def print_results_markdown(items: list[dict[str, Any]]) -> None:
+    if not items:
+        print("No results.")
+        return
+    print("\n---\n\n".join(item_to_markdown(item, idx) for idx, item in enumerate(items, start=1)))
+
+
+def print_results_json(items: list[dict[str, Any]]) -> None:
+    print(json.dumps(items, indent=2))
+
+
+def save_results_to_db(items: list[dict[str, Any]], query: str, db_path: Path) -> None:
+    if not items:
+        print("No results to save.")
+        return
+
+    queried_at = datetime.now().isoformat()
+    rows = [
+        {
+            "query": query,
+            "queried_at": queried_at,
+            "title": item.get("title", ""),
+            "link": item.get("link", ""),
+            "display_link": item.get("displayLink", ""),
+            "snippet": item.get("snippet", ""),
+            "formatted_url": item.get("formattedUrl", ""),
+            "pagemap": json.dumps(item.get("pagemap", {})),
+        }
+        for item in items
+    ]
+
+    df = pd.DataFrame(rows)
+    engine = create_engine(f"sqlite:///{db_path}")
+    df.to_sql("search_results", engine, if_exists="append", index=False)
+    print(f"Saved {len(rows)} results to {db_path}")
+
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="Search query."),
+    api_key: str = typer.Option(
+        os.environ.get("GOOGLE_CUSTOM_SEARCH_API_KEY", ""),
+        "--api-key",
+        help="Google API key (or env GOOGLE_CUSTOM_SEARCH_API_KEY).",
+        show_default=False,
+    ),
+    cx: str = typer.Option(
+        os.environ.get("GOOGLE_CUSTOM_SEARCH_CX", "2516467f45d8f47e2"),
+        "--cx",
+        help="Search engine ID (or env GOOGLE_CUSTOM_SEARCH_CX).",
+        show_default=True,
+    ),
+    page_size: int = typer.Option(10, "--page-size", help="Results per page (1–10)."),
+    max_results: int = typer.Option(50, "--max-results", help="Total results to fetch (<=100)."),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output raw JSON instead of markdown."),
+    db: str = typer.Option(None, "--db", help="Path to SQLite database to save results."),
+) -> None:
+    key = resolve_api_key(api_key)
+    cx_val = resolve_cx(cx)
+
+    results = search_google_all(
+        query=query,
+        api_key=key,
+        cx=cx_val,
+        page_size=page_size,
+        max_results=max_results,
+    )
+
+    if db:
+        save_results_to_db(results, query, Path(db))
+
+    if output_json:
+        print_results_json(results)
+    else:
+        print_results_markdown(results)
+
+
+def main() -> None:
+    app()
+
+
+if __name__ == "__main__":
+    main()
+

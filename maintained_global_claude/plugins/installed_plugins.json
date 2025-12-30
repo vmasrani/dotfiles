@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "plugins": {
+    "frontend-design@claude-code-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-code-plugins/frontend-design/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2025-12-15T22:48:25.429Z",
+        "lastUpdated": "2025-12-15T22:48:25.429Z",
+        "gitCommitSha": "eb872450105745e9489c6f6d73fa2fb4ff5a1e9a",
+        "isLocal": true
+      }
+    ],
+    "frontend@mag-claude-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/frontend/3.13.0",
+        "version": "3.13.0",
+        "installedAt": "2025-12-17T05:43:05.629Z",
+        "lastUpdated": "2025-12-17T05:43:05.629Z",
+        "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
+        "isLocal": true
+      }
+    ],
+    "code-analysis@mag-claude-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/code-analysis/2.4.0",
+        "version": "2.4.0",
+        "installedAt": "2025-12-17T05:43:05.629Z",
+        "lastUpdated": "2025-12-17T05:43:05.629Z",
+        "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
+        "isLocal": true
+      }
+    ],
+    "bun@mag-claude-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/bun/1.5.2",
+        "version": "1.5.2",
+        "installedAt": "2025-12-17T05:43:05.629Z",
+        "lastUpdated": "2025-12-17T05:43:05.629Z",
+        "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
+        "isLocal": true
+      }
+    ],
+    "orchestration@mag-claude-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/orchestration/0.5.0",
+        "version": "0.5.0",
+        "installedAt": "2025-12-17T05:43:05.629Z",
+        "lastUpdated": "2025-12-17T05:43:05.629Z",
+        "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
+        "isLocal": true
+      }
+    ]
+  }
+}

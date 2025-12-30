@@ -6,6 +6,7 @@
     #!/usr/bin/env -S uv run --script
 - Use `uv run $scriptname` to run python scripts 
 - never use the command 'python3', instead always use `uv run`
+- whenever you need to run temporary python code, do so by making a file called `tmp.py` and running via `uv run tmp.py` 
 
 ## Python Instructions 
 
@@ -20,10 +21,11 @@
 - ALWAYS use pathlib over os 
 - Use comments sparingly, only write comments to explain anything non-standard
 - Whenever you need to add command line functionality, ALWAYS do it by: 
-    `uv add git+https://github.com/vmasrani/machine_learning_helpers.git`
+    `uv add --script [file name] git+https://github.com/vmasrani/hypers` or 
+    `uv add [file name] git+https://github.com/vmasrani/hypers`
 
     ```python
-    from mlh.hypers import Hypers
+    from hypers import Hypers
     from dataclasses import dataclass
 
     @dataclass
@@ -43,23 +45,19 @@
 
     This will automatically make `--command_line_arg_1 ` etc available on the command line
 
-    The uv front matter should looke like: 
+    The uv front matter should look like: 
 
     ```
     #!/usr/bin/env -S uv run --script
     # /// script
-    # requires-python = ">=3.8"
+    # requires-python = ">=3.12"
     # dependencies = [
-    #     "pymupdf",
-    #     "pillow",
-    #     "machine-learning-helpers",
-    #     "pytesseract",
+    #     "hypers",
     # ]
     #
     # [tool.uv.sources]
-    # machine-learning-helpers = { git = "https://github.com/vmasrani/machine_learning_helpers.git" }
+    # hypers = { git = "https://github.com/vmasrani/hypers" }
     # ///
-
     ```
 
 ## Bash/ZSH functions 

@@ -1,0 +1,161 @@
+"""
+Facebook feed reader.
+
+Extracts post data from Facebook feeds.
+
+IMPORTANT: Facebook REQUIRES AUTHENTICATION
+Facebook's search and content pages require users to be logged in. Unauthenticated
+requests are redirected to login screens, making it impossible to extract search
+results or feed data without valid credentials.
+
+This implementation cannot extract Facebook content without authentication.
+To work with Facebook data programmatically:
+- Use Facebook Graph API (requires API approval and credentials)
+- Use Facebook OAuth2 for user-authenticated access
+- Store and manage credentials securely
+
+The class provides basic extraction logic for when authenticated content IS available,
+but will return a helpful error message explaining the authentication requirement.
+"""
+
+from playwright.sync_api import Page
+import re
+
+from src.core.base import FeedReader
+from src.utils.parsing import parse_html, extract_text
+
+
+class FacebookFeedReader(FeedReader):
+    """
+    Parser for Facebook feeds.
+
+    AUTHENTICATION REQUIRED: Facebook's search results and feed pages require
+    users to be logged in. Unauthenticated requests cannot access any content.
+
+    When authentication is not available:
+    - Returns a clear error message explaining the authentication requirement
+    - Includes debugging information about page structure
+    - Detects login/authentication screens and provides helpful guidance
+
+    Page Structure:
+    - Uses role='article' containers as primary selector for posts
+    - Extracts author, content, timestamp, engagement metrics, and URLs
+    - Handles Facebook's complex and frequently-changing HTML structure
+
+    Known Limitations:
+    - Cannot extract unauthenticated search results (Facebook blocks access)
+    - Would need Facebook OAuth2 or Graph API with credentials for real use
+    - Page structure is fragile due to Facebook's frequent HTML changes
+    """
+
+    def parse_feed(self, page: Page) -> str:
+        """Extract Facebook posts and convert to markdown."""
+        content = page.content()
+        print(f"[DEBUG] Page content length: {len(content)} characters")
+        print(f"[DEBUG] Page title: {page.title()}")
+        print(f"[DEBUG] Page URL: {page.url}")
+
+        soup = parse_html(content)
+
+        posts = []
+
+        article_elems = soup.find_all('div', role='article')
+        print(f"[DEBUG] Found {len(article_elems)} article elements with role='article'")
+
+        if not article_elems:
+            # Check if page is showing authentication screen
+            if 'login' in content.lower() or 'authenticate' in content.lower():
+                error_msg = (
+                    "ERROR: Facebook Search Requires Authentication\n\n"
+                    "Facebook's search results page requires you to be logged in. "
+                    "This tool cannot extract Facebook search results without valid credentials.\n\n"
+                    "Why authentication is needed:\n"
+                    "- Facebook restricts search functionality to authenticated users\n"
+                    "- Search results are personalized to your account\n"
+                    "- The page content is not available to unauthenticated requests\n\n"
+                    "To extract Facebook content, you would need to:\n"
+                    "1. Implement Facebook OAuth2 authentication\n"
+                    "2. Use Facebook Graph API (requires API access approval)\n"
+                    "3. Store and manage session credentials securely\n\n"
+                    "Alternative: Use the Facebook Graph API or official SDKs for programmatic access.\n"
+                )
+                print(f"[DEBUG] Page appears to require authentication (login/authenticate text found)")
+                return error_msg
+            else:
+                return (
+                    "No Facebook posts found. The page structure may have changed "
+                    "or authentication may be required.\n"
+                )
+
+        for idx, article in enumerate(article_elems[:20]):
+            print(f"[DEBUG] Extracting post {idx}")
+            post = self._extract_post(article)
+            if post:
+                posts.append(post)
+
+        print(f"[DEBUG] Final count of posts extracted: {len(posts)}")
+        return self._format_markdown(posts)
+
+    def _extract_post(self, article) -> dict:
+        """Extract data from a single Facebook post."""
+        post = {}
+
+        author_link = article.find('a', href=re.compile(r'/[^/]+(\?|$)'))
+        if author_link:
+            post['author'] = extract_text(author_link)
+            post['author_url'] = author_link.get('href', '')
+            print(f"[DEBUG] Found author: {post['author']}")
+        else:
+            print(f"[DEBUG] No author found")
+
+        content_div = article.find('div', attrs={'data-ad-preview': 'message'}) or \
+                     article.find('div', dir='auto')
+        post['content'] = extract_text(content_div)
+        print(f"[DEBUG] Found content: {len(post['content']) if post['content'] else 0} characters")
+
+        time_elem = article.find('a', href=re.compile(r'/posts/|/permalink/'))
+        if time_elem:
+            post['url'] = time_elem.get('href', '')
+            timestamp_elem = time_elem.find('span') or time_elem
+            post['timestamp'] = extract_text(timestamp_elem)
+            print(f"[DEBUG] Found timestamp: {post['timestamp']}")
+            print(f"[DEBUG] Found url: {post['url']}")
+        else:
+            print(f"[DEBUG] No timestamp or url found")
+
+        engagement_spans = article.find_all('span', string=re.compile(r'\d+'))
+        if len(engagement_spans) >= 1:
+            post['engagement'] = ' • '.join([extract_text(span) for span in engagement_spans[:3] if extract_text(span)])
+
+        return post if (post.get('content') or post.get('author')) else None
+
+    def _format_markdown(self, posts: list) -> str:
+        """Format Facebook posts as markdown."""
+        lines = ["# Facebook Feed\n"]
+        lines.append(f"Found {len(posts)} posts\n\n")
+
+        for post in posts:
+            if post.get('author'):
+                lines.append(f"## {post['author']}")
+            else:
+                lines.append("## Facebook Post")
+
+            meta = []
+            if post.get('timestamp'):
+                meta.append(post['timestamp'])
+            if post.get('engagement'):
+                meta.append(post['engagement'])
+
+            if meta:
+                lines.append(f"**{' • '.join(meta)}**")
+
+            if post.get('content'):
+                lines.append(f"\n{post['content']}")
+
+            if post.get('url'):
+                full_url = post['url'] if post['url'].startswith('http') else f"https://facebook.com{post['url']}"
+                lines.append(f"\n[View on Facebook]({full_url})")
+
+            lines.append("\n---\n")
+
+        return "\n".join(lines)

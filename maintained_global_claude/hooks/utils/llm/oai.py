@@ -1,114 +1,116 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.8"
+# requires-python = ">=3.12"
 # dependencies = [
-#     "openai",
+#     "dspy",
 #     "python-dotenv",
+#     "typer",
 # ]
 # ///
 
 import os
 import sys
+from pathlib import Path
+from typing import Optional
+
+import dspy
+import typer
 from dotenv import load_dotenv
 
+app = typer.Typer()
 
-def prompt_llm(prompt_text):
-    """
-    Base OpenAI LLM prompting method using fastest model.
 
-    Args:
-        prompt_text (str): The prompt to send to the model
+def sanitize_text(text: Optional[str]) -> Optional[str]:
+    return None if text is None else "".join([ch for ch in text if ch in ("\n", "\t") or (32 <= ord(ch) != 127)])
 
-    Returns:
-        str: The model's response text, or None if error
-    """
+
+def truncate_text(text: Optional[str], max_chars: Optional[int]) -> tuple[Optional[str], bool]:
+    if max_chars is None or max_chars <= 0 or text is None or len(text) <= max_chars:
+        return text, False
+    return text[-max_chars:], True
+
+
+def read_sysprompt(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    return Path(path).read_text(encoding="utf-8") if Path(path).exists() else None
+
+
+def read_env_int(name: str) -> Optional[int]:
+    value = os.getenv(name)
+    if not value:
+        return None
+    return int(value) if value.isdigit() else None
+
+
+def prompt_llm(prompt_text: str, system_prompt: Optional[str] = None) -> Optional[str]:
     load_dotenv()
 
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
+        typer.echo("OPENAI_API_KEY is not set.", err=True)
         return None
 
-    try:
-        from openai import OpenAI
+    lm = dspy.LM("openai/gpt-4.1-nano", api_key=api_key)
 
-        client = OpenAI(api_key=api_key)
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt_text})
 
-        response = client.chat.completions.create(
-            model="gpt-4.1-nano",  # Fastest OpenAI model
-            messages=[{"role": "user", "content": prompt_text}],
-            max_tokens=100,
-            temperature=0.7,
-        )
+    response = lm(messages=messages)
 
-        return response.choices[0].message.content.strip()
-
-    except Exception:
-        return None
-
-
-def generate_completion_message():
-    """
-    Generate a completion message using OpenAI LLM.
-
-    Returns:
-        str: A natural language completion message, or None if error
-    """
-    engineer_name = os.getenv("ENGINEER_NAME", "").strip()
-
-    if engineer_name:
-        name_instruction = f"Sometimes (about 30% of the time) include the engineer's name '{engineer_name}' in a natural way."
-        examples = f"""Examples of the style: 
-- Standard: "Work complete!", "All done!", "Task finished!", "Ready for your next move!"
-- Personalized: "{engineer_name}, all set!", "Ready for you, {engineer_name}!", "Complete, {engineer_name}!", "{engineer_name}, we're done!" """
+    if isinstance(response, list):
+        result = response[0] if response else ""
+        return result.strip()
+    elif isinstance(response, str):
+        return response.strip()
     else:
-        name_instruction = ""
-        examples = """Examples of the style: "Work complete!", "All done!", "Task finished!", "Ready for your next move!" """
+        result = response.choices[0].message.content
+        return result.strip()
 
-    prompt = f"""Generate a short, friendly completion message for when an AI coding assistant finishes a task. 
 
-Requirements:
-- Keep it under 10 words
-- Make it positive and future focused
-- Use natural, conversational language
-- Focus on completion/readiness
-- Do NOT include quotes, formatting, or explanations
-- Return ONLY the completion message text
-{name_instruction}
+@app.command()
+def main(
+    prompt: list[str] = typer.Argument(None, help="Prompt text to send"),
+    sysprompt: Optional[str] = typer.Option(None, "-s", "--sysprompt", help="Path to a system prompt file"),
+    max_context_chars: Optional[int] = typer.Option(None, "--max-context-chars", help="Max chars from piped context"),
+) -> None:
+    """OpenAI LLM helper using DSPy"""
 
-{examples}
+    prompt_text = " ".join(prompt).strip() if prompt else ""
+    piped_text = None
 
-Generate ONE completion message:"""
+    if not sys.stdin.isatty():
+        piped_text = sanitize_text(sys.stdin.read().rstrip())
 
-    response = prompt_llm(prompt)
+    max_chars = max_context_chars or read_env_int("OAI_MAX_CONTEXT_CHARS")
 
-    # Clean up response - remove quotes and extra formatting
+    if piped_text:
+        piped_text, truncated = truncate_text(piped_text, max_chars)
+        if truncated:
+            typer.echo(f"Context truncated to last {max_chars} characters.", err=True)
+        prompt_text = f"{prompt_text}\n\nContext:\n{piped_text}" if prompt_text else piped_text
+
+    if not prompt_text:
+        typer.echo("Usage: oai 'your prompt here' or echo 'text' | oai 'your prompt here'")
+        raise typer.Exit(1)
+
+    system_prompt = read_sysprompt(sysprompt)
+    if sysprompt and system_prompt is None:
+        typer.echo(f"Error reading system prompt file: {sysprompt}", err=True)
+        raise typer.Exit(1)
+
+    response = prompt_llm(prompt_text, system_prompt=system_prompt)
     if response:
-        response = response.strip().strip('"').strip("'").strip()
-        # Take first line if multiple lines
-        response = response.split("\n")[0].strip()
-
-    return response
-
-
-def main():
-    """Command line interface for testing."""
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--completion":
-            message = generate_completion_message()
-            if message:
-                print(message)
-            else:
-                print("Error generating completion message")
-        else:
-            prompt_text = " ".join(sys.argv[1:])
-            response = prompt_llm(prompt_text)
-            if response:
-                print(response)
-            else:
-                print("Error calling OpenAI API")
+        typer.echo(response)
     else:
-        print("Usage: ./oai.py 'your prompt here' or ./oai.py --completion")
+        typer.echo("Error calling OpenAI API", err=True)
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    app()
+
+
+
