@@ -108,6 +108,6 @@ alias :::='uwu'
 
 alias gpt='oai'
 
-codex() {
-  command codex --dangerously-bypass-approvals-and-sandbox --enable web_search_request -s workspace-write -c "sandbox_workspace_write.writable_roots=['/Users/my-user/.cache/uv']" "$@"
-}
+# codex() {
+#   command codex --dangerously-bypass-approvals-and-sandbox --enable web_search_request -s workspace-write -c "sandbox_workspace_write.writable_roots=['/Users/my-user/.cache/uv']" "$@"
+# }
