@@ -1,170 +1,82 @@
-#!/bin/bash
-# shellcheck shell=bash
+#!/bin/zsh
 # ===================================================================
-# AWS EC2 Instance Management Script (Improved)
+# AWS EC2 Instance Management Script - Start Instance
 # ===================================================================
 # Manages EC2 instance startup with volume attachment
-# Usage: ./start_aws.sh
+# Usage: ./start_aws
 # ===================================================================
 
-read -p "Enter instance type (metal/compute): " INSTANCE_TYPE
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/aws_common.sh"
 
-if [ "$INSTANCE_TYPE" == "metal" ]; then
-    INSTANCE_ID="i-0858d0e3943d34004"
-elif [ "$INSTANCE_TYPE" == "compute" ]; then
-    INSTANCE_ID="i-06e021e025d37666d"
+# Select instance
+select_instance "AWS EC2 Instance Startup" 212
+
+# Check instance state
+INSTANCE_STATE=$(get_instance_state "$INSTANCE_ID")
+
+# Stop instance if needed for volume replacement
+if [[ "$INSTANCE_STATE" = "running" ]]; then
+    gum style --foreground 208 "⚠ Instance is running. Stopping to prepare for root volume replacement..."
+    aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --no-cli-pager > /dev/null
+    wait_for_instance_stopped "$INSTANCE_ID"
+    gum style --foreground 46 "✓ Instance stopped"
+elif [[ "$INSTANCE_STATE" = "stopped" ]]; then
+    gum style --foreground 46 "✓ Instance is already stopped"
 else
-    echo "Invalid instance type. Please enter 'metal' or 'compute'."
-    exit 1
+    gum style --foreground 208 "⚠ Instance is in state: $INSTANCE_STATE. Waiting for it to stop..."
+    wait_for_instance_stopped "$INSTANCE_ID"
+    gum style --foreground 46 "✓ Instance stopped"
 fi
 
-KEY_PATH="$HOME/.ssh/vaden-vodasafe-aws.pem"
-SSH_USER="vaden"  # Change to ubuntu, admin, etc. as needed
-VOLUME_ID="vol-0f6433d9d70214a83"  # Optional: if replacing root volume
-AVAILABILITY_ZONE="ca-central-1"
-DEVICE_NAME="/dev/sda1"
+# Get current root volume
+CURRENT_ROOT_VOL=$(get_current_root_volume "$INSTANCE_ID" "$DEVICE_NAME")
 
-# Check if instance is running
-INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
-  --query "Reservations[0].Instances[0].State.Name" \
-  --output text  --no-cli-pager )
+# Check volume attachment
+ATTACHED_INSTANCE=$(get_volume_attachment_info "$VOLUME_ID" "Volumes[0].Attachments[0].InstanceId")
+ATTACHED_DEVICE=$(get_volume_attachment_info "$VOLUME_ID" "Volumes[0].Attachments[0].Device")
 
-if [ "$INSTANCE_STATE" = "running" ]; then
-  echo "Instance $INSTANCE_ID is already running. Skipping all operations."
-  exit 0
-fi
-
-echo "Stopping instance $INSTANCE_ID to prepare for root volume replacement..."
-aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --no-cli-pager
-aws ec2 wait instance-stopped --instance-ids "$INSTANCE_ID" --no-cli-pager
-echo "Instance stopped."
-
-echo "Checking current root volume..."
-CURRENT_ROOT_VOL=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
-  --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName=='$DEVICE_NAME'].Ebs.VolumeId" \
-  --output text --no-cli-pager)
-
-# Check if the desired volume is already attached to the correct instance at the correct device
-ATTACHED_INSTANCE=$(aws ec2 describe-volumes \
-  --volume-ids "$VOLUME_ID" \
-  --query "Volumes[0].Attachments[0].InstanceId" \
-  --output text --no-cli-pager)
-ATTACHED_DEVICE=$(aws ec2 describe-volumes \
-  --volume-ids "$VOLUME_ID" \
-  --query "Volumes[0].Attachments[0].Device" \
-  --output text --no-cli-pager)
-
-if [ "$ATTACHED_INSTANCE" == "$INSTANCE_ID" ] && [ "$ATTACHED_DEVICE" == "$DEVICE_NAME" ]; then
-  echo "Volume $VOLUME_ID is already attached to $INSTANCE_ID at $DEVICE_NAME. Skipping detach/attach."
+if [[ "$ATTACHED_INSTANCE" = "$INSTANCE_ID" ]] && [[ "$ATTACHED_DEVICE" = "$DEVICE_NAME" ]]; then
+    gum style --foreground 46 "✓ Volume already attached correctly. Skipping detach/attach"
 else
-  # If the volume is attached to a different instance, detach it automatically
-  if [ "$ATTACHED_INSTANCE" != "None" ] && [ "$ATTACHED_INSTANCE" != "$INSTANCE_ID" ]; then
-    echo "Volume $VOLUME_ID is attached to another instance ($ATTACHED_INSTANCE). Detaching..."
-    aws ec2 detach-volume --volume-id "$VOLUME_ID" --instance-id "$ATTACHED_INSTANCE" --no-cli-pager
-    aws ec2 wait volume-available --volume-ids "$VOLUME_ID" --no-cli-pager
-    echo "Detached volume $VOLUME_ID from $ATTACHED_INSTANCE"
-  fi
+    # Detach from different instance if needed
+    if [[ "$ATTACHED_INSTANCE" != "None" ]] && [[ "$ATTACHED_INSTANCE" != "$INSTANCE_ID" ]]; then
+        gum style --foreground 208 "⚠ Volume attached to another instance ($ATTACHED_INSTANCE). Detaching..."
+        aws ec2 detach-volume --volume-id "$VOLUME_ID" --instance-id "$ATTACHED_INSTANCE" --no-cli-pager > /dev/null
+        wait_for_volume_available "$VOLUME_ID"
+        gum style --foreground 46 "✓ Detached volume from other instance"
+    fi
 
-  # Detach current root volume if present and different from desired
-  if [ -n "$CURRENT_ROOT_VOL" ] && [ "$CURRENT_ROOT_VOL" != "$VOLUME_ID" ]; then
-    echo "Detaching current root volume $CURRENT_ROOT_VOL..."
-    aws ec2 detach-volume --volume-id "$CURRENT_ROOT_VOL" --instance-id "$INSTANCE_ID" --device "$DEVICE_NAME" --no-cli-pager
-    aws ec2 wait volume-available --volume-ids "$CURRENT_ROOT_VOL" --no-cli-pager
-    echo "Detached volume $CURRENT_ROOT_VOL"
-  else
-    echo "No root volume to detach or already using desired volume."
-  fi
+    # Detach current root volume if different
+    if [[ -n "$CURRENT_ROOT_VOL" ]] && [[ "$CURRENT_ROOT_VOL" != "$VOLUME_ID" ]]; then
+        gum style --foreground 208 "→ Detaching current root volume $CURRENT_ROOT_VOL..."
+        aws ec2 detach-volume --volume-id "$CURRENT_ROOT_VOL" --instance-id "$INSTANCE_ID" --device "$DEVICE_NAME" --no-cli-pager > /dev/null
+        wait_for_volume_available "$CURRENT_ROOT_VOL"
+        gum style --foreground 46 "✓ Detached old root volume"
+    fi
 
-  # Attach the desired volume
-  echo "Attaching volume $VOLUME_ID to instance $INSTANCE_ID at $DEVICE_NAME..."
-  aws ec2 attach-volume \
-    --volume-id "$VOLUME_ID" \
-    --instance-id "$INSTANCE_ID" \
-    --device "$DEVICE_NAME" --no-cli-pager
+    # Attach the desired volume
+    gum style --foreground 212 "→ Attaching volume $VOLUME_ID..."
+    aws ec2 attach-volume \
+        --volume-id "$VOLUME_ID" \
+        --instance-id "$INSTANCE_ID" \
+        --device "$DEVICE_NAME" --no-cli-pager > /dev/null
 
-  # Wait for attachment
-  aws ec2 wait volume-in-use --volume-ids "$VOLUME_ID" --no-cli-pager
-  echo "Volume attached."
+    wait_for_volume_attached "$VOLUME_ID"
+    gum style --foreground 46 "✓ Volume attached"
 fi
 
-echo "Starting instance..."
-aws ec2 start-instances --instance-ids "$INSTANCE_ID" --no-cli-pager
-aws ec2 wait instance-running --instance-ids "$INSTANCE_ID" --no-cli-pager
-echo "Instance started."
+# Start instance
+gum style --foreground 212 "→ Starting instance..."
+aws ec2 start-instances --instance-ids "$INSTANCE_ID" --no-cli-pager > /dev/null
+wait_for_instance_running "$INSTANCE_ID"
+gum style --foreground 46 "✓ Instance started"
 
-PUBLIC_IP=$(aws ec2 describe-instances \
-  --instance-ids "$INSTANCE_ID" \
-  --query "Reservations[0].Instances[0].PublicIpAddress" \
-  --output text --no-cli-pager)
+# Get public IP and display
+PUBLIC_IP=$(get_public_ip "$INSTANCE_ID")
+gum style --border rounded --padding "0 2" --border-foreground 46 --foreground 46 "Instance ready at: $PUBLIC_IP"
 
-echo "Connecting to instance at $PUBLIC_IP"
-
-# ===================================================================
-# Original script below (commented out for reference)
-# ===================================================================
-:
-# read -p "Enter instance type (metal/compute): " INSTANCE_TYPE
-
-# if [ "$INSTANCE_TYPE" == "metal" ]; then
-#     INSTANCE_ID="i-0858d0e3943d34004"
-# elif [ "$INSTANCE_TYPE" == "compute" ]; then
-#     INSTANCE_ID="i-06e021e025d37666d"
-# else
-#     echo "Invalid instance type. Please enter '\''metal'\'' or '\''compute'\''."
-#     exit 1
-# fi
-
-# KEY_PATH="$HOME/.ssh/vaden-vodasafe-aws.pem"
-# SSH_USER="vaden"  # Change to ubuntu, admin, etc. as needed
-# VOLUME_ID="vol-0f6433d9d70214a83"  # Optional: if replacing root volume
-# AVAILABILITY_ZONE="ca-central-1"
-# DEVICE_NAME="/dev/sda1"
-
-# # Check if instance is running
-# INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
-#   --query "Reservations[0].Instances[0].State.Name" \
-#   --output text  --no-cli-pager )
-
-# if [ "$INSTANCE_STATE" = "running" ]; then
-#   echo "Instance $INSTANCE_ID is already running. Skipping all operations."
-#   exit 0
-# fi
-
-# echo "Stopping instance $INSTANCE_ID to prepare for root volume replacement..."
-# aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --no-cli-pager
-# aws ec2 wait instance-stopped --instance-ids "$INSTANCE_ID" --no-cli-pager
-# echo "Instance stopped."
-
-# echo "Detaching current root volume (if present)..."
-# CURRENT_ROOT_VOL=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
-#   --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName=='$DEVICE_NAME'].Ebs.VolumeId" \
-#   --output text --no-cli-pager)
-
-# if [ -n "$CURRENT_ROOT_VOL" ]; then
-#   aws ec2 detach-volume --volume-id "$CURRENT_ROOT_VOL" --instance-id "$INSTANCE_ID" --device "$DEVICE_NAME" --no-cli-pager
-#   aws ec2 wait volume-available --volume-ids "$CURRENT_ROOT_VOL" --no-cli-pager
-#   echo "Detached volume $CURRENT_ROOT_VOL"
-# else
-#   echo "No volume attached at $DEVICE_NAME"
-# fi
-
-# echo "Attaching volume $VOLUME_ID to instance $INSTANCE_ID at $DEVICE_NAME..."
-# aws ec2 attach-volume \
-#   --volume-id "$VOLUME_ID" \
-#   --instance-id "$INSTANCE_ID" \
-#   --device "$DEVICE_NAME" --no-cli-pager
-
-# aws ec2 wait volume-in-use --volume-ids "$VOLUME_ID" --no-cli-pager
-# echo "Volume attached."
-
-# echo "Starting instance..."
-# aws ec2 start-instances --instance-ids "$INSTANCE_ID" --no-cli-pager
-# aws ec2 wait instance-running --instance-ids "$INSTANCE_ID" --no-cli-pager
-# echo "Instance started."
-
-# PUBLIC_IP=$(aws ec2 describe-instances \
-#   --instance-ids "$INSTANCE_ID" \
-#   --query "Reservations[0].Instances[0].PublicIpAddress" \
-#   --output text --no-cli-pager)
-
-# echo "Connecting to instance at $PUBLIC_IP"
+# Optional SSH connection
+if gum confirm "Connect via SSH?"; then
+    ssh -i "$KEY_PATH" "$SSH_USER@$PUBLIC_IP"
+fi

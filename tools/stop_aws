@@ -1,33 +1,51 @@
-#!/bin/bash
+#!/bin/zsh
+# ===================================================================
+# AWS EC2 Instance Management Script - Stop Instance
+# ===================================================================
+# Manages EC2 instance shutdown with volume detachment
+# Usage: ./stop_aws
+# ===================================================================
 
-# === Config ===
-read -p "Enter instance type (metal/compute): " INSTANCE_TYPE
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/aws_common.sh"
 
-if [ "$INSTANCE_TYPE" == "metal" ]; then
-    INSTANCE_ID="i-0858d0e3943d34004"
-elif [ "$INSTANCE_TYPE" == "compute" ]; then
-    INSTANCE_ID="i-06e021e025d37666d"
+# Select instance
+select_instance "AWS EC2 Instance Shutdown" 196
+
+# Check instance state
+INSTANCE_STATE=$(get_instance_state "$INSTANCE_ID")
+
+# Stop instance if running
+if [[ "$INSTANCE_STATE" = "stopped" ]]; then
+    gum style --foreground 46 "✓ Instance is already stopped"
+elif [[ "$INSTANCE_STATE" = "running" ]]; then
+    if gum confirm "Stop instance $INSTANCE_ID?"; then
+        gum style --foreground 208 "→ Stopping instance..."
+        aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --no-cli-pager > /dev/null
+        wait_for_instance_stopped "$INSTANCE_ID"
+        gum style --foreground 46 "✓ Instance stopped"
+    else
+        gum style --foreground 196 "✗ Cancelled"
+        exit 0
+    fi
 else
-    echo "Invalid instance type. Please enter 'metal' or 'compute'."
-    exit 1
+    gum style --foreground 208 "⚠ Instance is in state: $INSTANCE_STATE. Waiting for it to stop..."
+    wait_for_instance_stopped "$INSTANCE_ID"
+    gum style --foreground 46 "✓ Instance stopped"
 fi
 
-KEY_PATH="$HOME/.ssh/vaden-vodasafe-aws.pem"
-SSH_USER="vaden"  # Change to ubuntu, admin, etc. as needed
-VOLUME_ID="vol-0f6433d9d70214a83"  # Optional: if replacing root volume
-AVAILABILITY_ZONE="ca-central-1"
-DEVICE_NAME="/dev/sda1"
+# Optional volume detachment
+if gum confirm "Detach volume $VOLUME_ID?"; then
+    gum style --foreground 208 "→ Detaching volume..."
+    aws ec2 detach-volume \
+        --volume-id "$VOLUME_ID" \
+        --instance-id "$INSTANCE_ID" \
+        --device "$DEVICE_NAME" --no-cli-pager > /dev/null 2>&1 || true
 
-echo "Stopping instance $INSTANCE_ID..."
-aws ec2 stop-instances --instance-ids "$INSTANCE_ID" > /dev/null
-aws ec2 wait instance-stopped --instance-ids "$INSTANCE_ID"
-echo "Instance stopped."
+    wait_for_volume_available "$VOLUME_ID"
+    gum style --foreground 46 "✓ Volume detached and available"
+else
+    gum style --foreground 208 "→ Skipping volume detachment"
+fi
 
-echo "Detaching volume $VOLUME_ID..."
-aws ec2 detach-volume \
-  --volume-id "$VOLUME_ID" \
-  --instance-id "$INSTANCE_ID" \
-  --device "$DEVICE_NAME"
-
-aws ec2 wait volume-available --volume-ids "$VOLUME_ID"
-echo "Volume $VOLUME_ID detached and available."
+gum style --border rounded --padding "0 2" --border-foreground 46 --foreground 46 "Shutdown complete"

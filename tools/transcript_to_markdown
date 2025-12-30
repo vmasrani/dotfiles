@@ -1,0 +1,649 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["openai>=1.51.0", "rich>=13.7.1", "hypers"]
+#
+# [tool.uv.sources]
+# hypers = { git = "https://github.com/vmasrani/hypers.git" }
+# ///
+# transcript_to_markdown
+# Usage:
+#   Interactive mode:     uv run tools/transcript_to_markdown
+#   Specify files:        uv run tools/transcript_to_markdown file1.whisper file2.whisper ...
+#   Debug mode:           uv run tools/transcript_to_markdown --debug
+#   Better quality:       uv run tools/transcript_to_markdown --model gpt-4o
+#   Smaller batches:      uv run tools/transcript_to_markdown --batch_max_items 10 --batch_chars 3000
+#   Disable speaker merge: uv run tools/transcript_to_markdown --merge_by_speaker False
+#   API key:              uv run tools/transcript_to_markdown --api_key YOUR_KEY
+
+import asyncio
+import re
+import json
+import os
+import random
+import zipfile
+from dataclasses import dataclass, field
+from functools import reduce
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+from openai import AsyncOpenAI, ContentFilterFinishReasonError
+from rich.console import Console
+from rich.prompt import Confirm, Prompt
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+from rich.table import Table
+from hypers import Hypers
+
+@dataclass
+class Args(Hypers):
+    model: str = "gpt-4o"
+    concurrency: int = 1000
+    debug: bool = False
+    api_key: str = os.environ.get("OPENAI_API_KEY", "")
+    files: List[str] = field(default_factory=list)
+    batch_chars: int = 4000
+    batch_max_items: int = 15
+    merge_by_speaker: bool = True
+    normalize_ws: bool = True
+
+PRICING_USD_PER_MTOK = {
+    "gpt-4.1-nano": {"input": 0.15, "output": 0.60},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-4.1-mini": {"input": 0.60, "output": 2.40},
+}
+
+# Models known to support structured outputs with JSON schema
+SUPPORTED_SCHEMA_MODELS = {
+    "gpt-4o-mini",
+    "gpt-4.1-mini",
+    "gpt-4o",
+}
+JITTER_MIN = 0.2
+JITTER_MAX = 1.8
+CHARS_PER_TOKEN = 4
+console = Console()
+
+def normalize_text(s: str) -> str:
+    return " ".join(s.split()).strip()
+
+# ---------- Static system prompt at the top ----------
+SYS_PROMPT: str = (
+    "You are an expert transcript editor. Your job is to transform raw speech transcripts into polished, readable prose.\n\n"
+    "MANDATORY CLEANING:\n"
+    "1. Remove ALL filler words: um, uh, like, you know, I mean, sort of, kind of, basically, actually, right, etc.\n"
+    "2. Remove ALL stutters and false starts: repeated words, partial words, interrupted thoughts\n"
+    "3. Fix ALL grammatical errors and incomplete sentences - make them proper, complete sentences\n"
+    "4. Remove ALL repetitions and redundancies - say things once, clearly\n"
+    "5. Fix word order and sentence structure to be natural written English\n\n"
+    "PRESERVE:\n"
+    "- The exact meaning and all factual content\n"
+    "- The speaker's tone, style, and voice\n"
+    "- Technical terms, proper nouns, and specific terminology\n"
+    "- The natural flow of ideas and arguments\n\n"
+    "EXAMPLE:\n"
+    "Raw: 'So So you have all these pr so like I I I do think that like this has happened where we latched on to you know people latched on to uh the danger'\n"
+    "Clean: 'You have all these problems. I do think this has happened where people latched on to the danger'\n\n"
+    "OUTPUT FORMAT:\n"
+    "- Return ONLY the cleaned text - no commentary, no questions, no meta-discussion\n"
+    "- Write in clear paragraphs with proper punctuation\n"
+    "- NO speaker labels, NO timestamps, NO markdown formatting\n"
+    "- Just clean, readable prose"
+)
+
+@dataclass
+class Document:
+    source: Path
+    output: Path
+    segments: List["Segment"]
+
+
+@dataclass
+class Segment:
+    speaker: str
+    start: int
+    end: int
+    text: str
+
+
+def find_whisper_files(root: Path) -> List[Path]:
+    return sorted(root.rglob("*.whisper"), key=lambda p: p.as_posix())
+
+
+def display_relative(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _parse_comma_separated_ints(text: str) -> Optional[List[int]]:
+    parts = [p.strip() for p in text.replace(" ", "").split(",") if p.strip()]
+    return sorted(set(int(p) for p in parts)) if all(p.isdigit() for p in parts) else None
+
+
+def _build_file_table(files: List[Path], cwd: Path) -> Tuple[Table, List[int]]:
+    table = Table(title="Discovered Whisper Files")
+    table.add_column("#", style="cyan", justify="right")
+    table.add_column("File", style="white")
+    table.add_column("Transcribed", style="magenta")
+
+    pending_indexes = []
+    for idx, file in enumerate(files, start=1):
+        is_transcribed = file.with_suffix(".cleaned.md").exists()
+        table.add_row(
+            str(idx),
+            display_relative(file, cwd),
+            "[green]yes[/]" if is_transcribed else "[yellow]no[/]"
+        )
+        if not is_transcribed:
+            pending_indexes.append(idx)
+
+    return table, pending_indexes
+
+
+def _parse_selection(selection_raw: str, pending_indexes: List[int], total_files: int) -> Optional[List[int]]:
+    if selection_raw in {"", "none"}:
+        return []
+    if selection_raw == "all":
+        return pending_indexes if pending_indexes else list(range(1, total_files + 1))
+    return _parse_comma_separated_ints(selection_raw)
+
+
+def _validate_indexes(indexes: List[int], max_idx: int) -> Tuple[bool, Optional[int]]:
+    bad_idx = next((idx for idx in indexes if not (1 <= idx <= max_idx)), None)
+    return (bad_idx is None, bad_idx)
+
+
+def select_files(files: List[Path]) -> List[Path]:
+    if not files:
+        console.print("[yellow]No .whisper files found.[/]")
+        return []
+
+    cwd = Path.cwd()
+    table, pending_indexes = _build_file_table(files, cwd)
+
+    console.print(table)
+    console.print(
+        "[cyan]Enter 'all' to process pending files, 'none' to skip, or provide a comma-separated list of numbers.[/]"
+    )
+    default_choice = "all" if pending_indexes else "none"
+    selection_raw = Prompt.ask("Files to process", default=default_choice).strip().lower()
+
+    selected_indexes = _parse_selection(selection_raw, pending_indexes, len(files))
+
+    if selected_indexes is None:
+        console.print("[bold red]Invalid selection. Please rerun the command.[/]")
+        return []
+
+    if not selected_indexes:
+        if not pending_indexes:
+            # No pending files; offer to process all on a second Enter
+            if Confirm.ask("No pending files. Process all files?", default=True):
+                selected_indexes = list(range(1, len(files) + 1))
+            else:
+                console.print("[yellow]No files selected for processing.[/]")
+                return []
+        else:
+            console.print("[yellow]No files selected for processing.[/]")
+            return []
+
+    is_valid, bad_idx = _validate_indexes(selected_indexes, len(files))
+    if not is_valid:
+        console.print(f"[bold red]Index {bad_idx} is out of range. Please rerun the command.[/]")
+        return []
+
+    selected_files = [files[idx - 1] for idx in selected_indexes]
+
+    if not Confirm.ask(f"Process {len(selected_files)} file(s)?", default=True):
+        console.print("[yellow]Operation cancelled by user.[/]")
+        return []
+
+    return selected_files
+
+# ---------- IO ----------
+def read_metadata(src: Path) -> dict:
+    if src.suffix == ".whisper":
+        with zipfile.ZipFile(src) as zf:
+            raw = zf.read("metadata.json").decode()
+    else:
+        raw = src.read_text()
+    # tolerate non-standard numerics
+    raw = raw.replace("NaN", "null").replace("Infinity", "null").replace("-Infinity", "null")
+    return json.loads(raw)
+
+# ---------- Segments ----------
+def speaker_of(seg: dict) -> str:
+    sp = seg.get("speaker") or {}
+    return sp.get("name") or sp.get("id") or "Unknown"
+
+def fmt_s(ms: int) -> str:
+    s = ms / 1000
+    out = f"{s:.3f}".rstrip("0").rstrip(".")
+    return f"{out}s"
+
+def load_segments(meta: dict) -> List[Segment]:
+    return [
+        Segment(
+            speaker=speaker_of(entry),
+            start=int(entry.get("start", 0)),
+            end=int(entry.get("end", 0)),
+            text=(entry.get("text") or "").strip(),
+        )
+        for entry in meta.get("transcripts", [])
+    ]
+
+def merge_segments(segments: List[Segment]) -> List[Segment]:
+    def merge_fn(merged: List[Segment], seg: Segment) -> List[Segment]:
+        text = seg.text.strip()
+        if not text:
+            return merged
+        if not merged or merged[-1].speaker != seg.speaker:
+            return merged + [Segment(seg.speaker, seg.start, seg.end, text)]
+        prev = merged[-1]
+        return merged[:-1] + [
+            Segment(
+                prev.speaker,
+                prev.start,
+                max(prev.end, seg.end),
+                (prev.text + " " + text).strip(),
+            )
+        ]
+    return reduce(merge_fn, segments, [])
+
+# ---------- Async clean with OpenAI (batched, structured output) ----------
+
+def _key_to_id(key: Tuple[Path, int]) -> str:
+    return f"{str(key[0])}::{key[1]}"
+
+def _group_batches(chunks: Dict[Tuple[Path, int], Tuple[str, int]], max_chars: int, max_items: int) -> List[List[Tuple[str, str, int]]]:
+    items = [(_key_to_id(k), v_text, v_speaker) for k, (v_text, v_speaker) in chunks.items()]
+    batches: List[List[Tuple[str, str, int]]] = []
+    current: List[Tuple[str, str, int]] = []
+    current_chars = 0
+
+    def should_flush(curr_count: int, curr_chars: int, next_len: int) -> bool:
+        over_items = (max_items > 0) and (curr_count >= max_items)
+        over_chars = (max_chars > 0) and (curr_chars > 0) and ((curr_chars + next_len) > max_chars)
+        return over_items or over_chars
+
+    for id_str, text, speaker_id in items:
+        text_len = len(text)
+        if current and should_flush(len(current), current_chars, text_len):
+            batches.append(current)
+            current = []
+            current_chars = 0
+        current.append((id_str, text, speaker_id))
+        current_chars += text_len
+    if current:
+        batches.append(current)
+    return batches
+
+def _schema() -> dict:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "cleaned_batch",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["items"],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    }
+                },
+            },
+            "strict": True,
+        },
+    }
+
+def _extract_json_from_text(text: str) -> Optional[dict]:
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    # Try fenced code block ```json ... ```
+    m = re.search(r"```json\s*([\s\S]*?)```", text)
+    if m:
+        candidate = m.group(1).strip()
+        try:
+            return json.loads(candidate)
+        except Exception:
+            pass
+    # Try any fenced block
+    m2 = re.search(r"```\s*([\s\S]*?)```", text)
+    if m2:
+        candidate = m2.group(1).strip()
+        try:
+            return json.loads(candidate)
+        except Exception:
+            pass
+    # Try substring between first { and last }
+    if '{' in text and '}' in text:
+        start = text.find('{')
+        end = text.rfind('}')
+        if start < end:
+            candidate = text[start:end+1]
+            try:
+                return json.loads(candidate)
+            except Exception:
+                pass
+    # Try substring between first [ and last ]
+    if '[' in text and ']' in text:
+        start = text.find('[')
+        end = text.rfind(']')
+        if start < end:
+            candidate = text[start:end+1]
+            try:
+                return json.loads(candidate)
+            except Exception:
+                pass
+    return None
+
+async def clean_batch(client: AsyncOpenAI, batch: List[Tuple[str, str, int]], batch_idx: int, total_batches: int, args: Args) -> Dict[str, str]:
+    def merge_adjacent_by_speaker(entries: List[Tuple[str, str, int]]) -> List[Dict[str, object]]:
+        groups: List[Dict[str, object]] = []
+        for id_str, text, speaker_id in entries:
+            if not groups or groups[-1]["speaker"] != speaker_id:
+                groups.append({"speaker": speaker_id, "ids": [id_str], "texts": [text]})
+            else:
+                groups[-1]["ids"].append(id_str)
+                groups[-1]["texts"].append(text)
+        return groups
+
+    def split_into_n_parts(s: str, n: int) -> List[str]:
+        s_clean = s.strip()
+        if n <= 1:
+            return [s_clean]
+        sentences = [seg.strip() for seg in re.split(r"(?<=[.!?])\s+", s_clean) if seg.strip()]
+        if len(sentences) >= n:
+            first_parts = sentences[: n - 1]
+            last_part = " ".join(sentences[n - 1 :])
+            return [*first_parts, last_part.strip()]
+        words = s_clean.split()
+        total = len(words)
+        base = total // n
+        rem = total % n
+        sizes = [base + (1 if i < rem else 0) for i in range(n)]
+        out: List[str] = []
+        idx = 0
+        for sz in sizes:
+            out.append(" ".join(words[idx : idx + sz]).strip())
+            idx += sz
+        return out
+
+    groups = merge_adjacent_by_speaker(batch) if args.merge_by_speaker else [
+        {"speaker": s, "ids": [i], "texts": [t]} for i, t, s in batch
+    ]
+    merged_payload_items = [
+        {
+            "speaker": g["speaker"],
+            "text": normalize_text(" ".join(g["texts"])) if args.normalize_ws else " ".join(g["texts"]),
+        }  # type: ignore[index]
+        for g in groups
+    ]
+
+    if args.debug:
+        payload = {"items": merged_payload_items}
+        console.print(f"\n[bold cyan]═══ DEBUG: Batch {batch_idx+1}/{total_batches} ({len(batch)} items → {len(groups)} merged) ═══[/]")
+        console.print(f"[yellow]System:[/] {SYS_PROMPT}")
+        console.print("[yellow]User (JSON payload):[/]")
+        console.print(json.dumps(payload, ensure_ascii=False)[:2000] + ("…" if len(json.dumps(payload)) > 2000 else ""))
+        console.print("[bold cyan]═══════════════════════════════[/]\n")
+        # Simulate cleaned output by using the merged text, then split back
+        result: Dict[str, str] = {}
+        for g in groups:
+            merged_text = " ".join(g["texts"])  # type: ignore[index]
+            parts = split_into_n_parts(merged_text, len(g["ids"]))  # type: ignore[arg-type]
+            for orig_id, part in zip(g["ids"], parts):  # type: ignore[index]
+                result[str(orig_id)] = part
+        return result
+
+    await asyncio.sleep(random.uniform(JITTER_MIN, JITTER_MAX))
+    payload = {"items": merged_payload_items}
+    if args.model not in SUPPORTED_SCHEMA_MODELS:
+        raise ValueError(f"Model {args.model} does not support structured outputs. Choose one of: {', '.join(sorted(SUPPORTED_SCHEMA_MODELS))}")
+
+    # Try to clean the batch; if content filter rejects it, return original unparsed chunks
+    try:
+        r = await client.beta.chat.completions.parse(
+            model=args.model,
+            messages=[
+                {"role": "system", "content": SYS_PROMPT},
+                {"role": "user", "content": f"Clean each 'text' field in the following JSON. Remove ALL filler words (um, uh, like, you know, I mean, etc.), ALL stutters (repeated words like 'that that that'), and fix all grammar. Make it read like polished written prose. Return JSON with 'items' array of cleaned strings in the same order.\n\n{json.dumps(payload, ensure_ascii=False)}"},
+            ],
+            temperature=0,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "cleaned_batch",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["items"],
+                        "properties": {
+                            "items": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            }
+                        },
+                    },
+                },
+            },
+        )
+        data = r.choices[0].message.parsed
+        if data is None:
+            # Fallback to manual extraction if SDK didn't parse
+            content = r.choices[0].message.content or ""
+            parsed = _extract_json_from_text(content)
+            if parsed is None:
+                snippet = content[:400]
+                raise ValueError(f"Failed to parse model JSON. First 400 chars: {snippet}")
+            data = parsed
+        cleaned_items_raw = data.get("items", [])
+        cleaned_items: List[str] = [str(s).strip() for s in cleaned_items_raw]
+        if len(cleaned_items) != len(groups):
+            # Fallback: if model returns wrong count, pad/truncate to align
+            if len(cleaned_items) < len(groups):
+                cleaned_items = cleaned_items + [""] * (len(groups) - len(cleaned_items))
+            else:
+                cleaned_items = cleaned_items[: len(groups)]
+        # Map cleaned merged outputs back to original ids by splitting
+        result: Dict[str, str] = {}
+        for g, cleaned in zip(groups, cleaned_items):
+            parts = split_into_n_parts(cleaned, len(g["ids"]))  # type: ignore[arg-type]
+            for orig_id, part in zip(g["ids"], parts):  # type: ignore[index]
+                result[str(orig_id)] = part
+        return result
+    except ContentFilterFinishReasonError:
+        # Content filter rejected this batch - return original unparsed chunks
+        console.print(f"[yellow]⚠ Batch {batch_idx+1}/{total_batches} rejected by content filter - using original text[/]")
+        result: Dict[str, str] = {}
+        for g in groups:
+            merged_text = " ".join(g["texts"])  # type: ignore[index]
+            parts = split_into_n_parts(merged_text, len(g["ids"]))  # type: ignore[arg-type]
+            for orig_id, part in zip(g["ids"], parts):  # type: ignore[index]
+                result[str(orig_id)] = part
+        return result
+
+async def clean_all(chunks: Dict[Tuple[Path, int], Tuple[str, int]], args: Args) -> Dict[Tuple[Path, int], str]:
+    client = AsyncOpenAI(api_key=args.api_key) if args.api_key else AsyncOpenAI()
+    batches = _group_batches(chunks, args.batch_chars, args.batch_max_items)
+
+    # Calculate and display batch statistics
+    total_batches = len(batches)
+    batch_chars = [sum(len(text) for _, text, _ in batch) for batch in batches]
+    avg_chars = sum(batch_chars) // total_batches if total_batches > 0 else 0
+    console.print(f"[dim]Created {total_batches} batches (avg {avg_chars:,} chars/batch)[/]")
+
+    sem = asyncio.Semaphore(args.concurrency)
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        console=console,
+        transient=True,
+    )
+
+    task_id = None
+
+    async def _task(batch_idx: int, batch: List[Tuple[str, str, int]]) -> Dict[str, str]:
+        async with sem:
+            out = await clean_batch(client, batch, batch_idx, len(batches), args)
+        if task_id is not None:
+            progress.advance(task_id)
+        return out
+
+    if not chunks:
+        return {}
+
+    if args.debug:
+        console.print("[bold yellow]DEBUG MODE: No API calls will be made[/]")
+        tasks = [_task(i, b) for i, b in enumerate(batches)]
+        batch_outputs = await asyncio.gather(*tasks)
+    else:
+        with progress:
+            task_id = progress.add_task("Cleaning batches", total=len(batches))
+            tasks = [_task(i, b) for i, b in enumerate(batches)]
+            batch_outputs = await asyncio.gather(*tasks)
+
+    id_to_key = {_key_to_id(k): k for k in chunks.keys()}
+    merged: Dict[Tuple[Path, int], str] = {}
+    for out in batch_outputs:
+        for id_str, cleaned in out.items():
+            k = id_to_key[id_str]
+            merged[k] = cleaned
+    return merged
+
+# ---------- Markdown writer ----------
+def to_markdown(blocks: List[Segment]) -> str:
+    lines = []
+    for block in blocks:
+        lines.append(f"**{block.speaker}**  `{fmt_s(block.start)} → {fmt_s(block.end)}`\n")
+        lines.append(f"{block.text.strip()}\n")
+    return "".join(lines)
+
+# ---------- Cost estimator ----------
+def estimate_cost(tokens_in: int, tokens_out: int, model: str) -> str:
+    pricing = PRICING_USD_PER_MTOK.get(model)
+    if not pricing:
+        return "unknown (pricing for model not configured)"
+    usd = (tokens_in / 1_000_000) * pricing["input"] + (tokens_out / 1_000_000) * pricing["output"]
+    return f"${usd:.2f} (≈{tokens_in:,} in / ≈{tokens_out:,} out tokens)"
+
+# ---------- Main ----------
+def main(args: Args) -> None:
+    root = Path.cwd()
+
+    # Check for files in args
+    if args.files:
+        # User provided specific files - validate all first
+        args_with_paths = [(arg, Path(arg)) for arg in args.files]
+
+        if bad_arg := next((arg for arg, p in args_with_paths if p.suffix != ".whisper"), None):
+            console.print(f"[bold red]Error: Only .whisper files are accepted. Got: {bad_arg}[/]")
+            console.print("[yellow]Please provide .whisper files, not audio files.[/]")
+            return
+
+        if missing_arg := next((arg for arg, p in args_with_paths if not p.exists()), None):
+            console.print(f"[bold red]Error: File not found: {missing_arg}[/]")
+            return
+
+        selected: List[Path] = [p for _, p in args_with_paths]
+        console.print(f"[cyan]Processing {len(selected)} file(s) from command line arguments[/]")
+    else:
+        # Interactive mode: discover and select files
+        whispers = find_whisper_files(root)
+        selected = select_files(whispers)
+        if not selected:
+            return
+
+    console.print(f"[cyan]Parsing {len(selected)} whisper file(s)...[/]")
+
+    def load_document(path: Path) -> Document:
+        console.print(f"[blue]Loading metadata from[/] {display_relative(path, root)}")
+        meta = read_metadata(path)
+        segments = load_segments(meta)
+        console.print(f"[dim]- {len(segments)} raw segments[/]")
+        return Document(
+            source=path,
+            output=path.with_suffix(".cleaned.md"),
+            segments=segments,
+        )
+
+    documents = [load_document(path) for path in selected]
+
+    def speaker_map_for(doc: Document) -> Dict[str, int]:
+        mapping: Dict[str, int] = {}
+        next_id = 1
+        for seg in doc.segments:
+            name = seg.speaker or "Unknown"
+            if name not in mapping:
+                mapping[name] = next_id
+                next_id += 1
+        return mapping
+
+    doc_to_speaker_id = {doc.source: speaker_map_for(doc) for doc in documents}
+
+    chunk_map = {
+        (doc.source, idx): (seg.text, doc_to_speaker_id[doc.source][seg.speaker])
+        for doc in documents
+        for idx, seg in enumerate(doc.segments)
+        if seg.text.strip()
+    }
+
+    total_chars = sum((len(normalize_text(text)) if args.normalize_ws else len(text)) for (text, _sp) in chunk_map.values())
+    total_segments = sum(len(doc.segments) for doc in documents)
+
+    if not chunk_map:
+        console.print("[yellow]No content to clean.[/]")
+        return
+    console.print(f"[dim]Total segments queued: {total_segments}[/]")
+
+    approx_prompt_tokens = max(1, total_chars // CHARS_PER_TOKEN)
+    approx_completion_tokens = approx_prompt_tokens  # assume roughly symmetrical
+    cost_note = estimate_cost(approx_prompt_tokens, approx_completion_tokens, args.model)
+
+    console.print(
+        f"[cyan]Cleaning {len(chunk_map)} segments with model[/] [bold]{args.model}[/] "
+        f"(rough cost: {cost_note})"
+    )
+    cleaned = asyncio.run(clean_all(chunk_map, args))
+    console.print("[green]Cleaning complete[/]")
+
+    def write_document(doc: Document) -> None:
+        cleaned_segments = [
+            Segment(
+                seg.speaker,
+                seg.start,
+                seg.end,
+                cleaned.get((doc.source, idx), "").strip() or seg.text
+            )
+            for idx, seg in enumerate(doc.segments)
+        ]
+        merged_blocks = merge_segments(cleaned_segments)
+        md = to_markdown(merged_blocks)
+        doc.output.parent.mkdir(parents=True, exist_ok=True)
+        existed = doc.output.exists()
+        doc.output.write_text(md, encoding="utf-8")
+        verb = "Overwrote" if existed else "Created"
+        console.print(f"[green]{verb}[/] {display_relative(doc.output, root)}")
+
+    for doc in documents:
+        write_document(doc)
+
+if __name__ == "__main__":
+    main(Args())

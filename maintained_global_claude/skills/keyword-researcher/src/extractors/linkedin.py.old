@@ -1,0 +1,166 @@
+"""
+LinkedIn feed reader.
+
+Extracts post data from LinkedIn feeds with multi-selector fallback strategy.
+
+Note: LinkedIn often requires authentication and has frequent HTML structure changes.
+This implementation uses multiple selector strategies for robustness.
+"""
+
+from playwright.sync_api import Page
+import re
+
+from src.core.base import FeedReader
+from src.utils.parsing import parse_html, find_with_fallback, extract_text
+
+
+class LinkedInFeedReader(FeedReader):
+    """
+    Parser for LinkedIn feeds.
+
+    Uses multi-selector fallback system to handle LinkedIn's frequent CSS changes.
+    """
+
+    POST_CONTAINER_SELECTORS = [
+        "div[data-id*='urn:li:activity']",
+        "div.feed-shared-update-v2",
+        "div[data-urn*='activity']",
+        "article",
+    ]
+
+    CONTENT_SELECTORS = [
+        "div.feed-shared-update-v2__description",
+        "div.update-components-text",
+        "span.break-words",
+        "div[dir='ltr']",
+    ]
+
+    AUTHOR_SELECTORS = [
+        "span.update-components-actor__name",
+        "span[aria-hidden='true']",
+        "a.update-components-actor__meta-link",
+    ]
+
+    def parse_feed(self, page: Page) -> str:
+        """Extract LinkedIn posts and convert to markdown."""
+        content = page.content()
+        print(f"[DEBUG] parse_feed: Content length = {len(content)} characters")
+        soup = parse_html(content)
+
+        # Check if page is redirected to login
+        page_title = page.evaluate("() => document.title")
+        print(f"[DEBUG] Page title: {page_title}")
+
+        if "login" in page_title.lower() or "linkedin.com/login" in page.url:
+            print("[DEBUG] Page redirected to LinkedIn login - authentication required")
+            return (
+                "# LinkedIn Feed - Authentication Required\n\n"
+                "LinkedIn requires authentication to access search results.\n\n"
+                "## Why Authentication is Required\n"
+                "LinkedIn does not allow unauthenticated access to search results or feeds. "
+                "The platform uses login-based access control to protect user data and content.\n\n"
+                "## To Enable LinkedIn Support\n"
+                "LinkedIn search requires a valid LinkedIn account with active session. "
+                "This cannot be achieved through automated browser tools without credentials.\n"
+            )
+
+        posts = []
+
+        for selector in self.POST_CONTAINER_SELECTORS:
+            print(f"[DEBUG] Trying POST_CONTAINER_SELECTOR: {selector}")
+            containers = soup.select(selector)
+            print(f"[DEBUG] Found {len(containers)} containers for selector: {selector}")
+            if containers:
+                print(f"[DEBUG] Using selector: {selector} (found {len(containers)} containers)")
+                break
+        else:
+            print("[DEBUG] No containers found with any selector")
+            return (
+                "# LinkedIn Feed - Authentication Required\n\n"
+                "LinkedIn requires authentication to access search results.\n\n"
+                "## Why Authentication is Required\n"
+                "LinkedIn does not allow unauthenticated access to search results or feeds. "
+                "The platform uses login-based access control to protect user data and content.\n\n"
+                "## To Enable LinkedIn Support\n"
+                "LinkedIn search requires a valid LinkedIn account with active session. "
+                "This cannot be achieved through automated browser tools without credentials.\n"
+            )
+
+        print(f"[DEBUG] Processing up to 20 containers from {len(containers)} total")
+        for idx, container in enumerate(containers[:20]):
+            print(f"[DEBUG] Extracting post {idx + 1}")
+            post = self._extract_post(container)
+            if post:
+                posts.append(post)
+
+        print(f"[DEBUG] Final post count: {len(posts)} posts extracted")
+        return self._format_markdown(posts)
+
+    def _extract_post(self, container) -> dict:
+        """Extract data from a single LinkedIn post."""
+        post = {}
+
+        author_elem = find_with_fallback(container, self.AUTHOR_SELECTORS)
+        post['author'] = extract_text(author_elem)
+        print(f"[DEBUG] Found author: {post['author']}")
+
+        content_elem = find_with_fallback(container, self.CONTENT_SELECTORS)
+        post['content'] = extract_text(content_elem)
+        print(f"[DEBUG] Found content: {post['content'][:50] if post['content'] else 'None'}...")
+
+        link_elem = container.select_one('a[href*="/posts/"]')
+        if not link_elem:
+            link_elem = container.select_one('a[href*="activity"]')
+        if link_elem:
+            href = link_elem.get('href', '')
+            post['url'] = f"https://linkedin.com{href}" if href.startswith('/') else href
+            print(f"[DEBUG] Found url: {post['url']}")
+        else:
+            print("[DEBUG] No URL found for this post")
+
+        time_elem = container.select_one('time') or container.find('span', string=re.compile(r'\d+[hdwmy]'))
+        post['timestamp'] = extract_text(time_elem)
+        print(f"[DEBUG] Found timestamp: {post['timestamp']}")
+
+        engagement_elems = container.select('button[aria-label*="reaction"]') or \
+                          container.select('span.social-details-social-counts__reactions-count')
+        if engagement_elems:
+            post['engagement'] = extract_text(engagement_elems[0])
+            print(f"[DEBUG] Found engagement: {post['engagement']}")
+
+        if post.get('content') or post.get('author'):
+            print(f"[DEBUG] Post valid - has content or author")
+            return post
+        else:
+            print(f"[DEBUG] Post invalid - missing both content and author")
+            return None
+
+    def _format_markdown(self, posts: list) -> str:
+        """Format LinkedIn posts as markdown."""
+        lines = ["# LinkedIn Feed\n"]
+        lines.append(f"Found {len(posts)} posts\n\n")
+
+        for post in posts:
+            if post.get('author'):
+                lines.append(f"## {post['author']}")
+            else:
+                lines.append("## LinkedIn Post")
+
+            meta = []
+            if post.get('timestamp'):
+                meta.append(post['timestamp'])
+            if post.get('engagement'):
+                meta.append(post['engagement'])
+
+            if meta:
+                lines.append(f"**{' • '.join(meta)}**")
+
+            if post.get('content'):
+                lines.append(f"\n{post['content']}")
+
+            if post.get('url'):
+                lines.append(f"\n[View on LinkedIn]({post['url']})")
+
+            lines.append("\n---\n")
+
+        return "\n".join(lines)
