@@ -1,47 +1,74 @@
-#!/bin/zsh
-# rename_file.sh - Rename a single file using Claude AI
-# Usage: ./rename_file.sh filename.pdf
+#!/usr/bin/env zsh
+# rename_pdf - Rename PDF files using AI based on content
+# Usage: rename_pdf <filename.pdf>
 
 file="$1"
 
 # Check if file argument provided
 if [[ -z "$file" ]]; then
-    echo -e "\033[31mUsage: $0 filename\033[0m"
+    gum style --foreground 196 --border double --padding "0 1" --margin "1" "Error: No file provided" "Usage: $0 <filename>"
     exit 1
 fi
 
 # Check if file exists
 if [[ ! -f "$file" ]]; then
-    echo -e "\033[31mError: File '$file' not found\033[0m"
+    gum style --foreground 196 --border double --padding "0 1" --margin "1" "Error: File not found" "'$file' does not exist"
     exit 1
 fi
 
-# Get file extension
+# Get file extension and original name
 extension="${file##*.}"
+old_basename="$(basename "$file")"
+dir="$(dirname "$file")"
 
-# Create prompt for Claude
+# Extract text from PDF
+text=$(gum spin --spinner dot --title "Extracting PDF content..." -- sh -c "pdf_extract_pages '$file' | markitdown")
+
+# Check if extraction succeeded
+if [[ -z "$text" ]]; then
+    gum style --foreground 196 "Error: Failed to extract text from PDF"
+    exit 1
+fi
+
+# Generate new name using AI
 system_prompt="$(cat $HOME/.claude/commands/file-renamer.md) $file."
-text="$(pdf_extract_pages "$file" | markitdown)"
-new_name=$(oai "$system_prompt $text")
+# Save prompt to temp file to avoid shell escaping issues with gum spin
+temp_prompt="/tmp/rename_pdf_prompt_$$.txt"
+echo "$system_prompt $text" > "$temp_prompt"
+new_name=$(gum spin --spinner dot --title "Generating filename with AI..." -- sh -c "oai \"\$(cat '$temp_prompt')\"")
+rm -f "$temp_prompt"
 
 # Check if we got a valid response
 if [[ -z "$new_name" ]]; then
-    echo -e "\033[31mError: Could not generate new filename for $file\033[0m"
+    gum style --foreground 196 "Error: AI generation failed"
     exit 1
 fi
 
-if [[ ${#new_name} -gt 100 ]]; then
-    echo -e "\033[31mError: Generated filename is longer than 100 characters\033[0m"
-    exit 1
-fi
+# Sanitize filename (remove invalid characters for filesystems)
+new_name="${new_name//[\/\\:*?\"<>|]/}"
 
-# Rename the file in-place (same directory)
-dir="${file:h}"
+# Build new filename
 new_filename="${dir}/${new_name}.${extension}"
-mv -if -- "$file" "$new_filename"
 
-# Remove red and add green after processing
-tag --remove Red  "$new_filename"
-tag --add Green "$new_filename"
-echo "$new_filename"
+# Check if the name is actually changing
+if [[ "$file" == "$new_filename" ]]; then
+    gum style --foreground 245 "File already has correct name: $old_basename"
+    exit 0
+fi
+
+# Rename the file
+if ! mv -f -- "$file" "$new_filename" 2>/dev/null; then
+    gum style --foreground 196 "Error: Failed to rename file (check permissions)"
+    exit 1
+fi
+
+# Remove red and add green tags after processing
+tag --remove Red "$new_filename" 2>/dev/null
+tag --add Green "$new_filename" 2>/dev/null
+
+# Show result - multi-colored output on one line
+printf "%s %s %s\n" \
+    "$(gum style --foreground 203 "$old_basename")" \
+    "$(gum style --foreground 245 "→")" \
+    "$(gum style --foreground 120 "${new_name}.${extension}")"
 

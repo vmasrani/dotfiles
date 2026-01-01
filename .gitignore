@@ -7,10 +7,13 @@ __pycache__
 # Ignore specific subdirectories in maintained_global_claude
 maintained_global_claude/.checksums
 maintained_global_claude/ide/
+maintained_global_claude/file-history/
+
 maintained_global_claude/projects/
 maintained_global_claude/shell-snapshots/
 maintained_global_claude/statsig/
 maintained_global_claude/todos/
-
+maintained_global_claude/debug/
+maintained_global_claude/history.jsonl
 # The files we want to keep (CLAUDE.md, settings.json, commands/, hooks/) 
 # will be tracked normally without needing -f

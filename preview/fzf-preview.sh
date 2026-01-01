@@ -2,6 +2,12 @@
 
 if [[ -f $1 ]]; then
   case "$1" in
+    *.db)
+      sqlite3 -header -csv "$1" "SELECT * FROM $(sqlite3 "$1" '.tables' | awk '{print $1}')" | print_csv
+      ;;
+    *.csv)
+      print_csv "$1"
+      ;;
     *.parquet)
       parquet-tools cat --limit 1000 --format jsonl "$1" | jq -C
       ;;
@@ -30,7 +36,7 @@ if [[ -f $1 ]]; then
       chafa --size=80x80 "$1"
       ;;
     *.zip)
-      less "$1" | colorize-columns
+      vd -b "$1" -o - 2>/dev/null | colorize-columns
       ;;
     *.pdf)
       pdftotext "$1" -

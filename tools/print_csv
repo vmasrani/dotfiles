@@ -1,0 +1,42 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["rich>=13.7.0"]
+# ///
+
+import csv
+import sys
+from rich.console import Console
+from rich.table import Table
+
+
+MAX_LEN = 20
+MAX_ROWS = 40
+
+def ellipsize(s: str) -> str:
+    return s if len(s) <= MAX_LEN else f"{s[:MAX_LEN - 1]}…"
+
+
+if len(sys.argv) > 1:
+    with open(sys.argv[1]) as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+else:
+    reader = csv.reader(sys.stdin)
+    rows = list(reader)
+
+if not rows:
+    sys.exit(0)
+
+header, *data = rows
+
+table = Table(show_lines=False, show_header=True, header_style="bold cyan")
+
+for col in header:
+    table.add_column(col, overflow="ellipsis", max_width=MAX_LEN, style="white")
+
+for i, row in enumerate(data[:MAX_ROWS]):
+    row_style = "dim" if i % 2 == 0 else "bright_white"
+    table.add_row(*(ellipsize(cell) for cell in row), style=row_style)
+
+Console(force_terminal=True).print(table)
