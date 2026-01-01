@@ -465,6 +465,29 @@ install_tpm() {
     echo "tmux plugin manager installed successfully."
 }
 
+install_custom_tmux_scripts() {
+    # Symlink custom dracula theme and PM2 status scripts
+    local dotfiles="$HOME/dotfiles"
+    local dracula_plugin="$HOME/.tmux/plugins/tmux"
+    local tmux_scripts="$dracula_plugin/scripts"
+
+    # Install tmux plugins if not already installed
+    if [ ! -d "$dracula_plugin" ]; then
+        echo "Installing tmux plugins (including Dracula theme)..."
+        "$HOME/.tmux/plugins/tpm/bin/install_plugins"
+    fi
+
+    # Create scripts directory if it doesn't exist
+    mkdir -p "$tmux_scripts"
+
+    # Symlink custom scripts
+    ln -sf "$dotfiles/tmux/scripts/dracula.sh" "$tmux_scripts/dracula.sh"
+    ln -sf "$dotfiles/tmux/scripts/pm2_status.sh" "$tmux_scripts/pm2_status.sh"
+    ln -sf "$dotfiles/tmux/scripts/pm2_status_wrapper.sh" "$tmux_scripts/pm2_status_wrapper.sh"
+
+    echo "Custom tmux scripts symlinked successfully."
+}
+
 install_git_fuzzy() {
     git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
     ln -s "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
@@ -576,6 +599,12 @@ install_uvx_tools() {
     uv tool install rich-cli
     uv tool install "markitdown[all]"
     uv tool install --with lxml --with pdfminer.six visidata
+    echo "rich-cli, markitdown, visidata installed successfully."
+}
+
+install_cargo_tools() {
+    cargo install --locked watchexec-cli
+    echo "watchexec-cli installed successfully."
 }
 
 install_uwu() {

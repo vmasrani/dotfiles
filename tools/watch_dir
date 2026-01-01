@@ -1,0 +1,109 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "watchdog",
+#     "hypers",
+# ]
+#
+# [tool.uv.sources]
+# hypers = { git = "https://github.com/vmasrani/hypers.git" }
+# ///
+"""
+Watch a directory for new files and run a command on each.
+Usage: watch_dir --dir ~/Downloads --extensions pdf,epub --command "rename_pdf {}"
+"""
+
+import shlex
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+from hypers import Hypers
+from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
+from watchdog.observers import Observer
+
+
+@dataclass
+class Args(Hypers):
+    dir: str = "."
+    extensions: str = "pdf"  # comma-separated
+    command: str = "echo {}"  # {} is replaced with file path
+    debounce: float = 2.0  # seconds to wait before processing
+
+
+class FileHandler(FileSystemEventHandler):
+    def __init__(self, extensions: set[str], command: str, debounce: float):
+        self.extensions = extensions
+        self.command = command
+        self.debounce = debounce
+        self.pending: dict[Path, float] = {}
+        self.processed: set[Path] = set()
+
+    def has_green_tag(self, path: Path) -> bool:
+        result = subprocess.run(["tag", "-l", str(path)], capture_output=True, text=True)
+        return "Green" in result.stdout
+
+    def should_handle(self, path: Path) -> bool:
+        if not (path.suffix.lower().lstrip('.') in self.extensions and path.is_file()):
+            return False
+        if self.has_green_tag(path):
+            return False
+        return True
+
+    def on_created(self, event):
+        if isinstance(event, FileCreatedEvent):
+            path = Path(event.src_path)
+            if self.should_handle(path):
+                self.pending[path] = time.time()
+
+    def on_modified(self, event):
+        if isinstance(event, FileModifiedEvent):
+            path = Path(event.src_path)
+            if self.should_handle(path) and path not in self.processed:
+                self.pending[path] = time.time()
+
+    def process_pending(self):
+        now = time.time()
+        ready = [p for p, t in self.pending.items() if now - t >= self.debounce]
+        for path in ready:
+            del self.pending[path]
+            if not path.exists():
+                continue
+            if path in self.processed:
+                continue
+            if self.has_green_tag(path):
+                continue
+            self.processed.add(path)
+            quoted_path = shlex.quote(str(path))
+            cmd = self.command.replace("{}", quoted_path)
+            print(f"Running: {cmd}", flush=True)
+            subprocess.run(cmd, shell=True)
+
+
+def log(msg: str):
+    print(msg, flush=True)
+
+
+def main(args: Args):
+    watch_dir = Path(args.dir).expanduser().resolve()
+    extensions = {ext.strip().lower() for ext in args.extensions.split(",")}
+
+    log(f"Watching {watch_dir} for {extensions}")
+    log(f"Command: {args.command}")
+    log(f"Debounce: {args.debounce}s")
+
+    handler = FileHandler(extensions, args.command, args.debounce)
+    observer = Observer()
+    observer.schedule(handler, str(watch_dir), recursive=False)
+    observer.start()
+
+    while True:
+        time.sleep(0.5)
+        handler.process_pending()
+
+
+if __name__ == "__main__":
+    main(Args())
+

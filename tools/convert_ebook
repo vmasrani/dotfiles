@@ -1,10 +1,14 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.12"
+# dependencies = [
+#     "rich",
+# ]
 # ///
 
 import sys
 import time
+import subprocess
 from pathlib import Path
 import json
 import urllib.request
@@ -13,7 +17,11 @@ import urllib.error
 import urllib.request
 from urllib.parse import quote, urlsplit, urlunsplit
 import urllib.error
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
+console = Console()
 API_BASE = "https://api.convertio.co"
 
 
@@ -96,50 +104,104 @@ def download_output_file(output_url: str, dest_path: Path) -> None:
 
 def convert_to_pdf(api_key: str, source: Path) -> Path:
     output_file = source.with_suffix(".pdf")
-    print("Converting to pdf...")
     input_format = source.suffix.lstrip(".").lower()
-    conversion_id = start_conversion(api_key, source.name, input_format, "pdf")
-    upload_file(conversion_id, source.name, source)
-    result = wait_for_finish(conversion_id)
-    output_url = result["output"]["url"]
-    download_output_file(output_url, output_file)
-    print("Conversion to pdf successful.")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Converting to PDF...", total=None)
+        conversion_id = start_conversion(api_key, source.name, input_format, "pdf")
+        upload_file(conversion_id, source.name, source)
+        result = wait_for_finish(conversion_id)
+        output_url = result["output"]["url"]
+        download_output_file(output_url, output_file)
+        progress.update(task, completed=True)
+
+    console.print("[green]Conversion to PDF successful.[/green]")
     return output_file
+
+
+def tag_file(filepath: Path, add_tags: list[str] = None, remove_tags: list[str] = None) -> None:
+    """Tag a file using macOS tag command."""
+    cmd = ["tag"]
+    if remove_tags:
+        for t in remove_tags:
+            cmd.extend(["--remove", t])
+    if add_tags:
+        for t in add_tags:
+            cmd.extend(["--add", t])
+    cmd.append(str(filepath))
+    subprocess.run(cmd, stderr=subprocess.DEVNULL, check=False)
 
 
 def main() -> None:
     if len(sys.argv) != 2:
-        print(f"Usage: {Path(sys.argv[0]).name} <input_file>")
+        console.print(Panel(
+            f"[red]Error: No file provided[/red]\n[dim]Usage: {Path(sys.argv[0]).name} <input_file>[/dim]",
+            border_style="red",
+            padding=(0, 1)
+        ))
         sys.exit(1)
 
     input_path = Path(sys.argv[1]).expanduser().resolve()
     if not input_path.exists():
-        print(f"Error: The file '{input_path}' does not exist.")
+        console.print(Panel(
+            f"[red]Error: File not found[/red]\n[dim]'{input_path}' does not exist[/dim]",
+            border_style="red",
+            padding=(0, 1)
+        ))
         sys.exit(1)
+
+    # Tag gray to indicate processing started
+    tag_file(input_path, add_tags=["Gray"])
 
     suffix = input_path.suffix.lower()
     if suffix == ".pdf":
-        print("Already a PDF. Nothing to do.")
+        tag_file(input_path, add_tags=["Green"], remove_tags=["Gray"])
+        console.print("[dim]Already a PDF. Nothing to do.[/dim]")
         return
 
     if suffix not in {".epub", ".mobi"}:
-        print(f"Error: Unsupported input format '{suffix}'. Only .epub, .mobi, or .pdf are supported.")
+        tag_file(input_path, add_tags=["Red"], remove_tags=["Gray"])
+        console.print(Panel(
+            f"[red]Error: Unsupported input format '{suffix}'[/red]\n[dim]Only .epub, .mobi, or .pdf are supported[/dim]",
+            border_style="red",
+            padding=(0, 1)
+        ))
         sys.exit(1)
 
     api_key = read_api_key()
     try:
         pdf_file = convert_to_pdf(api_key, input_path)
     except urllib.error.HTTPError as e:
+        tag_file(input_path, add_tags=["Red"], remove_tags=["Gray"])
         if e.code == 422:
-            print("Error: You've reached your conversion limit for the last 24 hours (HTTP 422: Unprocessable Entity).")
+            console.print(Panel(
+                "[red]Error: Conversion limit reached[/red]\n[dim]You've reached your conversion limit for the last 24 hours (HTTP 422)[/dim]",
+                border_style="red",
+                padding=(0, 1)
+            ))
             sys.exit(1)
         else:
             raise
     if not pdf_file.exists():
-        print(f"Error: The PDF file '{pdf_file}' was not created.")
+        tag_file(input_path, add_tags=["Red"], remove_tags=["Gray"])
+        console.print(Panel(
+            f"[red]Error: PDF creation failed[/red]\n[dim]The PDF file '{pdf_file}' was not created[/dim]",
+            border_style="red",
+            padding=(0, 1)
+        ))
         sys.exit(1)
 
-    print(f"Created '{pdf_file}' next to the original.")
+    # Tag the new PDF file green and remove tags from original
+    tag_file(pdf_file, add_tags=["Green"])
+    tag_file(input_path, remove_tags=["Gray"])
+
+    old_name = input_path.name
+    new_name = pdf_file.name
+    console.print(f"[dim]{old_name}[/dim] [bright_black]→[/bright_black] [cyan]{new_name}[/cyan]")
 
 
 if __name__ == "__main__":

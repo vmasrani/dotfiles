@@ -1,0 +1,47 @@
+#!/usr/bin/env zsh
+# tagger - Simple file tagging utility for macOS
+# Usage: tagger <color> <file> [--remove <color>]
+#        tagger gray document.pdf
+#        tagger green document.pdf --remove gray
+
+color="$1"
+file="$2"
+remove_color=""
+
+# Check arguments
+if [[ -z "$color" || -z "$file" ]]; then
+    gum style --foreground 196 --border double --padding "0 1" --margin "1" \
+        "Error: Missing arguments" \
+        "Usage: tagger <color> <file> [--remove <color>]"
+    exit 1
+fi
+
+# Check if file exists
+if [[ ! -f "$file" ]]; then
+    gum style --foreground 196 "Error: File not found: $file"
+    exit 1
+fi
+
+# Parse optional --remove flag
+if [[ "$3" == "--remove" && -n "$4" ]]; then
+    remove_color="$4"
+fi
+
+# Build tag command
+cmd=(tag)
+if [[ -n "$remove_color" ]]; then
+    cmd+=(--remove "$remove_color")
+fi
+cmd+=(--add "$color" "$file")
+
+# Execute tag command
+if "${cmd[@]}" 2>/dev/null; then
+    # Only show output if not in batch mode (when called from watchexec)
+    if [[ -t 1 ]]; then
+        filename="$(basename "$file")"
+        gum style --foreground 245 "Tagged $color: $filename"
+    fi
+else
+    gum style --foreground 196 "Error: Failed to tag $file"
+    exit 1
+fi

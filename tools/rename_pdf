@@ -4,17 +4,64 @@
 
 file="$1"
 
+NO_GUM="${DOTFILES_NO_GUM:-}"
+
+# When run under launchd/pm2/fswatch pipelines, stdin/stdout often aren't TTYs. `gum spin`
+# can hang or behave oddly there, so auto-disable gum unless explicitly enabled.
+if [[ -z "$NO_GUM" ]]; then
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    NO_GUM=1
+  elif ! command -v gum >/dev/null 2>&1; then
+    NO_GUM=1
+  fi
+fi
+
+say_err() {
+  if [[ -n "$NO_GUM" ]]; then
+    echo "$@" >&2
+  else
+    gum style --foreground 196 --border double --padding "0 1" --margin "1" "$@"
+  fi
+}
+
+say_dim() {
+  if [[ -n "$NO_GUM" ]]; then
+    echo "$@"
+  else
+    gum style --foreground 245 "$@"
+  fi
+}
+
+spin() {
+  local title="$1"
+  shift
+  if [[ -n "$NO_GUM" ]]; then
+    "$@"
+  else
+    gum spin --spinner dot --title "$title" -- "$@"
+  fi
+}
+
 # Check if file argument provided
 if [[ -z "$file" ]]; then
-    gum style --foreground 196 --border double --padding "0 1" --margin "1" "Error: No file provided" "Usage: $0 <filename>"
+    say_err "Error: No file provided" "Usage: $0 <filename>"
     exit 1
 fi
 
 # Check if file exists
 if [[ ! -f "$file" ]]; then
-    gum style --foreground 196 --border double --padding "0 1" --margin "1" "Error: File not found" "'$file' does not exist"
+    say_err "Error: File not found" "'$file' does not exist"
     exit 1
 fi
+
+# Skip if already processed (has Green tag)
+if tag -l "$file" 2>/dev/null | grep -q "Green"; then
+    say_dim "Skipping (already processed): $(basename "$file")"
+    exit 0
+fi
+
+# Tag gray to indicate processing started
+tag --add Gray "$file" 2>/dev/null
 
 # Get file extension and original name
 extension="${file##*.}"
@@ -22,11 +69,12 @@ old_basename="$(basename "$file")"
 dir="$(dirname "$file")"
 
 # Extract text from PDF
-text=$(gum spin --spinner dot --title "Extracting PDF content..." -- sh -c "pdf_extract_pages '$file' | markitdown")
+text=$(spin "Extracting PDF content..." zsh -c 'pdf_extract_pages "$1" | markitdown' -- "$file")
 
 # Check if extraction succeeded
 if [[ -z "$text" ]]; then
-    gum style --foreground 196 "Error: Failed to extract text from PDF"
+    tag --set Red "$file" 2>/dev/null
+    say_err "Error: Failed to extract text from PDF"
     exit 1
 fi
 
@@ -35,40 +83,55 @@ system_prompt="$(cat $HOME/.claude/commands/file-renamer.md) $file."
 # Save prompt to temp file to avoid shell escaping issues with gum spin
 temp_prompt="/tmp/rename_pdf_prompt_$$.txt"
 echo "$system_prompt $text" > "$temp_prompt"
-new_name=$(gum spin --spinner dot --title "Generating filename with AI..." -- sh -c "oai \"\$(cat '$temp_prompt')\"")
+new_name=$(spin "Generating filename with AI..." zsh -c 'oai "$(cat "$1")"' -- "$temp_prompt")
 rm -f "$temp_prompt"
 
 # Check if we got a valid response
 if [[ -z "$new_name" ]]; then
-    gum style --foreground 196 "Error: AI generation failed"
+    tag --set Red "$file" 2>/dev/null
+    say_err "Error: AI generation failed"
     exit 1
 fi
 
 # Sanitize filename (remove invalid characters for filesystems)
 new_name="${new_name//[\/\\:*?\"<>|]/}"
 
-# Build new filename
+# Build new filename, avoiding overwrites
+base_new_name="$new_name"
 new_filename="${dir}/${new_name}.${extension}"
+counter=1
+
+# If destination exists (and isn't the source), add numeric suffix
+while [[ -e "$new_filename" && "$file" != "$new_filename" ]]; do
+    new_name="${base_new_name} (${counter})"
+    new_filename="${dir}/${new_name}.${extension}"
+    ((counter++))
+done
 
 # Check if the name is actually changing
 if [[ "$file" == "$new_filename" ]]; then
-    gum style --foreground 245 "File already has correct name: $old_basename"
+    tag --set Green "$file" 2>/dev/null
+    say_dim "File already has correct name: $old_basename"
     exit 0
 fi
 
-# Rename the file
-if ! mv -f -- "$file" "$new_filename" 2>/dev/null; then
-    gum style --foreground 196 "Error: Failed to rename file (check permissions)"
+# Rename the file (no -f flag to be safe)
+if ! mv -n -- "$file" "$new_filename" 2>/dev/null; then
+    tag --set Red "$file" 2>/dev/null
+    say_err "Error: Failed to rename file (check permissions)"
     exit 1
 fi
 
-# Remove red and add green tags after processing
-tag --remove Red "$new_filename" 2>/dev/null
-tag --add Green "$new_filename" 2>/dev/null
+# Set green tag on renamed file
+tag --set Green "$new_filename" 2>/dev/null
 
 # Show result - multi-colored output on one line
-printf "%s %s %s\n" \
-    "$(gum style --foreground 203 "$old_basename")" \
-    "$(gum style --foreground 245 "→")" \
-    "$(gum style --foreground 120 "${new_name}.${extension}")"
+if [[ -n "$NO_GUM" ]]; then
+    printf "%s -> %s\n" "$old_basename" "${new_name}.${extension}"
+else
+    printf "%s %s %s\n" \
+        "$(gum style --foreground 242 "$old_basename")" \
+        "$(gum style --foreground 245 "→")" \
+        "$(gum style --foreground 111 "${new_name}.${extension}")"
+fi
 
