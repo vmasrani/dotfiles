@@ -351,15 +351,22 @@ install_csvcut() {
 
 
 
-install_clipboard_utilities() {
+install_xclip() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install xclip xsel
-        install_on_brew_or_mac "xclip xsel"
+        sudo apt install -y xclip
         echo "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
         echo "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
-        echo "  On macOS, you may need to install XQuartz: brew install --cask xquartz"
     elif [[ "$OS_TYPE" == "mac" ]]; then
-        echo "pbcopy and pbpaste are built into macOS - no additional installation needed"
+        echo "pbcopy and pbpaste are built into macOS - no additional xclip installation needed"
+    fi
+}
+
+install_xsel() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt install -y xsel
+        echo "xsel installed successfully."
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        echo "pbcopy and pbpaste are built into macOS - no additional xsel installation needed"
     fi
 }
 
@@ -595,11 +602,19 @@ install_yarn() {
     echo "Yarn installed successfully."
 }
 
-install_uvx_tools() {
+install_rich_cli() {
     uv tool install rich-cli
+    echo "rich-cli installed successfully."
+}
+
+install_markitdown() {
     uv tool install "markitdown[all]"
+    echo "markitdown installed successfully."
+}
+
+install_visidata() {
     uv tool install --with lxml --with pdfminer.six visidata
-    echo "rich-cli, markitdown, visidata installed successfully."
+    echo "visidata installed successfully."
 }
 
 install_cargo_tools() {
