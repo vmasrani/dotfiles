@@ -79,5 +79,4 @@ install_if_missing rich install_rich_cli # Rich CLI for terminal output
 install_if_missing markitdown install_markitdown # Markdown converter via uv
 install_if_missing vd install_visidata # Terminal data viewer via uv
 
-
-gum_success "Setup completed successfully. All necessary tools and configurations have been installed and set up."
+gum_box_success "Setup completed successfully. All necessary tools and configurations have been installed and set up."
