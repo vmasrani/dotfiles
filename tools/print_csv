@@ -1,42 +1,219 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["rich>=13.7.0"]
+# dependencies = ["pandas>=2.2.0", "rich>=13.7.0", "pyarrow>=14.0.0"]
 # ///
 
-import csv
 import sys
-from rich.console import Console
+from pathlib import Path
+
+import pandas as pd
+from rich import box
+from rich.console import Console, Group
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 
-MAX_LEN = 20
 MAX_ROWS = 40
+SAMPLE_BYTES = 2_000_000
+SAMPLE_ROWS = 5_000
 
-def ellipsize(s: str) -> str:
-    return s if len(s) <= MAX_LEN else f"{s[:MAX_LEN - 1]}…"
+
+def _read_csv(reader, nrows: int | None) -> pd.DataFrame:
+    return pd.read_csv(
+        reader,
+        dtype=str,
+        keep_default_na=False,
+        on_bad_lines="skip",
+        engine="c" if nrows is not None else "pyarrow",
+        nrows=nrows,
+    )
 
 
-if len(sys.argv) > 1:
-    with open(sys.argv[1]) as f:
-        reader = csv.reader(f)
-        rows = list(reader)
-else:
-    reader = csv.reader(sys.stdin)
-    rows = list(reader)
+def read_df(path: str | None) -> tuple[pd.DataFrame, str, bool, int | None]:
+    if path is None:
+        return _read_csv(sys.stdin, None), "stdin", False, None
 
-if not rows:
-    sys.exit(0)
+    p = Path(path)
+    file_bytes = int(p.stat().st_size)
+    sampled = file_bytes >= SAMPLE_BYTES
+    nrows = SAMPLE_ROWS if sampled else None
+    return _read_csv(p, nrows), str(p), sampled, file_bytes
 
-header, *data = rows
 
-table = Table(show_lines=False, show_header=True, header_style="bold cyan")
+def _fmt_int(x: int) -> str:
+    return f"{x:,}"
 
-for col in header:
-    table.add_column(col, overflow="ellipsis", max_width=MAX_LEN, style="white")
 
-for i, row in enumerate(data[:MAX_ROWS]):
-    row_style = "dim" if i % 2 == 0 else "bright_white"
-    table.add_row(*(ellipsize(cell) for cell in row), style=row_style)
+def _fmt_mb(x: float) -> str:
+    return f"{x:.2f} MB"
 
-Console(force_terminal=True).print(table)
+
+def _fmt_float(x: float) -> str:
+    return "—" if pd.isna(x) else f"{x:.4g}"
+
+
+def _empty_count(s: pd.Series) -> int:
+    return int((s == "").sum())
+
+
+def _null_count(s: pd.Series) -> int:
+    return int(s.isna().sum())
+
+
+def _infer_kind(s: pd.Series) -> tuple[str, pd.Series]:
+    numeric = pd.to_numeric(s, errors="coerce")
+    non_empty = (s != "") & s.notna()
+    numeric_ratio = (numeric.notna() & non_empty).sum() / max(int(non_empty.sum()), 1)
+    if numeric_ratio >= 0.8:
+        return "float", numeric
+
+    non_empty_values = s[non_empty]
+    unique_ratio = int(non_empty_values.nunique(dropna=False)) / max(int(non_empty_values.shape[0]), 1)
+    return ("string", numeric) if unique_ratio >= 0.8 else ("categorical", numeric)
+
+
+def _fmt_bytes(x: int) -> str:
+    units = [("B", 1), ("KB", 1024), ("MB", 1024**2), ("GB", 1024**3), ("TB", 1024**4)]
+    unit, denom = next(((u, d) for u, d in reversed(units) if x >= d), ("B", 1))
+    return f"{x / denom:.2f} {unit}" if denom != 1 else f"{x} B"
+
+
+def dataset_summary_table(
+    df: pd.DataFrame, source: str, sampled: bool, file_bytes: int | None
+) -> Table:
+    kinds = [_infer_kind(df[col])[0] for col in df.columns]
+    float_cols = kinds.count("float")
+    categorical_cols = kinds.count("categorical")
+    string_cols = kinds.count("string")
+    nan_cells = int(df.isna().sum().sum())
+    nan_pct = 100.0 * nan_cells / max(int(df.size), 1)
+
+    rows_str = f"≈ {_fmt_int(len(df))} (sample)" if sampled else _fmt_int(len(df))
+    file_str = _fmt_bytes(file_bytes) if file_bytes is not None else "—"
+
+    summary = Table.grid(expand=False, padding=(0, 1))
+
+    def add_pair_cols() -> None:
+        summary.add_column(justify="left", style="bold dim", no_wrap=True)
+        summary.add_column(justify="left", style="bold", overflow="fold")
+
+    _ = [add_pair_cols() for _ in range(2)]
+
+    summary.add_row("Source", source, "Floats", _fmt_int(float_cols))
+    summary.add_row("Rows", rows_str, "Categorical", _fmt_int(categorical_cols))
+    summary.add_row("Columns", _fmt_int(len(df.columns)), "Strings", _fmt_int(string_cols))
+    summary.add_row("File", file_str, "% NaN", f"{nan_pct:.2f}%")
+
+    return summary
+
+
+def column_stats_table(
+    df: pd.DataFrame,
+    sampled: bool,
+    *,
+    title: str | None = None,
+    show_title: bool = True,
+) -> Table:
+    default_title = None
+    if show_title and title is None:
+        default_title = (
+            "[bold]Columns[/bold] [bright_black](approx)[/bright_black]"
+            if sampled
+            else "[bold]Columns[/bold]"
+        )
+    t = Table(
+        title=(default_title if title is None else title) if show_title else None,
+        box=box.SIMPLE_HEAVY,
+        header_style="bold",
+        border_style="bright_black",
+        show_lines=False,
+        pad_edge=False,
+    )
+    t.add_column("Name", style="bold")
+    t.add_column("Type", width=11, no_wrap=True)
+    t.add_column("Unique", justify="right")
+    t.add_column("Null", justify="right")
+    t.add_column("Empty", justify="right")
+    t.add_column("Mean", justify="right")
+    t.add_column("Std", justify="right")
+    t.add_column("Min", justify="right")
+    t.add_column("Max", justify="right")
+
+    def add_col_row(col: str) -> None:
+        s = df[col]
+        kind, numeric = _infer_kind(s)
+        is_numeric = kind == "float"
+
+        unique_count = int(s.nunique(dropna=False))
+        null_count = _null_count(s)
+        empty_count = _empty_count(s)
+
+        t.add_row(
+            col,
+            (
+                "[cyan]float[/cyan]"
+                if kind == "float"
+                else "[magenta]string[/magenta]"
+                if kind == "string"
+                else "[green]categorical[/green]"
+            ),
+            _fmt_int(unique_count),
+            _fmt_int(null_count),
+            _fmt_int(empty_count),
+            _fmt_float(float(numeric.mean())) if is_numeric else "—",
+            _fmt_float(float(numeric.std())) if is_numeric else "—",
+            _fmt_float(float(numeric.min())) if is_numeric else "—",
+            _fmt_float(float(numeric.max())) if is_numeric else "—",
+        )
+
+    _ = [add_col_row(col) for col in df.columns]
+    return t
+
+
+def overview_panel(df: pd.DataFrame, source: str, sampled: bool, file_bytes: int | None) -> Panel:
+    summary = dataset_summary_table(df, source, sampled, file_bytes)
+    cols = column_stats_table(df, sampled, title=None, show_title=False)
+
+    return Panel(
+        Group(summary, cols),
+        title="[bold]Dataset[/bold]",
+        border_style="bright_black",
+        padding=(1, 1),
+    )
+
+
+def dataframe_preview_table(df: pd.DataFrame, max_rows: int) -> Table:
+    head = df.head(max_rows)
+    t = Table(
+        title=f"[bold]Preview[/bold] [bright_black]({len(head):,} of {len(df):,} rows)[/bright_black]",
+        box=box.SIMPLE,
+        header_style="bold",
+        border_style="bright_black",
+        show_lines=False,
+        pad_edge=False,
+    )
+    _ = [t.add_column(str(c), overflow="fold") for c in head.columns]
+    _ = [t.add_row(*[str(v) for v in row]) for row in head.itertuples(index=False, name=None)]
+    return t
+
+
+def main() -> None:
+    path = sys.argv[1] if len(sys.argv) > 1 else None
+    df, source, sampled, file_bytes = read_df(path)
+
+    if df.empty:
+        return
+
+    console = Console(force_terminal=True)
+
+    console.print(overview_panel(df, source, sampled, file_bytes))
+
+    if len(df) > MAX_ROWS:
+        console.print(Text(f"Showing first {MAX_ROWS:,} rows.", style="bright_black"))
+    console.print(dataframe_preview_table(df, MAX_ROWS))
+
+
+if __name__ == "__main__":
+    main()

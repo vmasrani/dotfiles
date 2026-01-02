@@ -17,35 +17,35 @@ INSTANCE_STATE=$(get_instance_state "$INSTANCE_ID")
 
 # Stop instance if running
 if [[ "$INSTANCE_STATE" = "stopped" ]]; then
-    gum style --foreground 46 "✓ Instance is already stopped"
+    gum_success "Instance is already stopped"
 elif [[ "$INSTANCE_STATE" = "running" ]]; then
-    if gum confirm "Stop instance $INSTANCE_ID?"; then
-        gum style --foreground 208 "→ Stopping instance..."
+    if gum_confirm "Stop instance $INSTANCE_ID?"; then
+        gum_info "Stopping instance..."
         aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --no-cli-pager > /dev/null
         wait_for_instance_stopped "$INSTANCE_ID"
-        gum style --foreground 46 "✓ Instance stopped"
+        gum_success "Instance stopped"
     else
-        gum style --foreground 196 "✗ Cancelled"
+        gum_error "Cancelled"
         exit 0
     fi
 else
-    gum style --foreground 208 "⚠ Instance is in state: $INSTANCE_STATE. Waiting for it to stop..."
+    gum_warning "Instance is in state: $INSTANCE_STATE. Waiting for it to stop..."
     wait_for_instance_stopped "$INSTANCE_ID"
-    gum style --foreground 46 "✓ Instance stopped"
+    gum_success "Instance stopped"
 fi
 
 # Optional volume detachment
-if gum confirm "Detach volume $VOLUME_ID?"; then
-    gum style --foreground 208 "→ Detaching volume..."
+if gum_confirm "Detach volume $VOLUME_ID?"; then
+    gum_info "Detaching volume..."
     aws ec2 detach-volume \
         --volume-id "$VOLUME_ID" \
         --instance-id "$INSTANCE_ID" \
         --device "$DEVICE_NAME" --no-cli-pager > /dev/null 2>&1 || true
 
     wait_for_volume_available "$VOLUME_ID"
-    gum style --foreground 46 "✓ Volume detached and available"
+    gum_success "Volume detached and available"
 else
-    gum style --foreground 208 "→ Skipping volume detachment"
+    gum_info "Skipping volume detachment"
 fi
 
-gum style --border rounded --padding "0 2" --border-foreground 46 --foreground 46 "Shutdown complete"
+gum_box_success "Shutdown complete"

@@ -63,7 +63,7 @@ export FZF_DEFAULT_OPTS=" \
     --border --padding 1,2 \
     --border-label ' Demo ' --input-label ' Input ' --header-label ' File Type ' \
     --preview 'fzf-preview {}' \
-    --preview-window=right:70%:wrap \
+    --preview-window=right:70%:nowrap \
     --bind 'result:transform-list-label: \
         if [[ -z $FZF_QUERY ]]; then \
           echo \" $FZF_MATCH_COUNT items \" \
@@ -142,7 +142,7 @@ export FZF_CTRL_T_OPTS="--preview 'fzf-preview {}' --prompt 'Files(.)> ' \
 export FZF_CTRL_R_OPTS="
   --style default \
   --preview 'echo {2..} | bat --color=always -pl sh' \
-  --preview-window up:5:wrap \
+  --preview-window up:5:nowrap \
   --bind 'result:' \
   --bind 'focus:' \
   --bind 'focus:+transform-preview-label:' \

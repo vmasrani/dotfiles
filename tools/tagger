@@ -4,21 +4,24 @@
 #        tagger gray document.pdf
 #        tagger green document.pdf --remove gray
 
+# Source gum utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+source "$SCRIPT_DIR/../shell/gum_utils.sh"
+
 color="$1"
 file="$2"
 remove_color=""
 
 # Check arguments
 if [[ -z "$color" || -z "$file" ]]; then
-    gum style --foreground 196 --border double --padding "0 1" --margin "1" \
-        "Error: Missing arguments" \
+    gum_error "Error: Missing arguments" \
         "Usage: tagger <color> <file> [--remove <color>]"
     exit 1
 fi
 
 # Check if file exists
 if [[ ! -f "$file" ]]; then
-    gum style --foreground 196 "Error: File not found: $file"
+    gum_error "Error: File not found: $file"
     exit 1
 fi
 
@@ -39,9 +42,9 @@ if "${cmd[@]}" 2>/dev/null; then
     # Only show output if not in batch mode (when called from watchexec)
     if [[ -t 1 ]]; then
         filename="$(basename "$file")"
-        gum style --foreground 245 "Tagged $color: $filename"
+        gum_dim "Tagged $color: $filename"
     fi
 else
-    gum style --foreground 196 "Error: Failed to tag $file"
+    gum_error "Error: Failed to tag $file"
     exit 1
 fi
