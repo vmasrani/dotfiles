@@ -13,6 +13,7 @@ set -e
 # Source the installation functions
 source "./install/install_functions.sh"
 source "./shell/.aliases-and-envs.zsh"
+source "./shell/gum_utils.sh"
 
 # install zsh
 install_if_missing zsh install_zsh
@@ -79,4 +80,4 @@ install_if_missing markitdown install_markitdown # Markdown converter via uv
 install_if_missing vd install_visidata # Terminal data viewer via uv
 
 
-echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
+gum_box_success "Setup completed successfully. All necessary tools and configurations have been installed and set up."
