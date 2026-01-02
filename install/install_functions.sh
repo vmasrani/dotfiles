@@ -50,7 +50,7 @@ install_if_dir_missing() {
         $install_function
         gum_success "Installation completed successfully."
     else
-        gum_info "$dir_path is already installed."
+        gum_dim "$dir_path is already installed."
     fi
 }
 
@@ -66,12 +66,98 @@ install_dotfiles() {
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
 
-    gum_info "Creating symbolic links..."
+    gum_dim "Creating symbolic links..."
 
   # Define base paths
     local dotfiles="$HOME/dotfiles"
     local bin="$HOME/bin"
     local home="$HOME"
+
+    # Ensure Dracula tmux plugin directory exists so we can symlink our custom scripts into it.
+    # We ensure TPM exists first since `install_plugins` lives under it.
+    local tpm_dir="$HOME/.tmux/plugins/tpm"
+    local dracula_plugin="$HOME/.tmux/plugins/tmux"
+    local tmux_scripts="$dracula_plugin/scripts"
+
+    # Targets we always want to match the repo source (delete existing non-matching
+    # file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
+    declare -a force_replace_targets=(
+        "$home/.claude/commands"
+        "$home/.claude/hooks"
+        "$home/.claude/skills"
+        "$home/.claude/settings.json"
+        "$home/.codex/config.toml"
+    )
+
+    if [ ! -d "$tpm_dir" ]; then
+        gum_info "Installing tmux plugin manager (tpm)..."
+        install_tpm
+    fi
+
+    if [ ! -d "$dracula_plugin" ]; then
+        gum_info "Installing tmux plugins (including Dracula theme)..."
+        "$tpm_dir/bin/install_plugins"
+    fi
+
+    mkdir -p "$tmux_scripts"
+
+    array_contains() {
+        local needle="$1"
+        shift
+        for item in "$@"; do
+            if [[ "$item" == "$needle" ]]; then
+                return 0
+            fi
+        done
+        return 1
+    }
+
+    should_force_link() {
+        local target="$1"
+        if [[ "$target" == "$tmux_scripts/"* ]]; then
+            return 0
+        fi
+        if array_contains "$target" "${force_replace_targets[@]}"; then
+            return 0
+        fi
+        return 1
+    }
+
+    ensure_symlink() {
+        local source="$1"
+        local target="$2"
+        local force_link="$3"
+
+        # Check if target already exists and points to the correct source
+        if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
+            gum_dim "Symlink already exists: $(basename "$source") -> $target"
+            return 0
+        fi
+
+        gum_info "Linking $(basename "$source") to $target"
+
+        if [[ "$force_link" == "true" ]]; then
+            if [ -e "$target" ] || [ -L "$target" ]; then
+                gum_warning "Replacing existing path at $target (will re-symlink to $source)"
+                rm -rf "$target"
+            fi
+            ln -sf "$source" "$target"
+            return 0
+        fi
+
+        # Only remove if it's a broken symlink
+        if [ -L "$target" ] && [ ! -e "$target" ]; then
+            rm -f "$target"
+        fi
+
+        # Create symlink only if target doesn't exist
+        if [ ! -e "$target" ]; then
+            ln -sf "$source" "$target"
+            return 0
+        fi
+
+        gum_warning "Warning: $target already exists and is not a symlink to $source"
+    }
 
     # Create an array of source:target pairs
     declare -a file_pairs=(
@@ -84,12 +170,15 @@ install_dotfiles() {
         "$dotfiles/preview/npy-preview.py:$bin/npy-preview"
         "$dotfiles/preview/feather-preview.py:$bin/feather-preview"
 
-        # Claude wrapper (cross-platform)
-        "$dotfiles/tools/claude-wrapper.sh:$bin/claude"
 
         # editor dotfiles
         "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
         "$dotfiles/editors/.vimrc:$home/.vimrc"
+
+        # tmux scripts (Dracula plugin)
+        "$dotfiles/tmux/scripts/dracula.sh:$tmux_scripts/dracula.sh"
+        "$dotfiles/tmux/scripts/pm2_status.sh:$tmux_scripts/pm2_status.sh"
+        "$dotfiles/tmux/scripts/pm2_status_wrapper.sh:$tmux_scripts/pm2_status_wrapper.sh"
 
         # linters dotfiles
         "$dotfiles/linters/.pylintrc:$home/.pylintrc"
@@ -134,7 +223,6 @@ install_dotfiles() {
         "$dotfiles/maintained_global_claude/commands:$home/.claude/commands"
         "$dotfiles/maintained_global_claude/hooks:$home/.claude/hooks"
         "$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
-        "$dotfiles/maintained_global_claude/hooks/utils/llm/oai.py:$home/tools/oai"
 
         # codex config
         "$dotfiles/codex/config.toml:$home/.codex/config.toml"
@@ -145,22 +233,14 @@ install_dotfiles() {
         source="${pair%%:*}"
         target="${pair#*:}"
 
-        # Check if target already exists and points to the correct source
-        if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
-            gum_info "Symlink already exists: $(basename "$source") -> $target"
-        else
-            gum_info "Linking $(basename "$source") to $target"
-            # Only remove if it's a broken symlink
-            if [ -L "$target" ] && [ ! -e "$target" ]; then
-                rm -f "$target"
-            fi
-            # Create symlink only if target doesn't exist
-            if [ ! -e "$target" ]; then
-                ln -sf "$source" "$target"
-            else
-                gum_warning "Warning: $target already exists and is not a symlink to $source"
-            fi
+        # Ensure the parent directory exists for any target we link.
+        mkdir -p "$(dirname "$target")"
+
+        local force_link="false"
+        if should_force_link "$target"; then
+            force_link="true"
         fi
+        ensure_symlink "$source" "$target" "$force_link"
 
         # Only chmod +x if it's a file, not a directory
         if [ -f "$source" ]; then
@@ -168,9 +248,15 @@ install_dotfiles() {
         fi
     done
 
+    if [ -d "$dracula_plugin" ]; then
+        gum_dim "Custom tmux scripts symlinked successfully."
+    else
+        gum_warning "Dracula tmux plugin directory not found at $dracula_plugin; skipping custom tmux script symlinks."
+    fi
+
 if [ -d "$HOME/.cursor" ]; then
     ln -sf "$HOME/.cursor" "$HOME/.cursor-server"
-    echo "Symlink created from ~/.cursor to ~/.cursor-server"
+    gum_dim "Symlink created from ~/.cursor to ~/.cursor-server"
 fi
 
 }
@@ -314,17 +400,7 @@ install_shellcheck() {
 
 install_claude_code_cli() {
     # Install via npm
-    npm install -g @anthropic-ai/claude-code
-
-    # Run the migration to move Claude to ~/.claude
-    gum_success "Running Claude migration to ~/.claude..."
-    if command -v claude >/dev/null 2>&1; then
-        claude migrate || gum_success "Migration completed or already done"
-    fi
-
-    # Create a symlink to our cross-platform wrapper
-    ln -sf "$HOME/dotfiles/tools/claude-wrapper.sh" "$HOME/bin/claude"
-    gum_success "Claude wrapper installed to ~/bin/claude"
+    curl -fsSL https://claude.ai/install.sh | bash
 }
 
 install_chafa() {
@@ -474,29 +550,6 @@ install_tpm() {
     gum_success "tmux plugin manager installed successfully."
 }
 
-install_custom_tmux_scripts() {
-    # Symlink custom dracula theme and PM2 status scripts
-    local dotfiles="$HOME/dotfiles"
-    local dracula_plugin="$HOME/.tmux/plugins/tmux"
-    local tmux_scripts="$dracula_plugin/scripts"
-
-    # Install tmux plugins if not already installed
-    if [ ! -d "$dracula_plugin" ]; then
-        gum_info "Installing tmux plugins (including Dracula theme)..."
-        "$HOME/.tmux/plugins/tpm/bin/install_plugins"
-    fi
-
-    # Create scripts directory if it doesn't exist
-    mkdir -p "$tmux_scripts"
-
-    # Symlink custom scripts
-    ln -sf "$dotfiles/tmux/scripts/dracula.sh" "$tmux_scripts/dracula.sh"
-    ln -sf "$dotfiles/tmux/scripts/pm2_status.sh" "$tmux_scripts/pm2_status.sh"
-    ln -sf "$dotfiles/tmux/scripts/pm2_status_wrapper.sh" "$tmux_scripts/pm2_status_wrapper.sh"
-
-    gum_success "Custom tmux scripts symlinked successfully."
-}
-
 install_git_fuzzy() {
     git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
     ln -s "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
@@ -542,7 +595,7 @@ install_meslo_font() {
         fi
         gum_success "MesloLGS NF font installed successfully."
     else
-        gum_info "MesloLGS NF font is already installed."
+        gum_dim "MesloLGS NF font is already installed."
     fi
 }
 
@@ -553,7 +606,7 @@ install_iterm2() {
             brew install --cask iterm2
             gum_success "iTerm2 installed successfully."
         else
-            gum_info "iTerm2 is already installed."
+            gum_dim "iTerm2 is already installed."
         fi
     else
         gum_warning "iTerm2 is only available on macOS."
@@ -571,7 +624,7 @@ install_nvm() {
         nvm use --lts
         gum_success "NVM installed gum_success with latest LTS Node.js."
     else
-        gum_warning "NVM is already installed."
+        gum_dim "NVM is already installed."
     fi
 }
 
