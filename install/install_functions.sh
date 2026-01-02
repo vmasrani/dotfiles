@@ -117,6 +117,7 @@ install_dotfiles() {
         "$dotfiles/shell/.zshrc:$home/.zshrc"
         "$dotfiles/shell/lscolors.sh:$home/lscolors.sh"
         "$dotfiles/shell/helper_functions.sh:$home/helper_functions.sh"
+        "$dotfiles/shell/gum_utils.sh:$home/gum_utils.sh"
         "$dotfiles/shell/update_startup.sh:$home/update_startup.sh"
 
 
