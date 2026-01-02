@@ -356,6 +356,21 @@ install_helix() {
     gum_success "Helix grammars updated successfully."
 }
 
+update_helix_grammars() {
+    gum_info "Fetching and building Helix grammars..."
+    hx --grammar fetch || gum_warning "Some grammars failed to fetch (this is usually ok)"
+
+    # Remove problematic hare grammar if it exists
+    local hare_grammar_dir="$HOME/.config/helix/runtime/grammars/sources/hare"
+    if [ -d "$hare_grammar_dir" ]; then
+        gum_info "Removing problematic hare grammar..."
+        rm -rf "$hare_grammar_dir"
+    fi
+
+    hx --grammar build || gum_warning "Some grammars failed to build (this is usually ok)"
+    gum_success "Helix grammars updated."
+}
+
 install_glow() {
     export PATH="$HOME/go/bin:$PATH"
     go install github.com/charmbracelet/glow@latest
@@ -657,6 +672,21 @@ install_yarn() {
     gum_success "Yarn installed successfully."
 }
 
+install_bash_language_server() {
+    gum_info "Installing bash-language-server..."
+    npm i -g bash-language-server
+}
+
+install_yaml_language_server() {
+    gum_info "Installing yaml-language-server..."
+    npm i -g yaml-language-server
+}
+
+install_vscode_langservers_extracted() {
+    gum_info "Installing vscode-langservers-extracted..."
+    npm i -g vscode-langservers-extracted
+}
+
 install_rich_cli() {
     uv tool install rich-cli
     gum_success "rich-cli installed successfully."
@@ -672,9 +702,31 @@ install_visidata() {
     gum_success "visidata installed successfully."
 }
 
+install_ty() {
+    uv tool install ty@latest
+}
+
 install_cargo_tools() {
     cargo install --locked watchexec-cli
     gum_success "watchexec-cli installed successfully."
+}
+
+install_markdown_oxide() {
+    source "$HOME/.cargo/env"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    cargo install --locked --git https://github.com/Feel-ix-343/markdown-oxide.git markdown-oxide
+}
+
+install_simple_completion_language_server() {
+    source "$HOME/.cargo/env"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    cargo install --git https://github.com/estin/simple-completion-language-server.git
+}
+
+install_taplo_cli() {
+    source "$HOME/.cargo/env"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    cargo install taplo-cli --locked --features lsp
 }
 
 install_uwu() {

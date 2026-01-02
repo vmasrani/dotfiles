@@ -53,9 +53,19 @@ comment-token = "#"
 language-servers = [ "bash-language-server" ]
 indent = { tab-width = 2, unit = "  " }
 
+[language-server.astral-ty]
+command = "ty"
+args= ["server"]
+
 [[language]]
 name = "python"
-language-servers = [ "pyright", "ruff" ]
+scope = "source.python"
+auto-format = true
+language-servers = [
+  "ruff",
+  "astral-ty",
+]
+
 
 [language-server.ruff]
 command = "ruff-lsp"
