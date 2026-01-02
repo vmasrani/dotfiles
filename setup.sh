@@ -31,7 +31,6 @@ install_iterm2 # iTerm2 terminal emulator (macOS only)
 install_if_dir_missing ~/.zprezto install_zprezto                                # Zsh framework for configuration with themes and plugins
 install_if_dir_missing ~/.zprezto/contrib/fzf-tab-completion install_fzf_tab_completion  # Tab completion with fuzzy search for Zsh
 install_if_dir_missing ~/.tmux/plugins/tpm install_tpm                           # Tmux Plugin Manager for extending tmux functionality
-install_custom_tmux_scripts                                                       # Symlink custom Dracula theme with PM2 status badge
 install_if_dir_missing ~/bin/_git-fuzzy install_git_fuzzy                        # Fuzzy finder for git commands and operations
 install_if_dir_missing ~/bin/_diff-so-fancy install_diff_so_fancy                # Git diff output formatter with improved readability
 install_if_dir_missing ~/.cursor-server/extensions install_finditfaster          # Fast file finder extension for Cursor editor
