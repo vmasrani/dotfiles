@@ -67,13 +67,16 @@ install_if_missing parquet-tools install_parquet_tools # Parquet file viewer and
 install_if_missing shellcheck install_shellcheck # Shell script linter
 install_if_missing claude install_claude_code_cli # Claude code CLI
 install_if_missing chafa install_chafa # ASCII art image renderer
-install_if_missing xclip install_clipboard_utilities # Clipboard utilities for tmux integration
+install_if_missing xclip install_xclip # Clipboard utility for tmux integration
+install_if_missing xsel install_xsel # Alternative clipboard utility for tmux
 install_if_missing uwu-cli install_uwu # uwu-cli for terminal UI
 install_if_missing codex install_codex # OpenAI Codex CLI
 # install_if_missing watchexec install_cargo_tools # Watchexec CLI for file watching
 
 # install tools that depend on uv (must be after uv installation)
-install_if_missing rich install_uvx_tools # Rich CLI and markitdown tools via uv
+install_if_missing rich install_rich_cli # Rich CLI for terminal output
+install_if_missing markitdown install_markitdown # Markdown converter via uv
+install_if_missing vd install_visidata # Terminal data viewer via uv
 
 
 echo "Setup completed successfully. All necessary tools and configurations have been installed and set up."
