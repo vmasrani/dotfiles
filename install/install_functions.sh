@@ -2,6 +2,7 @@
 # shellcheck shell=bash
 
 source "$HOME/dotfiles/shell/helper_functions.sh"
+source "$HOME/dotfiles/shell/gum_utils.sh"
 
 
 # Detect operating system
@@ -10,7 +11,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS_TYPE="linux"
 else
-    echo "Unsupported operating system: $OSTYPE"
+    gum_error "Unsupported operating system: $OSTYPE"
     exit 1
 fi
 
@@ -32,11 +33,11 @@ install_if_missing() {
     local install_function=$2
 
     if ! command_exists "$command_name"; then
-        echo "$command_name is not installed. Installing $command_name..."
+        gum_dim "$command_name is not installed. Installing $command_name..."
         $install_function
-        echo "$command_name installed successfully."
+        gum_success "$command_name installed successfully."
     else
-        echo "$command_name is already installed."
+        gum_dim "$command_name is already installed."
     fi
 }
 
@@ -45,11 +46,11 @@ install_if_dir_missing() {
     local install_function=$2
 
     if [ ! -d "$dir_path" ]; then
-        echo "Directory $dir_path does not exist. Installing..."
+        gum_dim "Directory $dir_path does not exist. Installing..."
         $install_function
-        echo "Installation completed successfully."
+        gum_success "Installation completed successfully."
     else
-        echo "$dir_path is already installed."
+        gum_info "$dir_path is already installed."
     fi
 }
 
@@ -65,7 +66,7 @@ install_dotfiles() {
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
 
-    echo "Creating symbolic links..."
+    gum_info "Creating symbolic links..."
 
   # Define base paths
     local dotfiles="$HOME/dotfiles"
@@ -146,9 +147,9 @@ install_dotfiles() {
 
         # Check if target already exists and points to the correct source
         if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
-            echo "Symlink already exists: $(basename "$source") -> $target"
+            gum_info "Symlink already exists: $(basename "$source") -> $target"
         else
-            echo "Linking $(basename "$source") to $target"
+            gum_info "Linking $(basename "$source") to $target"
             # Only remove if it's a broken symlink
             if [ -L "$target" ] && [ ! -e "$target" ]; then
                 rm -f "$target"
@@ -157,7 +158,7 @@ install_dotfiles() {
             if [ ! -e "$target" ]; then
                 ln -sf "$source" "$target"
             else
-                echo "Warning: $target already exists and is not a symlink to $source"
+                gum_warning "Warning: $target already exists and is not a symlink to $source"
             fi
         fi
 
@@ -202,10 +203,10 @@ install_zsh() {
                 brew install zsh vim
                 chsh -s $(which zsh)
             fi
-            echo "Installation complete. Please restart your shell to use zsh."
+            gum_success "Installation complete. Please restart your shell to use zsh."
             ;;
         * )
-            echo "Skipping installation."
+            gum_info "Skipping installation."
             return 1
             ;;
     esac
@@ -266,7 +267,7 @@ install_helix() {
 
     hx --grammar fetch
     hx --grammar build
-    echo "Helix grammars updated successfully."
+    gum_success "Helix grammars updated successfully."
 }
 
 install_glow() {
@@ -290,7 +291,7 @@ install_btop() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install btop
     fi
-    echo "btop installed successfully."
+    gum_success "btop installed successfully."
 }
 
 install_ctop() {
@@ -300,7 +301,7 @@ install_ctop() {
         sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-amd64
     fi
     sudo chmod +x /usr/local/bin/ctop
-    echo "ctop installed successfully."
+    gum_success "ctop installed successfully."
 }
 
 install_bfs() {
@@ -316,14 +317,14 @@ install_claude_code_cli() {
     npm install -g @anthropic-ai/claude-code
 
     # Run the migration to move Claude to ~/.claude
-    echo "Running Claude migration to ~/.claude..."
+    gum_success "Running Claude migration to ~/.claude..."
     if command -v claude >/dev/null 2>&1; then
-        claude migrate || echo "Migration completed or already done"
+        claude migrate || gum_success "Migration completed or already done"
     fi
 
     # Create a symlink to our cross-platform wrapper
     ln -sf "$HOME/dotfiles/tools/claude-wrapper.sh" "$HOME/bin/claude"
-    echo "Claude wrapper installed to ~/bin/claude"
+    gum_success "Claude wrapper installed to ~/bin/claude"
 }
 
 install_chafa() {
@@ -347,7 +348,7 @@ install_yq() {
 
 install_csvcut() {
     install_on_brew_or_mac "csvkit"
-    echo "csvkit installed successfully; csvcut is now available."
+    gum_success "csvkit installed successfully; csvcut is now available."
 }
 
 
@@ -355,19 +356,19 @@ install_csvcut() {
 install_xclip() {
     if [[ "$OS_TYPE" == "linux" ]]; then
         sudo apt install -y xclip
-        echo "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
-        echo "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
+        gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
+        gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
     elif [[ "$OS_TYPE" == "mac" ]]; then
-        echo "pbcopy and pbpaste are built into macOS - no additional xclip installation needed"
+        gum_info "pbcopy and pbpaste are built into macOS - no additional xclip installation needed"
     fi
 }
 
 install_xsel() {
     if [[ "$OS_TYPE" == "linux" ]]; then
         sudo apt install -y xsel
-        echo "xsel installed successfully."
+        gum_success "xsel installed successfully."
     elif [[ "$OS_TYPE" == "mac" ]]; then
-        echo "pbcopy and pbpaste are built into macOS - no additional xsel installation needed"
+        gum_info "pbcopy and pbpaste are built into macOS - no additional xsel installation needed"
     fi
 }
 
@@ -382,7 +383,7 @@ install_tmux() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install tmux
     fi
-    echo "tmux installed successfully."
+    gum_success "tmux installed successfully."
 }
 
 install_rg() {
@@ -391,7 +392,7 @@ install_rg() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install ripgrep
     fi
-    echo "rg installed successfully."
+    gum_success "rg installed successfully."
 }
 
 install_fd() {
@@ -400,7 +401,7 @@ install_fd() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install fd
     fi
-    echo "fd installed successfully."
+    gum_success "fd installed successfully."
 }
 
 install_jq() {
@@ -409,7 +410,7 @@ install_jq() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install jq
     fi
-    echo "jq installed successfully."
+    gum_success "jq installed successfully."
 }
 
 install_pq() {
@@ -418,7 +419,7 @@ install_pq() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
     fi
-    echo "pq installed successfully."
+    gum_success "pq installed successfully."
 }
 
 install_bat() {
@@ -427,7 +428,7 @@ install_bat() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install bat
     fi
-    echo "bat installed successfully."
+    gum_success "bat installed successfully."
 }
 
 install_eza() {
@@ -436,17 +437,17 @@ install_eza() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install eza
     fi
-    echo "eza installed successfully."
+    gum_success "eza installed successfully."
 }
 
 install_parquet_tools() {
     go install github.com/hangxie/parquet-tools@latest
-    echo "parquet-tools installed successfully."
+    gum_success "parquet-tools installed successfully."
 }
 
 install_fzf_tab_completion() {
     git clone https://github.com/lincheney/fzf-tab-completion "$HOME/.zprezto/contrib/fzf-tab-completion"
-    echo "fzf-tab-completion installed successfully."
+    gum_success "fzf-tab-completion installed successfully."
 
     if [[ "$OS_TYPE" == "mac" ]]; then
         brew install gawk grep gnu-sed coreutils
@@ -454,23 +455,23 @@ install_fzf_tab_completion() {
 }
 
 install_ml_helpers() {
-    echo "WARNING!!!"
-    echo "REPLACE THIS WITH UV"
+    gum_warning "WARNING!!!"
+    gum_warning "REPLACE THIS WITH UV"
     git clone https://github.com/vmasrani/machine_learning_helpers.git "$HOME/.python"
-    echo "machine_learning_helpers installed successfully."
+    gum_warning "machine_learning_helpers installed successfully."
 }
 
 
 install_hypers() {
-    echo "WARNING!!!"
-    echo "REPLACE THIS WITH UV"
+    gum_warning "WARNING!!!"
+    gum_warning "REPLACE THIS WITH UV"
     git clone https://github.com/vmasrani/hypers.git "$HOME/hypers"
-    echo "hypers installed successfully."
+    gum_warning "hypers installed successfully."
 }
 
 install_tpm() {
     git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
-    echo "tmux plugin manager installed successfully."
+    gum_success "tmux plugin manager installed successfully."
 }
 
 install_custom_tmux_scripts() {
@@ -481,7 +482,7 @@ install_custom_tmux_scripts() {
 
     # Install tmux plugins if not already installed
     if [ ! -d "$dracula_plugin" ]; then
-        echo "Installing tmux plugins (including Dracula theme)..."
+        gum_info "Installing tmux plugins (including Dracula theme)..."
         "$HOME/.tmux/plugins/tpm/bin/install_plugins"
     fi
 
@@ -493,13 +494,13 @@ install_custom_tmux_scripts() {
     ln -sf "$dotfiles/tmux/scripts/pm2_status.sh" "$tmux_scripts/pm2_status.sh"
     ln -sf "$dotfiles/tmux/scripts/pm2_status_wrapper.sh" "$tmux_scripts/pm2_status_wrapper.sh"
 
-    echo "Custom tmux scripts symlinked successfully."
+    gum_success "Custom tmux scripts symlinked successfully."
 }
 
 install_git_fuzzy() {
     git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
     ln -s "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
-    echo "git-fuzzy setup completed."
+    gum_success "git-fuzzy setup completed."
 }
 
 install_diff_so_fancy() {
@@ -507,22 +508,22 @@ install_diff_so_fancy() {
     ln -s "$HOME/bin/_diff-so-fancy/diff-so-fancy" "$HOME/bin/diff-so-fancy"
     git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
     git config --global interactive.diffFilter "diff-so-fancy --patch"
-    echo "diff-so-fancy setup completed."
+    gum_success "diff-so-fancy setup completed."
 }
 
 install_finditfaster() {
     cp ~/dotfiles/tools/find_files.sh "$(find ~/.cursor_server/extensions -type d -name 'tomrijndorp*' 2>/dev/null)" || :
-    echo "find_files.sh copied to cursor extension directory successfully."
+    gum_success "find_files.sh copied to cursor extension directory successfully."
 }
 
 install_zprezto() {
     git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
-    echo "zprezto installed successfully."
+    gum_success "zprezto installed successfully."
 }
 
 install_meslo_font() {
     if ! fc-list -q "MesloLGS NF"; then
-        echo "Installing MesloLGS NF font..."
+        gum_info "Installing MesloLGS NF font..."
         if [[ "$OS_TYPE" == "mac" ]]; then
             brew install --cask font-meslo-lg-nerd-font
         else
@@ -539,92 +540,92 @@ install_meslo_font() {
                  --output "$HOME/.local/share/fonts/MesloLGS NF Bold Italic.ttf"
             fc-cache -f -v
         fi
-        echo "MesloLGS NF font installed successfully."
+        gum_success "MesloLGS NF font installed successfully."
     else
-        echo "MesloLGS NF font is already installed."
+        gum_info "MesloLGS NF font is already installed."
     fi
 }
 
 install_iterm2() {
     if [[ "$OS_TYPE" == "mac" ]]; then
         if [ ! -d "/Applications/iTerm.app" ]; then
-            echo "Installing iTerm2..."
+            gum_info "Installing iTerm2..."
             brew install --cask iterm2
-            echo "iTerm2 installed successfully."
+            gum_success "iTerm2 installed successfully."
         else
-            echo "iTerm2 is already installed."
+            gum_info "iTerm2 is already installed."
         fi
     else
-        echo "iTerm2 is only available on macOS."
+        gum_warning "iTerm2 is only available on macOS."
     fi
 }
 
 install_nvm() {
     if [ ! -d "$HOME/.nvm" ]; then
-        echo "Installing NVM..."
+        gum_info "Installing NVM..."
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
         export NVM_DIR="$HOME/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
         nvm install --lts
         nvm use --lts
-        echo "NVM installed successfully with latest LTS Node.js."
+        gum_success "NVM installed gum_success with latest LTS Node.js."
     else
-        echo "NVM is already installed."
+        gum_warning "NVM is already installed."
     fi
 }
 
 install_unzip() {
-    echo "Installing unzip..."
+    gum_info "Installing unzip..."
     install_on_brew_or_mac unzip unzip
-    echo "unzip installed successfully."
+    gum_success "unzip installed successfully."
 }
 
 install_bun() {
-    echo "Installing Bun..."
+    gum_info "Installing Bun..."
     if [[ "$OS_TYPE" == "mac" ]]; then
         brew tap oven-sh/bun
         brew install bun
     else
         curl -fsSL https://bun.sh/install | bash
     fi
-    echo "Bun installed successfully."
+    gum_success "Bun installed successfully."
 }
 
 install_pm2() {
-    echo "Installing PM2..."
+    gum_info "Installing PM2..."
     npm install pm2 -g
-    echo "PM2 installed successfully."
+    gum_success "PM2 installed successfully."
 }
 
 install_yarn() {
-    echo "Installing Yarn..."
+    gum_info "Installing Yarn..."
     npm install --global yarn
-    echo "Yarn installed successfully."
+    gum_success "Yarn installed successfully."
 }
 
 install_rich_cli() {
     uv tool install rich-cli
-    echo "rich-cli installed successfully."
+    gum_success "rich-cli installed successfully."
 }
 
 install_markitdown() {
     uv tool install "markitdown[all]"
-    echo "markitdown installed successfully."
+    gum_success "markitdown installed successfully."
 }
 
 install_visidata() {
     uv tool install --with lxml --with pdfminer.six visidata
-    echo "visidata installed successfully."
+    gum_success "visidata installed successfully."
 }
 
 install_cargo_tools() {
     cargo install --locked watchexec-cli
-    echo "watchexec-cli installed successfully."
+    gum_success "watchexec-cli installed successfully."
 }
 
 install_uwu() {
-    echo "Installing uwu..."
+    gum_info "Installing uwu..."
     local temp_dir="/tmp/uwu_build_$$"
 
     # Clone and build in temp directory
@@ -633,7 +634,7 @@ install_uwu() {
 
     # Check if bun is installed
     if ! command_exists "bun"; then
-        echo "Bun is required for uwu. Installing bun first..."
+        gum_info "Bun is required for uwu. Installing bun first..."
         install_bun
     fi
 
@@ -656,11 +657,11 @@ install_uwu() {
     cd /
     rm -rf "$temp_dir"
 
-    echo "uwu installed successfully."
+    gum_success "uwu installed successfully."
 }
 
 install_codex() {
-    echo "Installing OpenAI Codex CLI..."
+    gum_info "Installing OpenAI Codex CLI..."
     npm install -g @openai/codex
-    echo "Codex installed successfully."
+    gum_success "Codex installed successfully."
 }
