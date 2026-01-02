@@ -8,6 +8,7 @@ Rules:
 - If insufficient information to confidently identify at least **Author** and **Title**, return the original filename cleaned of extra characters.
 - Return ONLY the new filename (without extension).
 - Do NOT add commentary or explanations.
+- ALWAYS include both first name and last name when specifying the author. NEVER just use the last name
 
 Examples of correct output:
 1. J.K. Rowling - Harry Potter - The Philosopher's Stone - 1997
@@ -26,5 +27,5 @@ Global output rules:
 - Never use: / \ : * ? " < > |
 - Replace invalid characters with hyphens or spaces
 - Use title case for titles; preserve proper names; keep acronyms uppercase (AI, DNA, CEO, CRA)
-
+    
 Original filename:
