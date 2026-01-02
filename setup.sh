@@ -65,7 +65,6 @@ install_if_missing pq install_pq # Command-line protobuf processor
 install_if_missing yq install_yq # Command-line yaml processor
 install_if_missing csvcut install_csvcut # CSV column extractor from csvkit
 install_if_missing parquet-tools install_parquet_tools # Parquet file viewer and processor
-install_if_missing shellcheck install_shellcheck # Shell script linter
 install_if_missing claude install_claude_code_cli # Claude code CLI
 install_if_missing chafa install_chafa # ASCII art image renderer
 install_if_missing xclip install_xclip # Clipboard utility for tmux integration
@@ -78,5 +77,18 @@ install_if_missing codex install_codex # OpenAI Codex CLI
 install_if_missing rich install_rich_cli # Rich CLI for terminal output
 install_if_missing markitdown install_markitdown # Markdown converter via uv
 install_if_missing vd install_visidata # Terminal data viewer via uv
+install_if_missing ty install_ty # Ty CLI tool via uv
+
+# install language servers (must be after npm and cargo installation)
+install_if_missing shellcheck install_shellcheck # Shell script linter
+install_if_missing bash-language-server install_bash_language_server # Bash LSP for editor integration
+install_if_missing yaml-language-server install_yaml_language_server # YAML LSP for editor integration
+install_if_missing vscode-html-language-server install_vscode_langservers_extracted # HTML/CSS/JSON/ESLint language servers
+install_if_missing markdown-oxide install_markdown_oxide # Markdown LSP for Helix
+install_if_missing simple-completion-language-server install_simple_completion_language_server # Simple completion LSP
+install_if_missing taplo install_taplo_cli # TOML LSP and formatter
+
+# update helix grammars
+update_helix_grammars
 
 gum_box_success "Setup completed successfully. All necessary tools and configurations have been installed and set up."
