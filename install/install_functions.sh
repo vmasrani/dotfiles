@@ -85,6 +85,7 @@ install_dotfiles() {
         "$home/.claude/commands"
         "$home/.claude/hooks"
         "$home/.claude/skills"
+        "$home/.claude/plugins"
         "$home/.claude/settings.json"
         "$home/.codex/config.toml"
     )
@@ -222,6 +223,8 @@ install_dotfiles() {
         # claude directories and files (symlink contents to ~/.claude)
         "$dotfiles/maintained_global_claude/commands:$home/.claude/commands"
         "$dotfiles/maintained_global_claude/hooks:$home/.claude/hooks"
+        "$dotfiles/maintained_global_claude/skills:$home/.claude/skills"
+        "$dotfiles/maintained_global_claude/plugins:$home/.claude/plugins"
         "$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
 
         # codex config
