@@ -4,7 +4,7 @@
     "frontend-design@claude-code-plugins": [
       {
         "scope": "user",
-        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-code-plugins/frontend-design/1.0.0",
+        "installPath": "__HOME__/.claude/plugins/cache/claude-code-plugins/frontend-design/1.0.0",
         "version": "1.0.0",
         "installedAt": "2026-01-02T05:21:31.451Z",
         "lastUpdated": "2026-01-02T05:21:31.451Z",
@@ -15,7 +15,7 @@
     "frontend@mag-claude-plugins": [
       {
         "scope": "user",
-        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/frontend/3.13.0",
+        "installPath": "__HOME__/.claude/plugins/cache/mag-claude-plugins/frontend/3.13.0",
         "version": "3.13.0",
         "installedAt": "2026-01-02T05:21:31.451Z",
         "lastUpdated": "2026-01-02T05:21:31.451Z",
@@ -26,7 +26,7 @@
     "code-analysis@mag-claude-plugins": [
       {
         "scope": "user",
-        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/code-analysis/2.4.0",
+        "installPath": "__HOME__/.claude/plugins/cache/mag-claude-plugins/code-analysis/2.4.0",
         "version": "2.4.0",
         "installedAt": "2026-01-02T05:21:31.451Z",
         "lastUpdated": "2026-01-02T05:21:31.451Z",
@@ -37,7 +37,7 @@
     "bun@mag-claude-plugins": [
       {
         "scope": "user",
-        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/bun/1.5.2",
+        "installPath": "__HOME__/.claude/plugins/cache/mag-claude-plugins/bun/1.5.2",
         "version": "1.5.2",
         "installedAt": "2026-01-02T05:21:31.451Z",
         "lastUpdated": "2026-01-02T05:21:31.451Z",
@@ -48,7 +48,7 @@
     "orchestration@mag-claude-plugins": [
       {
         "scope": "user",
-        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/orchestration/0.5.0",
+        "installPath": "__HOME__/.claude/plugins/cache/mag-claude-plugins/orchestration/0.5.0",
         "version": "0.5.0",
         "installedAt": "2026-01-02T05:21:31.451Z",
         "lastUpdated": "2026-01-02T05:21:31.451Z",

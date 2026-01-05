@@ -1,0 +1,8 @@
+# Machine-specific plugin files - generated from templates during setup
+known_marketplaces.json
+installed_plugins.json
+install-counts-cache.json
+
+# Plugin cache and marketplaces - managed by Claude Code
+marketplaces/
+cache/
