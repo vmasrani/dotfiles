@@ -272,6 +272,34 @@ install_local_dotfiles() {
     touch "$HOME/dotfiles/local/.secrets"
 }
 
+generate_plugin_configs() {
+    local plugins_dir="$HOME/dotfiles/maintained_global_claude/plugins"
+    local templates=(
+        "known_marketplaces.json"
+        "installed_plugins.json"
+    )
+
+    gum_dim "Generating plugin configuration files from templates..."
+
+    for template_name in "${templates[@]}"; do
+        local template_file="${plugins_dir}/${template_name}.template"
+        local output_file="${plugins_dir}/${template_name}"
+
+        if [ -f "$template_file" ]; then
+            # Replace __HOME__ with actual home directory
+            # Use a temp file and then move to avoid noclobber issues
+            local temp_file="${output_file}.tmp"
+            sed "s|__HOME__|$HOME|g" "$template_file" > "$temp_file"
+            mv -f "$temp_file" "$output_file"
+            gum_dim "  ✓ Generated $template_name"
+        else
+            gum_warning "  ⚠ Template not found: $template_file"
+        fi
+    done
+
+    gum_success "Plugin configuration files generated successfully"
+}
+
 
 install_zsh() {
     read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
