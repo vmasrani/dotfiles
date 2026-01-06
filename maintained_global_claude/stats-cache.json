@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastComputedDate": "2025-12-20",
+  "lastComputedDate": "2026-01-01",
   "dailyActivity": [
     {
       "date": "2025-11-25",
@@ -73,6 +73,42 @@
       "messageCount": 101,
       "sessionCount": 3,
       "toolCallCount": 27
+    },
+    {
+      "date": "2025-12-22",
+      "messageCount": 38,
+      "sessionCount": 1,
+      "toolCallCount": 8
+    },
+    {
+      "date": "2025-12-28",
+      "messageCount": 356,
+      "sessionCount": 4,
+      "toolCallCount": 126
+    },
+    {
+      "date": "2025-12-29",
+      "messageCount": 716,
+      "sessionCount": 4,
+      "toolCallCount": 247
+    },
+    {
+      "date": "2025-12-30",
+      "messageCount": 374,
+      "sessionCount": 1,
+      "toolCallCount": 110
+    },
+    {
+      "date": "2025-12-31",
+      "messageCount": 1882,
+      "sessionCount": 5,
+      "toolCallCount": 450
+    },
+    {
+      "date": "2026-01-01",
+      "messageCount": 1148,
+      "sessionCount": 9,
+      "toolCallCount": 314
     }
   ],
   "dailyModelTokens": [
@@ -142,14 +178,50 @@
       "tokensByModel": {
         "claude-sonnet-4-5-20250929": 20985
       }
+    },
+    {
+      "date": "2025-12-22",
+      "tokensByModel": {
+        "claude-sonnet-4-5-20250929": 2312
+      }
+    },
+    {
+      "date": "2025-12-28",
+      "tokensByModel": {
+        "claude-sonnet-4-5-20250929": 85179
+      }
+    },
+    {
+      "date": "2025-12-29",
+      "tokensByModel": {
+        "claude-sonnet-4-5-20250929": 168234
+      }
+    },
+    {
+      "date": "2025-12-30",
+      "tokensByModel": {
+        "claude-sonnet-4-5-20250929": 31601
+      }
+    },
+    {
+      "date": "2025-12-31",
+      "tokensByModel": {
+        "claude-sonnet-4-5-20250929": 257998
+      }
+    },
+    {
+      "date": "2026-01-01",
+      "tokensByModel": {
+        "claude-sonnet-4-5-20250929": 225439
+      }
     }
   ],
   "modelUsage": {
     "claude-sonnet-4-5-20250929": {
-      "inputTokens": 364719,
-      "outputTokens": 860255,
-      "cacheReadInputTokens": 161668151,
-      "cacheCreationInputTokens": 20377700,
+      "inputTokens": 555428,
+      "outputTokens": 1440309,
+      "cacheReadInputTokens": 325902995,
+      "cacheCreationInputTokens": 40397492,
       "webSearchRequests": 0,
       "costUSD": 0,
       "contextWindow": 0
@@ -164,8 +236,8 @@
       "contextWindow": 0
     }
   },
-  "totalSessions": 97,
-  "totalMessages": 6180,
+  "totalSessions": 121,
+  "totalMessages": 10694,
   "longestSession": {
     "sessionId": "9188d6ba-2cbe-40d7-84fd-40d603d45766",
     "duration": 110533464,
@@ -174,20 +246,20 @@
   },
   "firstSessionDate": "2025-11-25T21:21:16.174Z",
   "hourCounts": {
-    "0": 11,
-    "1": 4,
+    "0": 12,
+    "1": 5,
     "2": 3,
     "11": 6,
     "12": 7,
-    "13": 5,
-    "14": 17,
+    "13": 9,
+    "14": 20,
     "15": 1,
-    "16": 3,
+    "16": 5,
     "17": 1,
     "19": 2,
-    "20": 2,
-    "21": 14,
-    "22": 10,
-    "23": 11
+    "20": 3,
+    "21": 20,
+    "22": 15,
+    "23": 12
   }
 }

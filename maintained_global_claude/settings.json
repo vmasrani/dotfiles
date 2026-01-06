@@ -68,7 +68,12 @@
     "bun@mag-claude-plugins": true,
     "orchestration@mag-claude-plugins": true,
     "pyright-lsp@claude-plugins-official": true,
-    "rust-analyzer-lsp@claude-plugins-official": true
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "ralph-wiggum@claude-plugins-official": true,
+    "ralph-wiggum@claude-code-plugins": true
   },
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006

@@ -21,6 +21,8 @@ install_if_missing zsh install_zsh
 # install dotfiles
 install_if_dir_missing ~/dotfiles/local install_local_dotfiles
 
+# generate plugin configs from templates
+generate_plugin_configs
 
 install_dotfiles
 install_meslo_font # MesloLGS NF font for Powerlevel10k theme

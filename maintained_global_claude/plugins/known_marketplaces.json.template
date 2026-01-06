@@ -1,0 +1,26 @@
+{
+  "claude-code-plugins": {
+    "source": {
+      "source": "github",
+      "repo": "anthropics/claude-code"
+    },
+    "installLocation": "__HOME__/.claude/plugins/marketplaces/claude-code-plugins",
+    "lastUpdated": "2026-01-03T07:22:52.342Z"
+  },
+  "mag-claude-plugins": {
+    "source": {
+      "source": "github",
+      "repo": "MadAppGang/claude-code"
+    },
+    "installLocation": "__HOME__/.claude/plugins/marketplaces/mag-claude-plugins",
+    "lastUpdated": "2026-01-03T07:24:48.219Z"
+  },
+  "claude-plugins-official": {
+    "source": {
+      "source": "github",
+      "repo": "anthropics/claude-plugins-official"
+    },
+    "installLocation": "__HOME__/.claude/plugins/marketplaces/claude-plugins-official",
+    "lastUpdated": "2026-01-03T07:24:49.236Z"
+  }
+}
