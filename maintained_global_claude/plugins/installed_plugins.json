@@ -55,6 +55,28 @@
         "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
         "isLocal": true
       }
+    ],
+    "pyright-lsp@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-05T04:56:06.388Z",
+        "lastUpdated": "2026-01-05T04:56:06.388Z",
+        "gitCommitSha": "89b70896cb6346261184ba5c1ebdf1807323d423",
+        "isLocal": true
+      }
+    ],
+    "rust-analyzer-lsp@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-05T06:28:50.979Z",
+        "lastUpdated": "2026-01-05T06:28:50.979Z",
+        "gitCommitSha": "89b70896cb6346261184ba5c1ebdf1807323d423",
+        "isLocal": true
+      }
     ]
   }
 }

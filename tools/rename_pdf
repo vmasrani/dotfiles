@@ -1,16 +1,30 @@
 #!/usr/bin/env zsh
 # rename_pdf - Rename PDF files using AI based on content
-# Usage: rename_pdf <filename.pdf>
+# Usage: rename_pdf [-f] <filename.pdf>
+#   -f    Force rename even if file has already been processed
 
 # Source gum utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "$SCRIPT_DIR/../shell/gum_utils.sh"
 
+# Parse flags
+force=0
+while getopts "f" opt; do
+    case $opt in
+        f) force=1 ;;
+        *)
+            gum_error "Error: Invalid option" "Usage: $0 [-f] <filename>"
+            exit 1
+            ;;
+    esac
+done
+shift $((OPTIND - 1))
+
 file="$1"
 
 # Check if file argument provided
 if [[ -z "$file" ]]; then
-    gum_error "Error: No file provided" "Usage: $0 <filename>"
+    gum_error "Error: No file provided" "Usage: $0 [-f] <filename>"
     exit 1
 fi
 
@@ -20,8 +34,8 @@ if [[ ! -f "$file" ]]; then
     exit 1
 fi
 
-# Skip if already processed (has Green tag)
-if tag -l "$file" 2>/dev/null | grep -q "Green"; then
+# Skip if already processed (has Green tag) unless force flag is set
+if [[ $force -eq 0 ]] && tag -l "$file" 2>/dev/null | grep -q "Green"; then
     gum_dim "Skipping (already processed): $(basename "$file")"
     exit 0
 fi
@@ -35,7 +49,7 @@ old_basename="$(basename "$file")"
 dir="$(dirname "$file")"
 
 # Extract text from PDF
-text=$(gum_spin_quick "Extracting PDF content..." zsh -c 'pdf_extract_pages "$1" | markitdown' -- "$file")
+text=$(pdf_extract_pages "$file" | markitdown)
 
 # Check if extraction succeeded
 if [[ -z "$text" ]]; then
@@ -46,10 +60,10 @@ fi
 
 # Generate new name using AI
 system_prompt="$(cat $HOME/.claude/commands/file-renamer.md) $file."
-# Save prompt to temp file to avoid shell escaping issues with gum spin
+# Save prompt to temp file to avoid shell escaping issues
 temp_prompt="/tmp/rename_pdf_prompt_$$.txt"
 echo "$system_prompt $text" > "$temp_prompt"
-new_name=$(gum_spin_quick "Generating filename with AI..." zsh -c 'oai "$(cat "$1")"' -- "$temp_prompt")
+new_name=$(oai "$(cat "$temp_prompt")")
 rm -f "$temp_prompt"
 
 # Check if we got a valid response
