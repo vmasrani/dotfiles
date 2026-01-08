@@ -1,0 +1,159 @@
+{
+  "version": 2,
+  "plugins": {
+    "frontend-design@claude-code-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-code-plugins/frontend-design/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-02T05:21:31.451Z",
+        "lastUpdated": "2026-01-02T05:21:31.451Z",
+        "gitCommitSha": "eb872450105745e9489c6f6d73fa2fb4ff5a1e9a",
+        "isLocal": true
+      }
+    ],
+    "frontend@mag-claude-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/frontend/3.13.0",
+        "version": "3.13.0",
+        "installedAt": "2026-01-02T05:21:31.451Z",
+        "lastUpdated": "2026-01-02T05:21:31.451Z",
+        "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
+        "isLocal": true
+      }
+    ],
+    "code-analysis@mag-claude-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/code-analysis/2.4.0",
+        "version": "2.4.0",
+        "installedAt": "2026-01-02T05:21:31.451Z",
+        "lastUpdated": "2026-01-02T05:21:31.451Z",
+        "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
+        "isLocal": true
+      }
+    ],
+    "bun@mag-claude-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/bun/1.5.2",
+        "version": "1.5.2",
+        "installedAt": "2026-01-02T05:21:31.451Z",
+        "lastUpdated": "2026-01-02T05:21:31.451Z",
+        "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
+        "isLocal": true
+      }
+    ],
+    "orchestration@mag-claude-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/mag-claude-plugins/orchestration/0.5.0",
+        "version": "0.5.0",
+        "installedAt": "2026-01-02T05:21:31.451Z",
+        "lastUpdated": "2026-01-02T05:21:31.451Z",
+        "gitCommitSha": "ac738899b2cf55c4ca598aa9c77f852f16c4b1a4",
+        "isLocal": true
+      }
+    ],
+    "pyright-lsp@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-05T04:56:06.388Z",
+        "lastUpdated": "2026-01-05T04:56:06.388Z",
+        "gitCommitSha": "89b70896cb6346261184ba5c1ebdf1807323d423",
+        "isLocal": true
+      }
+    ],
+    "rust-analyzer-lsp@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-05T06:28:50.979Z",
+        "lastUpdated": "2026-01-05T06:28:50.979Z",
+        "gitCommitSha": "89b70896cb6346261184ba5c1ebdf1807323d423",
+        "isLocal": true
+      }
+    ],
+    "frontend-design@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/frontend-design/6d3752c000e2",
+        "version": "6d3752c000e2",
+        "installedAt": "2026-01-06T23:05:09.277Z",
+        "lastUpdated": "2026-01-06T23:05:09.277Z",
+        "gitCommitSha": "6d3752c000e2b3d0e6137bd7adb04895d6f40f14",
+        "isLocal": true
+      }
+    ],
+    "context7@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/context7/6d3752c000e2",
+        "version": "6d3752c000e2",
+        "installedAt": "2026-01-06T23:05:09.277Z",
+        "lastUpdated": "2026-01-06T23:05:09.277Z",
+        "gitCommitSha": "6d3752c000e2b3d0e6137bd7adb04895d6f40f14",
+        "isLocal": true
+      }
+    ],
+    "typescript-lsp@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/typescript-lsp/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-06T23:05:09.277Z",
+        "lastUpdated": "2026-01-06T23:05:09.277Z",
+        "gitCommitSha": "6d3752c000e2b3d0e6137bd7adb04895d6f40f14",
+        "isLocal": true
+      }
+    ],
+    "ralph-wiggum@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/ralph-wiggum/6d3752c000e2",
+        "version": "6d3752c000e2",
+        "installedAt": "2026-01-06T23:05:09.277Z",
+        "lastUpdated": "2026-01-06T23:05:09.277Z",
+        "gitCommitSha": "6d3752c000e2b3d0e6137bd7adb04895d6f40f14",
+        "isLocal": true
+      }
+    ],
+    "ralph-wiggum@claude-code-plugins": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-code-plugins/ralph-wiggum/1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-01-06T23:05:09.277Z",
+        "lastUpdated": "2026-01-06T23:05:09.277Z",
+        "gitCommitSha": "eb872450105745e9489c6f6d73fa2fb4ff5a1e9a",
+        "isLocal": true
+      }
+    ],
+    "commit-commands@claude-plugins-official": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/commit-commands/unknown",
+        "version": "unknown",
+        "installedAt": "2026-01-06T23:05:32.610Z",
+        "lastUpdated": "2026-01-06T23:05:32.610Z",
+        "gitCommitSha": "08e667246b371f8cb95a92e51265c239b69f9c87",
+        "isLocal": true
+      }
+    ],
+    "claude-mem@thedotmack": [
+      {
+        "scope": "user",
+        "installPath": "/Users/vmasrani/.claude/plugins/cache/thedotmack/claude-mem/9.0.0",
+        "version": "9.0.0",
+        "installedAt": "2026-01-07T20:53:25.918Z",
+        "lastUpdated": "2026-01-07T20:53:25.918Z",
+        "gitCommitSha": "08e667246b371f8cb95a92e51265c239b69f9c87",
+        "isLocal": true
+      }
+    ]
+  }
+}

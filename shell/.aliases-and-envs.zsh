@@ -113,3 +113,4 @@ alias gpt='oai'
 # }
 
 export TABSTACK_API_KEY="23d0b47596440ff73e012c941e343dba6c861df78c5346047dfa340d7aa56877"
+alias g='glow'

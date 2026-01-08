@@ -92,3 +92,5 @@ export OLLAMA_CONTEXT_LENGTH=40000
 
 # HACK
 export OLLAMA_CONTEXT_LENGTH=40000
+
+alias claude-mem='bun "/Users/vmasrani/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
