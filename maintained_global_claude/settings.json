@@ -62,18 +62,20 @@
     "command": "zsh ~/.claude/statusline.sh"
   },
   "enabledPlugins": {
-    "frontend-design@claude-code-plugins": true,
-    "frontend@mag-claude-plugins": true,
-    "code-analysis@mag-claude-plugins": true,
-    "bun@mag-claude-plugins": true,
-    "orchestration@mag-claude-plugins": true,
-    "pyright-lsp@claude-plugins-official": true,
-    "rust-analyzer-lsp@claude-plugins-official": true,
-    "frontend-design@claude-plugins-official": true,
+    "frontend-design@claude-code-plugins": false,
+    "frontend@mag-claude-plugins": false,
+    "code-analysis@mag-claude-plugins": false,
+    "bun@mag-claude-plugins": false,
+    "orchestration@mag-claude-plugins": false,
+    "pyright-lsp@claude-plugins-official": false,
+    "rust-analyzer-lsp@claude-plugins-official": false,
+    "frontend-design@claude-plugins-official": false,
     "context7@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true,
-    "ralph-wiggum@claude-plugins-official": true,
-    "ralph-wiggum@claude-code-plugins": true
+    "typescript-lsp@claude-plugins-official": false,
+    "ralph-wiggum@claude-plugins-official": false,
+    "ralph-wiggum@claude-code-plugins": false,
+    "commit-commands@claude-plugins-official": false,
+    "claude-mem@thedotmack": false
   },
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006

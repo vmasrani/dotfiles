@@ -59,7 +59,7 @@
     "pyright-lsp@claude-plugins-official": [
       {
         "scope": "user",
-        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
+        "installPath": "__HOME__/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0",
         "version": "1.0.0",
         "installedAt": "2026-01-05T04:56:06.388Z",
         "lastUpdated": "2026-01-05T04:56:06.388Z",
@@ -70,7 +70,7 @@
     "rust-analyzer-lsp@claude-plugins-official": [
       {
         "scope": "user",
-        "installPath": "/Users/vmasrani/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0",
+        "installPath": "__HOME__/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0",
         "version": "1.0.0",
         "installedAt": "2026-01-05T06:28:50.979Z",
         "lastUpdated": "2026-01-05T06:28:50.979Z",
