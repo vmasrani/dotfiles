@@ -8,7 +8,7 @@ __pycache__
 maintained_global_claude/.checksums
 maintained_global_claude/ide/
 maintained_global_claude/file-history/
-
+maintained_global_claude/plugins/marketplaces/
 maintained_global_claude/projects/
 maintained_global_claude/shell-snapshots/
 maintained_global_claude/statsig/
