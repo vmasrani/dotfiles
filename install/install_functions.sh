@@ -86,6 +86,7 @@ install_dotfiles() {
         "$home/.claude/hooks"
         "$home/.claude/skills"
         "$home/.claude/plugins"
+        "$home/.claude/CLAUDE.md"
         "$home/.claude/settings.json"
         "$home/.codex/config.toml"
     )
@@ -170,7 +171,7 @@ install_dotfiles() {
         "$dotfiles/preview/torch-preview.sh:$bin/torch-preview"
         "$dotfiles/preview/npy-preview.py:$bin/npy-preview"
         "$dotfiles/preview/feather-preview.py:$bin/feather-preview"
-
+        "$dotfiles/preview/pkl-preview.py:$bin/pkl-preview"
 
         # editor dotfiles
         "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
@@ -226,6 +227,7 @@ install_dotfiles() {
         "$dotfiles/maintained_global_claude/skills:$home/.claude/skills"
         "$dotfiles/maintained_global_claude/plugins:$home/.claude/plugins"
         "$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
+        "$dotfiles/maintained_global_claude/CLAUDE.md:$home/.claude/CLAUDE.md"
 
         # codex config
         "$dotfiles/codex/config.toml:$home/.codex/config.toml"
@@ -390,14 +392,6 @@ install_helix() {
 update_helix_grammars() {
     gum_info "Fetching and building Helix grammars..."
     hx --grammar fetch || gum_warning "Some grammars failed to fetch (this is usually ok)"
-
-    # Remove problematic hare grammar if it exists
-    local hare_grammar_dir="$HOME/.config/helix/runtime/grammars/sources/hare"
-    if [ -d "$hare_grammar_dir" ]; then
-        gum_info "Removing problematic hare grammar..."
-        rm -rf "$hare_grammar_dir"
-    fi
-
     hx --grammar build || gum_warning "Some grammars failed to build (this is usually ok)"
     gum_success "Helix grammars updated."
 }

@@ -15,7 +15,7 @@ if [[ -f $1 ]]; then
       jq -C . "$1" 2>/dev/null || bat -n --color=always "$1"
       ;;
     *.pkl|*.pickle)
-      pq '' "$1"
+      pkl-preview "$1"
       ;;
     *.pt)
       torch-preview "$1"
