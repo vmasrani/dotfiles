@@ -1,0 +1,12 @@
+#!/usr/bin/env zsh
+# Render HTML as markdown and display with glow
+# Supports syntax highlighting for code blocks
+# Requires: html2text, glow
+
+# Process HTML: extract code blocks and convert to markdown
+perl -0777pe 's/(<code class="sourceCode\s?)(\w+?)(">)(.*?)(<\/code>)/\1\2\3\n```\2\n\4\n```\n\5/gs' "$1" | \
+    html2text | \
+    sed -re 's/^\s+(```(\w+)?)/\1/gm' > /tmp/mutt.md
+
+# Render with glow, stripping problematic escape codes
+glow -s dark /tmp/mutt.md 2>/dev/null | sed 's/\x1b\[[6-9;]*m//g'

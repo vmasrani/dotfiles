@@ -101,6 +101,11 @@ alias ccc='claude --continue'
 alias upd='update-packages'
 alias updq='update-packages --quiet'
 
+# neomutt email client
+alias mutt='neomutt -F ~/.config/mutt/muttrc'
+export ESCDELAY=0  # Required for responsive neomutt keybindings
+export NOTMUCH_CONFIG="$HOME/.config/notmuch/notmuchrc"
+
 
 # uwu shorcut
 alias ::='uwu-cli'
@@ -114,3 +119,4 @@ alias gpt='oai'
 
 export TABSTACK_API_KEY="23d0b47596440ff73e012c941e343dba6c861df78c5346047dfa340d7aa56877"
 alias g='glow'
+

@@ -82,10 +82,10 @@ install_dotfiles() {
     # Targets we always want to match the repo source (delete existing non-matching
     # file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
     declare -a force_replace_targets=(
+        "$home/.claude/agents"
         "$home/.claude/commands"
         "$home/.claude/hooks"
         "$home/.claude/skills"
-        "$home/.claude/plugins"
         "$home/.claude/CLAUDE.md"
         "$home/.claude/settings.json"
         "$home/.codex/config.toml"
@@ -222,15 +222,38 @@ install_dotfiles() {
         "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
 
         # claude directories and files (symlink contents to ~/.claude)
+        # NOTE: plugins/ is NOT symlinked - it contains machine-specific paths
+        "$dotfiles/maintained_global_claude/agents:$home/.claude/agents"
         "$dotfiles/maintained_global_claude/commands:$home/.claude/commands"
         "$dotfiles/maintained_global_claude/hooks:$home/.claude/hooks"
         "$dotfiles/maintained_global_claude/skills:$home/.claude/skills"
-        "$dotfiles/maintained_global_claude/plugins:$home/.claude/plugins"
         "$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
         "$dotfiles/maintained_global_claude/CLAUDE.md:$home/.claude/CLAUDE.md"
 
         # codex config
         "$dotfiles/codex/config.toml:$home/.codex/config.toml"
+
+        # mutt/neomutt configuration
+        "$dotfiles/mutt/muttrc:$home/.config/mutt/muttrc"
+        "$dotfiles/mutt/mailcap:$home/.config/mutt/mailcap"
+        "$dotfiles/mutt/styles.muttrc:$home/.config/mutt/styles.muttrc"
+        "$dotfiles/mutt/keys:$home/.config/mutt/keys"
+        "$dotfiles/mutt/accounts:$home/.config/mutt/accounts"
+
+        # mutt helper scripts
+        "$dotfiles/mutt/scripts/mailsync:$bin/mailsync"
+        "$dotfiles/mutt/scripts/beautiful_html_render:$bin/beautiful_html_render"
+        "$dotfiles/mutt/scripts/mutt-trim:$bin/mutt-trim"
+        "$dotfiles/mutt/scripts/mutt-viewical:$bin/mutt-viewical"
+        "$dotfiles/mutt/scripts/render-calendar-attachment.py:$bin/render-calendar-attachment.py"
+
+        # mutt supporting configs
+        "$dotfiles/mutt/isync/mbsyncrc:$home/.config/isync/mbsyncrc"
+        "$dotfiles/mutt/msmtp/config:$home/.config/msmtp/config"
+        "$dotfiles/mutt/notmuch/notmuchrc:$home/.config/notmuch/notmuchrc"
+
+        # mutt secrets (local file, git-ignored)
+        "$dotfiles/local/.mutt_secrets:$home/.mutt_secrets"
     )
 
     # Create all symlinks in a single loop
@@ -794,4 +817,41 @@ install_codex() {
     gum_info "Installing OpenAI Codex CLI..."
     npm install -g @openai/codex
     gum_success "Codex installed successfully."
+}
+
+install_neomutt() {
+    gum_info "Installing NeoMutt and email tools..."
+
+    # Install core packages
+    install_on_brew_or_mac "neomutt"
+    install_on_brew_or_mac "isync"
+    install_on_brew_or_mac "msmtp"
+    install_on_brew_or_mac "notmuch"
+    install_on_brew_or_mac "html2text"
+    install_on_brew_or_mac "urlscan"
+    install_on_brew_or_mac "pandoc"
+
+    # Ensure glow is installed (used by beautiful_html_render)
+    install_if_missing glow install_glow
+
+    # Create mail directories
+    mkdir -p "$HOME/.local/share/mail/gmail/INBOX/cur"
+    mkdir -p "$HOME/.local/share/mail/gmail/INBOX/new"
+    mkdir -p "$HOME/.local/share/mail/gmail/INBOX/tmp"
+    mkdir -p "$HOME/.cache/mutt/gmail/headers"
+    mkdir -p "$HOME/.cache/mutt/gmail/bodies"
+    mkdir -p "$HOME/.config/mutt"
+    mkdir -p "$HOME/.config/isync"
+    mkdir -p "$HOME/.config/msmtp"
+    mkdir -p "$HOME/.config/notmuch"
+
+    # Create mailsync timestamp file
+    touch "$HOME/.config/mutt/.mailsynclastrun"
+
+    gum_success "NeoMutt and email tools installed successfully."
+    gum_info "Next steps:"
+    gum_info "  1. Ensure ~/.mutt_secrets has your Gmail app password"
+    gum_info "  2. Run: mbsync -a  (to sync mail)"
+    gum_info "  3. Run: notmuch new  (to index mail)"
+    gum_info "  4. Launch: neomutt -F ~/.config/mutt/muttrc"
 }

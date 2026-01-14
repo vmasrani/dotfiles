@@ -1,0 +1,33 @@
+# vim: filetype=mailcap
+# MIME type handlers for neomutt
+
+# HTML emails - render inline using beautiful_html_render (html2text + glow)
+text/html; beautiful_html_render %s; nametemplate=%s.html; copiousoutput;
+
+# Calendar invites - render inline
+text/calendar; render-calendar-attachment.py %s; copiousoutput;
+application/ics; mutt-viewical; copiousoutput;
+
+# Open images externally (macOS)
+image/*; open %s;
+
+# Open videos in default player (macOS)
+video/*; open %s;
+
+# Open PDFs externally (macOS)
+application/pdf; open %s;
+
+# Open spreadsheets externally (macOS)
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; open %s;
+application/vnd.ms-excel; open %s;
+
+# Open Word documents externally (macOS)
+application/vnd.openxmlformats-officedocument.wordprocessingml.document; open %s;
+application/msword; open %s;
+
+# Open PowerPoint externally (macOS)
+application/vnd.openxmlformats-officedocument.presentationml.presentation; open %s;
+application/vnd.ms-powerpoint; open %s;
+
+# Fallback for any other files - open with system default
+application/*; open %s;

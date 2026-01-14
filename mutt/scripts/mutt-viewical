@@ -1,0 +1,226 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["icalendar", "pytz", "tzlocal"]
+# ///
+"""Parse and display calendar invitations from stdin."""
+
+import datetime
+import os
+import re
+import sys
+
+import icalendar
+import pytz
+import tzlocal
+
+TIME_FORMAT = '%-I:%M %p'
+DATE_FORMAT = '%A, %B %-d, %Y'
+DATETIME_FORMAT = f"{DATE_FORMAT} {TIME_FORMAT}"
+
+FREQ_UNITS = {
+    'SECONDLY': 'second',
+    'MINUTELY': 'minute',
+    'HOURLY': 'hour',
+    'DAILY': 'day',
+    'WEEKLY': 'week',
+    'MONTHLY': 'month',
+    'YEARLY': 'year',
+}
+
+# Get local timezone
+tz = pytz.timezone(os.environ['TZ']) if 'TZ' in os.environ else tzlocal.get_localzone()
+
+
+def get_dtend(event):
+    return event['DTEND'].dt if 'DTEND' in event else None
+
+
+def localize(dt):
+    """Take a datetime in an arbitrary timezone and return it in local timezone."""
+    global tz
+    return dt.astimezone(tz) if dt.tzinfo else tz.localize(dt)
+
+
+def format_time(dt):
+    dtlocal = localize(dt)
+    fmt = dtlocal.strftime(TIME_FORMAT)
+    if fmt == '12:00 PM':
+        return 'noon'
+    elif fmt == '12:00 AM':
+        return 'midnight'
+    return fmt
+
+
+def format_date(dt):
+    dtlocal = localize(dt) if isinstance(dt, datetime.datetime) else dt
+    return dtlocal.strftime(DATE_FORMAT)
+
+
+def format_datetime(dt):
+    return localize(dt).strftime(DATETIME_FORMAT)
+
+
+def format_person(person):
+    if 'ROLE' in person.params:
+        role = person.params['ROLE']
+        status_tpl = {
+            'CHAIR': '{%s} ',
+            'REQ-PARTICIPANT': '[%s] ',
+            'OPT-PARTICIPANT': '<%s> ',
+            'NON-PARTICIPANT': '(%s) ',
+        }.get(role, '?%s? ')
+    else:
+        status_tpl = '_%s_ '
+
+    if 'PARTSTAT' in person.params:
+        status = person.params['PARTSTAT']
+        status_map = {
+            'NEEDS-ACTION': ' ',
+            'ACCEPTED': 'Y',
+            'DECLINED': '-',
+            'TENTATIVE': '~',
+        }
+        display_status = status_tpl % status_map.get(status, '?')
+    else:
+        display_status = ''
+
+    email_address = re.sub('mailto:', '', person, flags=re.I)
+    if 'CN' in person.params:
+        if re.search(f'^[\'"]?{re.escape(email_address)}[\'"]?$', person.params['CN']):
+            display_name = email_address
+        else:
+            display_name = f"{person.params['CN']} <{email_address}>"
+    else:
+        display_name = email_address
+
+    return display_status + display_name
+
+
+def main():
+    cal = icalendar.Calendar.from_ical(sys.stdin.read())
+
+    if 'METHOD' in cal:
+        method_messages = {
+            'PUBLISH': '=== Publication ===',
+            'REQUEST': '=== Reply Requested ===',
+            'REPLY': '=== Response to Earlier Request ===',
+            'ADD': '=== Request to Add a Calendar Entry ===',
+            'CANCEL': '=== Cancellation ===',
+            'REFRESH': '=== Request for Updated Information ===',
+            'COUNTER': '=== Response to Earlier Request with Changes ===',
+            'DECLINECOUNTER': '=== Denial of Request for Changes to Earlier Proposal ===',
+        }
+        if cal['METHOD'] in method_messages:
+            print(method_messages[cal['METHOD']])
+            print()
+
+    for event in cal.subcomponents:
+        if event.name != 'VEVENT':
+            continue
+
+        if 'CLASS' in event and event['CLASS'] != 'PUBLIC':
+            print(f"Classification: {event['CLASS']}")
+        if 'STATUS' in event and event['STATUS'] != 'CONFIRMED':
+            print(f"Status:    {event['STATUS']}")
+        if 'ORGANIZER' in event:
+            print(f"Organizer: {format_person(event['ORGANIZER'])}")
+        if 'SUMMARY' in event:
+            print(f"Event:     {event['SUMMARY']}")
+        elif 'UID' in event:
+            print(f"UID:       {event['UID']}")
+
+        if 'DTSTART' in event:
+            dtstart = event['DTSTART'].dt
+            dtend = get_dtend(event)
+
+            if isinstance(dtstart, datetime.datetime):
+                if dtend:
+                    if dtstart.date() == dtend.date():
+                        print(f"Date:      {format_date(dtstart)}")
+                        print(f"Starts:    {format_time(dtstart)}")
+                        print(f"Ends:      {format_time(dtend)}")
+                    else:
+                        print(f"Starts:    {format_datetime(dtstart)}")
+                        print(f"Ends:      {format_datetime(dtend)}")
+                else:
+                    print(f"Starts:    {format_datetime(dtstart)}")
+            else:
+                if dtend and dtstart != dtend:
+                    print(f"Starts:    {format_date(dtstart)}")
+                    print(f"Ends:      {format_date(dtend)}")
+                else:
+                    print(f"Date:      {format_date(dtstart)}")
+
+        if 'RRULE' in event:
+            rrule = event['RRULE']
+            interval = ""
+            freq = ""
+            count = ""
+            until = ""
+
+            if 'INTERVAL' in rrule:
+                try:
+                    interval_num = int(rrule['INTERVAL'][0])
+                    if interval_num == 1:
+                        interval = ''
+                    elif interval_num == 2:
+                        interval = 'other '
+                    elif interval_num // 10 % 10 == 1:
+                        interval = f'{interval_num}th '
+                    elif interval_num % 10 == 2:
+                        interval = f'{interval_num}nd '
+                    elif interval_num % 10 == 3:
+                        interval = f'{interval_num}rd '
+                    else:
+                        interval = f'{interval_num}th '
+                except ValueError:
+                    interval = rrule['INTERVAL'][0]
+
+            if 'FREQ' in rrule:
+                if rrule['FREQ'][0] in FREQ_UNITS:
+                    freq_unit = FREQ_UNITS[rrule['FREQ'][0]]
+                    freq = f'Every {interval}{freq_unit}'
+                else:
+                    freq_unit = rrule['FREQ'][0][:-2].lower()
+                    freq = f"{rrule['FREQ'][0]}, with an interval of {rrule['INTERVAL']}"
+            else:
+                freq_unit = 'interval'
+                freq = 'Every <unknown interval>'
+
+            if 'COUNT' in rrule:
+                count = f"for {rrule['COUNT'][0]} {freq_unit}s"
+            if 'UNTIL' in rrule:
+                if isinstance(rrule['UNTIL'][0], datetime.datetime):
+                    until = f"until {format_datetime(rrule['UNTIL'][0])}"
+                else:
+                    until = f"until {format_date(rrule['UNTIL'][0])}"
+
+            params = [x for x in [freq, count, until] if x]
+            print(f"Recurs:    {' '.join(params)}")
+
+        if 'URL' in event:
+            print(f"URL:       {event['URL']}")
+        if 'LOCATION' in event:
+            print(f"Location:  {event['LOCATION']}")
+        if 'CONTACT' in event:
+            print(f"Contact:   {event['CONTACT']}")
+
+        if 'ATTENDEE' in event:
+            attendees = event['ATTENDEE']
+            if isinstance(attendees, list):
+                print(f"Attendees: {format_person(attendees[0])}")
+                for attendee in attendees[1:]:
+                    print(f"           {format_person(attendee)}")
+            else:
+                print(f"Attendee:  {format_person(attendees)}")
+
+        if 'DESCRIPTION' in event:
+            print("Description:")
+            print(event['DESCRIPTION'])
+
+        print()
+
+
+if __name__ == "__main__":
+    main()
