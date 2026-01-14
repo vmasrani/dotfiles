@@ -1,0 +1,19 @@
+# vim: filetype=conf
+# notmuch configuration for email indexing and search
+
+[database]
+path=/Users/vmasrani/.local/share/mail
+
+[user]
+name=Vaden Masrani
+primary_email=vadmas@gmail.com
+
+[new]
+tags=new
+ignore=.mbsyncstate;.strstrm;.lock
+
+[search]
+exclude_tags=deleted;spam
+
+[maildir]
+synchronize_flags=true

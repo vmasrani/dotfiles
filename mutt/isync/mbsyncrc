@@ -1,0 +1,35 @@
+# vim: filetype=conf
+# isync/mbsync configuration for Gmail
+# Syncs mail locally to ~/.local/share/mail/gmail/
+
+# Gmail IMAP configuration
+IMAPStore gmail-remote
+Host imap.gmail.com
+Port 993
+User vadmas@gmail.com
+# Password is read from ~/.mutt_secrets (mutt set syntax)
+PassCmd "grep 'my_gmail_pass' ~/.mutt_secrets | cut -d'\"' -f2"
+AuthMechs LOGIN
+TLSType IMAPS
+# macOS certificate file location
+CertificateFile /etc/ssl/cert.pem
+
+# Local Maildir storage
+MaildirStore gmail-local
+Subfolders Verbatim
+Path ~/.local/share/mail/gmail/
+Inbox ~/.local/share/mail/gmail/INBOX
+Flatten .
+
+# Sync channel
+Channel gmail
+Expunge Both
+Far :gmail-remote:
+Near :gmail-local:
+# Sync specific Gmail folders, exclude others
+Patterns * ![Gmail]* "[Gmail]/Sent Mail" "[Gmail]/Starred" "[Gmail]/Drafts" "[Gmail]/All Mail"
+Create Both
+SyncState *
+# Limit to 1000 messages per folder (adjust as needed)
+MaxMessages 1000
+ExpireUnread no
