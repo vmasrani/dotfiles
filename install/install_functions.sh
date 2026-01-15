@@ -838,6 +838,7 @@ install_neomutt() {
     mkdir -p "$HOME/.local/share/mail/gmail/INBOX/cur"
     mkdir -p "$HOME/.local/share/mail/gmail/INBOX/new"
     mkdir -p "$HOME/.local/share/mail/gmail/INBOX/tmp"
+    mkdir -p "$HOME/.cache/mutt/tmp"
     mkdir -p "$HOME/.cache/mutt/gmail/headers"
     mkdir -p "$HOME/.cache/mutt/gmail/bodies"
     mkdir -p "$HOME/.config/mutt"

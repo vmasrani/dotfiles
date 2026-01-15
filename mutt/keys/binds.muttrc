@@ -11,10 +11,10 @@ bind index zz current-middle
 bind index zt current-top
 bind index zb current-bottom
 bind index \\ limit
-macro index <return> "<display-message>\n<skip-headers>\n"
-macro index \# "<edit-label>\n" "Mark as Complete"
-macro index x "<limit>all\n" "show all messages (undo limit)"
-macro index \ci "<limit>~F\n" "Limit by flagged"
+bind index <return> display-message
+macro index \# "<edit-label><enter>" "Mark as Complete"
+macro index x "<limit>all<enter>" "show all messages (undo limit)"
+macro index \ci "<limit>~F<enter>" "Limit by flagged"
 
 bind attach <return> view-mailcap
 
@@ -27,8 +27,8 @@ bind pager <Down> next-line
 bind pager <Up> previous-line
 bind pager G bottom
 bind pager gg top
-macro pager J "<next-entry>\n<skip-headers>\n"
-macro pager K "<previous-entry>\n<skip-headers>\n"
+macro pager J "<next-entry>" "go to next message"
+macro pager K "<previous-entry>" "go to previous message"
 
 bind index,pager f change-folder
 bind index,pager \Cu half-up
@@ -60,8 +60,8 @@ bind index T tag-thread
 bind index <space> flag-message
 bind index u undelete-message
 bind index U undelete-thread
-macro index D ";:set resolve=no<enter><clear-flag>!<save-message>=Archive<enter><enter><sync-mailbox><enter><enter-command>echo 'Message deleted'<enter>:set resolve=yes<enter>" "Quick Delete"
-macro index A ";:set resolve=no<enter><clear-flag>!<save-message>=Archive<enter><enter><sync-mailbox><enter><enter-command>echo 'Message archived'<enter>:set resolve=yes<enter>" "Quick Archive"
+macro index D ";:set resolve=no<enter><clear-flag>!<delete-message><sync-mailbox><enter>:set resolve=yes<enter>" "Delete message"
+macro index A ";:set resolve=no<enter><clear-flag>!<save-message>=[Gmail].All\ Mail<enter><enter><sync-mailbox><enter>:set resolve=yes<enter>" "Archive to All Mail"
 
 bind index,pager d delete-message
 bind index,pager L edit-label

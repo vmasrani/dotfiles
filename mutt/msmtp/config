@@ -16,7 +16,7 @@ host smtp.gmail.com
 port 587
 from vadmas@gmail.com
 user vadmas@gmail.com
-passwordeval "grep '^my_gmail_pass' ~/.mutt_secrets | cut -d'\"' -f2"
+passwordeval "grep 'my_gmail_pass' ~/.mutt_secrets | sed 's/.*\"\\(.*\\)\"/\\1/'"
 
 # Set gmail as default
 account default : gmail

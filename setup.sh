@@ -92,4 +92,7 @@ install_if_missing taplo install_taplo_cli # TOML LSP and formatter
 # update helix grammars
 update_helix_grammars
 
+# install email client
+install_if_missing neomutt install_neomutt # NeoMutt email client with isync, msmtp, notmuch
+
 gum_box_success "Setup completed successfully. All necessary tools and configurations have been installed and set up."
