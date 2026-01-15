@@ -1,113 +1,203 @@
 # vim: filetype=neomuttrc
-# NeoMutt Configuration - Modernized from ceuk/mutt_dotfiles (2026)
+# NeoMutt Configuration - Sensible Defaults (2025)
+# Based on official neomutt.org documentation and best practices
 
-# Paths
+# =============================================================================
+# PATHS & FILES
+# =============================================================================
+
 set mailcap_path = $HOME/.config/mutt/mailcap
-set rfc2047_parameters = yes
-set check_mbox_size = yes
+set tmpdir = ~/.cache/mutt/tmp
 
-# Key Bindings
+# =============================================================================
+# CACHING (Critical for performance)
+# =============================================================================
+# Header caching dramatically improves performance for Maildir/IMAP
+# Using zstd compression reduces cache size while maintaining speed
+# See: https://neomutt.org/guide/tuning
+
+set header_cache = ~/.cache/mutt/headers
+set header_cache_compress_method = zlib
+set header_cache_compress_level = 6
+set message_cachedir = ~/.cache/mutt/bodies
+
+# Progress updates - optimized for local maildir
+set read_inc = 1000
+set write_inc = 500
+
+# =============================================================================
+# KEY BINDINGS
+# =============================================================================
+
 source $HOME/.config/mutt/keys/unbinds.muttrc
 source $HOME/.config/mutt/keys/binds.muttrc
 
-# Default Account (Gmail)
+# =============================================================================
+# ACCOUNT (Gmail)
+# =============================================================================
+
 source $HOME/.config/mutt/accounts/gmail.muttrc
 
-# General Settings
-set smtp_authenticators = 'gssapi:login'
-unset help
-set sleep_time = 0              # Pause 0 seconds for informational messages
-set pager_read_delay = 3        # View a message for 3 seconds to mark as read
-set mark_old = no               # Unread mail stay unread until read
-set mime_forward = no           # attachments are forwarded with mail
-set wait_key = no               # mutt won't ask "press key to continue"
-set fast_reply                  # skip to compose when replying
-set fcc_attach                  # save attachments with the body
-set forward_format = "FW: %s"   # format of subject when forwarding
-set forward_quote               # quote forwarded message
-set reverse_name                # reply as whomever it was to
-set reverse_realname = yes      # use any real name provided when replying
-set auto_tag                    # automatically apply commands to all tagged messages
-set include                     # include message in replies
-set mail_check = 5              # check for new mail every 5 seconds
-set timeout = 5                 # how long to wait after user input
-set count_alternatives = yes    # recurse into text/multipart when looking for attachments
-set thorough_search = no        # don't process mail before parsing with queries
-set flag_safe                   # flagged messages can't be deleted
+# =============================================================================
+# SECURITY
+# =============================================================================
+# Force TLS for all connections - prevents MITM attacks
+# See: https://neomutt.org/guide/gettingstarted
 
-# Colors, Symbols and Formatting
+set ssl_force_tls = yes
+set ssl_starttls = yes
+set ssl_verify_host = yes
+set ssl_verify_dates = yes
+
+# =============================================================================
+# GENERAL BEHAVIOR
+# =============================================================================
+
+set sleep_time = 0              # No pause for info messages
+set wait_key = no               # Don't ask "press key to continue"
+set confirmappend = no          # Don't ask when appending to mailbox
+set delete = yes                # Don't ask when deleting
+set quit = yes                  # Don't ask when quitting
+
+# Message handling
+set mark_old = no               # Unread mail stays unread until read
+set copy = yes                  # Keep copies of sent messages
+set move = no                   # Don't move mail from spool
+set flag_safe = yes             # Flagged messages can't be deleted
+
+# Reply/Forward behavior
+set fast_reply = yes            # Skip prompts when info is available
+set include = yes               # Include original in replies
+set forward_quote = yes         # Quote forwarded message
+set forward_format = "Fwd: %s"
+set reply_to = yes              # Use Reply-To header if present
+set reverse_name = yes          # Reply as whomever it was sent to
+set reverse_realname = yes      # Use their real name in replies
+
+# Composition
+set edit_headers = no           # Don't edit headers in compose
+set fcc_attach = yes            # Save attachments with sent copies
+set mime_forward = no           # Forward as inline, not attachment
+set text_flowed = yes           # Generate format=flowed for better display
+set rfc2047_parameters = yes    # Properly encode attachment filenames
+
+# =============================================================================
+# CHECKING FOR NEW MAIL
+# =============================================================================
+
+set mail_check = 60             # Check every 60 seconds (was 5 - too aggressive)
+set timeout = 30                # User input timeout before new mail check
+set mail_check_stats = yes      # Calculate message statistics for sidebar
+set mail_check_stats_interval = 60
+
+# =============================================================================
+# DISPLAY & FORMATTING
+# =============================================================================
+
 source ~/.config/mutt/styles.muttrc
 
-# Header Options
-ignore *                                # ignore all headers
-unignore to: cc:                        # then selectively show only these
-unhdr_order *                           # some distros order things by default
-hdr_order from: to: cc: date: subject:  # header item ordering
+# Header display
+ignore *
+unignore from: to: cc: date: subject: reply-to: x-mailer: user-agent:
+unhdr_order *
+hdr_order from: to: cc: date: subject:
 
-# View Settings
-set allow_ansi                  # allow ansi escape codes (e.g. colors)
-set pager_index_lines = 10      # number of index lines to show
-set pager_context = 3           # number of context lines to show
-set pager_stop                  # don't go to next message automatically
-set menu_scroll                 # scroll in menus
-set smart_wrap                  # wrap lines at word boundaries
-set wrap = 90                   # email view width
+# =============================================================================
+# PAGER SETTINGS
+# =============================================================================
+
+set pager_index_lines = 10      # Show mini-index in pager
+set pager_context = 3           # Context lines when scrolling
+set pager_stop = yes            # Don't go to next message automatically
+set menu_scroll = yes           # Scroll menus line by line
+set smart_wrap = yes            # Wrap at word boundaries
+set wrap = 0                    # Use terminal width
+set allow_ansi = yes            # Allow ANSI escape codes (colors)
+
+# Quote and reply detection
 set quote_regexp = "^( {0,4}[>|:#%]| {0,4}[a-z0-9]+[>|]+)+"
 set reply_regexp = "^(([Rr][Ee]?(\[[0-9]+\])?: *)?(\[[^]]+\] *)?)*"
 
-# Display filter to clean up Microsoft Teams meeting cruft
-set display_filter = "perl -0777pe 's/___{10,}[^_]*microsoft teams meeting.*to join the meeting<([^>]*).*(___{10,})/\\n────────────────────────────────────────────────────────────────────────\\n\\nTeams Meeting ~~\\n\\nMeeting URL:\\n$1\\n\\n────────────────────────────────────────────────────────────────────────/is' | sed 's/^\\(To\\|CC\\): \\([^<]*[^>]\\)$/\\1\\:<\\2>/g' | perl -0777pe 's/(((?!.*CC:)To:|CC:).+?(?=>\\n)>)/$1!REMOVE_ME!\\n!END!/gs' | sed '/^To:/{;:l N;/!END!/b; s/\\(\\n\\|  *\\|\\t\\t*\\)/ /g; bl}' | sed '/^To:/,/>$/ s/\\([^>]*>,\\?\\)/\\1\\n/g' | sed -e 's/^ \\(CC:\\)\\(.*$\\)/\\1\\n\\2/' -e 's/^\\(To:\\)\\(.*$\\)/\\1 --------------------------------------------------------------------\\n\\2/' -e 's/^!END!$/------------------------------------------------------------------------/' -e '/!REMOVE_ME!/d' -e '/\\[-- Type: text.* --\\]/d' -e '/\\[-- Autoview.* --\\]/d' -e '/\\[-- Type.* --\\]/d' -e '/\\[-- .*unsupported.* --\\]/d' -e '/\\[-- Attachment #[0-9] --\\]/d' -e 's/Attachment #[0-9]: //g' -e '/./,/^$/!d' -e 's/\\([A-Z]*\\), *\\([A-Za-z]*\\)\\(\"\\)\\?/\\2 \\L\\u\\1\\E\\3/g'"
+# =============================================================================
+# THREADING
+# =============================================================================
 
-# Notmuch Config
-set nm_query_type = threads                                 # bring in whole thread
-set nm_default_url = "notmuch:///$HOME/.local/share/mail"   # default notmuch URL
-set nm_record_tags = "sent"                                 # default 'sent' tag
-set virtual_spoolfile = yes                                 # allow using virtual mailboxes
-macro index \Cg "<enter-command>unset wait_key<enter><shell-escape>read -p 'Enter a search: ' x; echo \$x >~/.cache/mutt_terms<enter><change-folder>All Accounts<enter><limit>~i \"\`notmuch --config ~/.config/notmuch/notmuchrc search --output=messages \$(/bin/cat ~/.cache/mutt_terms) | head -n 1000 | perl -le '@a=<>;chomp@a;s/\^id:// for@a;$,=\"|\";print@a' | sed 's/id://g' \`\"<enter>" "Search all mailboxes in all accounts (Global search)"
+set use_threads = yes
+set sort = reverse-last-date-received
+set sort_aux = reverse-last-date-received
+set collapse_all = yes          # Collapse threads by default
+set uncollapse_new = yes        # Expand threads with new messages
+set uncollapse_jump = yes       # Jump to first unread in thread
+set thread_received = yes       # Sort threads by received date
+set narrow_tree = yes           # Narrower thread tree display
+set strict_threads = yes        # Use only headers for threading (not subject)
 
-# Content/Autoview
-auto_view application/ics
-auto_view text/calendar
-auto_view text/plain
-auto_view text/html
-auto_view application/pgp-encrypted
-alternative_order text/calendar application/ics text/plain text/enriched text/html
+# =============================================================================
+# COMPOSE FEATURES (Modern 2024+)
+# =============================================================================
 
-# Sidebar Config
-set sidebar_divider_char = ' 	░'
-set sidebar_folder_indent = yes
-set sidebar_indent_string = ' - '
-set sidebar_non_empty_mailbox_only = yes
-set sidebar_visible = no
-set sidebar_width = 50
-set sidebar_next_new_wrap = yes
-set sidebar_short_path = yes
-set sidebar_component_depth = 0
+set compose_show_preview = yes  # Preview message before sending (new in 2024)
+set auto_tag = yes              # Apply commands to all tagged messages
 
-# Thread ordering
-set use_threads = reverse
-set sort = 'last-date'
-set collapse_all = yes
-set uncollapse_new = no
-set thread_received = yes
-set narrow_tree = no
-
-# Lists
-set auto_subscribe
-
-# Sounds
-set beep = no       # don't beep for errors
-set beep_new        # beep for new messages
-
-# Text editor - use helix (per user dotfiles)
+# Editor
 set editor = "mutt-trim %s; hx %s"
 
-# Markdown to html email conversion
-macro compose M "F pandoc -s -f markdown -t html \ny^T^Utext/html; charset=UTF-8\n" "Convert from MD to HTML"
+# =============================================================================
+# SIDEBAR
+# =============================================================================
 
-# Show patch files (requires git-split-diffs)
-macro attach P "|git-split-diffs --color | less -RF<enter>" "View a patch file as a diff"
-set wait_key = no
+set sidebar_visible = no        # Hidden by default, toggle with Ctrl-b
+set sidebar_width = 30
+set sidebar_short_path = yes
+set sidebar_folder_indent = yes
+set sidebar_indent_string = "  "
+set sidebar_divider_char = "│"
+set sidebar_next_new_wrap = yes
+set sidebar_non_empty_mailbox_only = no
 
-# Sync mailbox whenever idle
+# =============================================================================
+# NOTMUCH INTEGRATION
+# =============================================================================
+
+set nm_default_url = "notmuch:///$HOME/.local/share/mail"
+set nm_db_limit = 5000          # Limit query results for performance
+set nm_query_type = messages    # 'messages' is faster than 'threads'
+set nm_record_tags = "sent"
+set nm_unread_tag = "unread"
+set nm_flagged_tag = "flagged"
+set nm_open_timeout = 5
+set virtual_spool_file = no     # Start with regular INBOX for speed
+
+# =============================================================================
+# CONTENT HANDLING
+# =============================================================================
+
+auto_view text/html
+auto_view text/calendar
+auto_view application/ics
+auto_view application/pgp-encrypted
+alternative_order text/plain text/enriched text/html text/calendar application/ics
+
+# =============================================================================
+# SOUNDS & NOTIFICATIONS
+# =============================================================================
+
+set beep = no                   # Don't beep for errors
+set beep_new = yes              # Beep for new messages
+
+# =============================================================================
+# MACROS
+# =============================================================================
+
+# Markdown to HTML conversion for rich emails
+macro compose M "F pandoc -s -f markdown -t html \ny^T^Utext/html; charset=UTF-8\n" "Convert Markdown to HTML"
+
+# View patch files with syntax highlighting
+macro attach P "|git-split-diffs --color | less -RF<enter>" "View patch as diff"
+
+# =============================================================================
+# HOOKS
+# =============================================================================
+
+# Sync mailbox when idle
 timeout-hook 'exec sync-mailbox'

@@ -1,56 +1,89 @@
 # vim: filetype=neomuttrc
-# Gmail account configuration
+# Gmail Account Configuration
 
-# Source secrets (email, password, name)
+# =============================================================================
+# CREDENTIALS (from secrets file)
+# =============================================================================
+
 source ~/.mutt_secrets
 
-# Account settings from secrets
 set realname = $my_gmail_name
 set from = $my_gmail_user
 set sendmail = "msmtp -a gmail"
 alias me $my_gmail_name <$my_gmail_user>
 
-# Local mail storage (synced via mbsync)
+# =============================================================================
+# LOCAL MAIL STORAGE (synced via mbsync)
+# =============================================================================
+
 set folder = "~/.local/share/mail/gmail"
+set mbox_type = Maildir
+
+# Per-account caching (overrides global for this account)
 set header_cache = ~/.cache/mutt/gmail/headers
 set message_cachedir = ~/.cache/mutt/gmail/bodies
-set mbox_type = Maildir
+
+# Reply settings
 set reverse_name = yes
 set reverse_realname = no
 
-# Sync macro
-macro index o "<shell-escape>mailsync gmail<enter>" "run mbsync to sync gmail"
+# =============================================================================
+# GMAIL FOLDERS
+# =============================================================================
 
-# Virtual mailboxes for notmuch search
-unmailboxes *
-virtual-mailboxes "All Accounts" "notmuch://?query=tag:inbox"
-virtual-mailboxes "All Mail" "notmuch://?query=tag:inbox%20and%20path:gmail%2F**"
-
-# Gmail folder mappings
 set spoolfile = "+INBOX"
-set record = "+[Gmail].Sent Mail"
 set postponed = "+[Gmail].Drafts"
-set trash = ""
 
-# Gmail-specific mailboxes (will be created after first sync)
-# mailboxes "=[Gmail]/Starred" "=INBOX" "=[Gmail]/Bin" "=[Gmail]/Drafts" "=[Gmail]/Spam" "=Archive" "=[Gmail]/Sent Mail"
+# Don't save sent mail locally - Gmail does this automatically via IMAP
+unset record
 
-# Folder navigation macros
-macro index gi "<change-folder>=INBOX<enter>" "go to inbox"
-macro index Mi ";<save-message>=INBOX<enter><enter>" "move mail to inbox"
-macro index Ci ";<copy-message>=INBOX<enter>" "copy mail to inbox"
-macro index gs "<change-folder>=[Gmail].Sent\ Mail<enter>" "go to sent"
-macro index Ms ";<save-message>=[Gmail].Sent\ Mail<enter><enter>" "move mail to sent"
-macro index Cs ";<copy-message>=[Gmail].Sent\ Mail<enter>" "copy mail to sent"
-macro index gd "<change-folder>=[Gmail].Drafts<enter>" "go to drafts"
-macro index Md ";<save-message>=[Gmail].Drafts<enter><enter>" "move mail to drafts"
-macro index Cd ";<copy-message>=[Gmail].Drafts<enter>" "copy mail to drafts"
-macro index gS "<change-folder>=[Gmail].Spam<enter>" "go to spam"
-macro index MS ";<save-message>=[Gmail].Spam<enter><enter>" "move mail to spam"
-macro index CS ";<copy-message>=[Gmail].Spam<enter>" "copy mail to spam"
-macro index ga "<change-folder>=Archive<enter>" "go to archive"
-macro index Ma ";<save-message>=Archive<enter><enter>" "move mail to archive"
-macro index Ca ";<copy-message>=Archive<enter>" "copy mail to archive"
+# =============================================================================
+# MAILBOXES
+# =============================================================================
+# Only list folders that are synced via mbsync
+# Add/remove based on your mbsync configuration
 
-# Ctrl-f search with notmuch (gmail only)
-macro index \Cf "<enter-command>unset wait_key<enter><shell-escape>read -p 'Enter a search: ' x; echo \$x >~/.cache/mutt_terms<enter><change-folder>All Mail<enter><limit>~i \"\`notmuch --config ~/.config/notmuch/notmuchrc search --output=messages \"\$(/bin/cat ~/.cache/mutt_terms) path:gmail/**\" | head -n 1000 | perl -le '@a=<>;chomp@a;s/\^id:// for@a;$,=\"|\";print@a'\`\"<enter>" "Search all mail in gmail"
+unmailboxes *
+mailboxes \
+    "=INBOX" \
+    "=[Gmail].Sent Mail" \
+    "=[Gmail].Drafts" \
+    "=[Gmail].Starred" \
+    "=[Gmail].All Mail"
+
+# =============================================================================
+# FOLDER NAVIGATION (g = go, M = move, C = copy)
+# =============================================================================
+
+# Go to folder
+macro index,pager gi "<change-folder>=INBOX<enter>" "Go to Inbox"
+macro index,pager gs "<change-folder>=[Gmail].Sent\ Mail<enter>" "Go to Sent"
+macro index,pager gd "<change-folder>=[Gmail].Drafts<enter>" "Go to Drafts"
+macro index,pager ga "<change-folder>=[Gmail].All\ Mail<enter>" "Go to All Mail"
+macro index,pager g* "<change-folder>=[Gmail].Starred<enter>" "Go to Starred"
+
+# Move to folder
+macro index Mi ";<save-message>=INBOX<enter><enter>" "Move to Inbox"
+macro index Ms ";<save-message>=[Gmail].Sent\ Mail<enter><enter>" "Move to Sent"
+macro index Md ";<save-message>=[Gmail].Drafts<enter><enter>" "Move to Drafts"
+macro index Ma ";<save-message>=[Gmail].All\ Mail<enter><enter>" "Move to All Mail"
+
+# Copy to folder
+macro index Ci ";<copy-message>=INBOX<enter>" "Copy to Inbox"
+macro index Cs ";<copy-message>=[Gmail].Sent\ Mail<enter>" "Copy to Sent"
+macro index Cd ";<copy-message>=[Gmail].Drafts<enter>" "Copy to Drafts"
+macro index Ca ";<copy-message>=[Gmail].All\ Mail<enter>" "Copy to All Mail"
+
+# =============================================================================
+# SYNC
+# =============================================================================
+
+macro index o "<shell-escape>mailsync gmail<enter>" "Sync Gmail"
+
+# =============================================================================
+# SEARCH (Notmuch)
+# =============================================================================
+# Ctrl-f: Search all mail using notmuch
+# Results open in a virtual mailbox
+
+macro index \Cf "<enter-command>set wait_key=no<enter><shell-escape>read -p 'Search: ' terms && echo \"\$terms\" > ~/.cache/mutt/search_terms<enter><change-folder>notmuch://?query=\`cat ~/.cache/mutt/search_terms | tr ' ' '+'\`+AND+path:gmail/**<enter>" "Search Gmail"
