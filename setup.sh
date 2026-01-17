@@ -55,6 +55,7 @@ install_if_missing hx install_helix # Modern terminal-based text editor
 install_if_missing glow install_glow # Markdown terminal viewer with style
 install_if_missing lazygit install_lazygit # Terminal UI for git commands
 install_if_missing lazydocker install_lazydocker # Terminal UI for managing Docker containers
+install_if_missing lazysql install_lazysql # Terminal UI for database management
 install_if_missing btop install_btop # Resource monitor with CPU, memory, disk, network stats
 install_if_missing ctop install_ctop # Container metrics and monitoring
 install_if_missing bat install_bat # Syntax highlighting cat replacement

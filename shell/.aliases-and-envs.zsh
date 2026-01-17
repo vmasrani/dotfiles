@@ -69,7 +69,7 @@ alias du='du -sh'
 
 # alias mmv='noglob zmv -W'
 alias refresh='source ~/.zshrc'
-alias ta="tmux attach || tmux new-session -s default"
+alias ta="tmux attach-session -t default || tmux new-session -s default"
 alias hxlog="hx $HOME/.cache/helix/helix.log"
 alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'

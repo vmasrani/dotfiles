@@ -181,6 +181,11 @@ install_dotfiles() {
         "$dotfiles/tmux/scripts/dracula.sh:$tmux_scripts/dracula.sh"
         "$dotfiles/tmux/scripts/pm2_status.sh:$tmux_scripts/pm2_status.sh"
         "$dotfiles/tmux/scripts/pm2_status_wrapper.sh:$tmux_scripts/pm2_status_wrapper.sh"
+        "$dotfiles/tmux/scripts/agents_attention.sh:$tmux_scripts/agents_attention.sh"
+        "$dotfiles/tmux/scripts/agents_count.sh:$tmux_scripts/agents_count.sh"
+        "$dotfiles/tmux/scripts/agents_usage_5h.sh:$tmux_scripts/agents_usage_5h.sh"
+        "$dotfiles/tmux/scripts/agents_usage_7d.sh:$tmux_scripts/agents_usage_7d.sh"
+        "$dotfiles/tmux/scripts/agents_usage_credits.sh:$tmux_scripts/agents_usage_credits.sh"
 
         # linters dotfiles
         "$dotfiles/linters/.pylintrc:$home/.pylintrc"
@@ -242,12 +247,13 @@ install_dotfiles() {
 
         # mutt helper scripts
         "$dotfiles/mutt/scripts/mailsync:$bin/mailsync"
+        "$dotfiles/mutt/scripts/mailsync-daemon:$bin/mailsync-daemon"
         "$dotfiles/mutt/scripts/beautiful_html_render:$bin/beautiful_html_render"
         "$dotfiles/mutt/scripts/mutt-trim:$bin/mutt-trim"
         "$dotfiles/mutt/scripts/mutt-viewical:$bin/mutt-viewical"
         "$dotfiles/mutt/scripts/render-calendar-attachment.py:$bin/render-calendar-attachment.py"
 
-        # mutt supporting configs
+        # mutt supporting configs (isyncrc at correct path for mbsync)
         "$dotfiles/mutt/isync/mbsyncrc:$home/.config/isync/mbsyncrc"
         "$dotfiles/mutt/msmtp/config:$home/.config/msmtp/config"
         "$dotfiles/mutt/notmuch/notmuchrc:$home/.config/notmuch/notmuchrc"
@@ -432,6 +438,11 @@ install_lazygit() {
 install_lazydocker() {
     export PATH="$HOME/go/bin:$PATH"
     go install github.com/jesseduffield/lazydocker@latest
+}
+
+install_lazysql() {
+    export PATH="$HOME/go/bin:$PATH"
+    go install github.com/jorgerojas26/lazysql@latest
 }
 
 install_btop() {
@@ -827,12 +838,16 @@ install_neomutt() {
     install_on_brew_or_mac "isync"
     install_on_brew_or_mac "msmtp"
     install_on_brew_or_mac "notmuch"
-    install_on_brew_or_mac "html2text"
     install_on_brew_or_mac "urlscan"
-    install_on_brew_or_mac "pandoc"
 
-    # Ensure glow is installed (used by beautiful_html_render)
+    # Ensure glow is installed (used for rendering markdown in emails)
     install_if_missing glow install_glow
+
+    # Install html-to-markdown (Rust CLI for fast HTML->Markdown conversion)
+    if ! command -v html-to-markdown &> /dev/null; then
+        gum_info "Installing html-to-markdown-cli via cargo..."
+        cargo install html-to-markdown-cli
+    fi
 
     # Create mail directories
     mkdir -p "$HOME/.local/share/mail/gmail/INBOX/cur"
@@ -849,10 +864,23 @@ install_neomutt() {
     # Create mailsync timestamp file
     touch "$HOME/.config/mutt/.mailsynclastrun"
 
+    # Set up background mail sync with pm2 (if pm2 is available)
+    if command -v pm2 &> /dev/null; then
+        gum_info "Setting up background mail sync with pm2..."
+        # Stop existing mailsync process if running
+        pm2 delete mailsync 2>/dev/null || true
+        # Start mailsync daemon (must specify zsh interpreter)
+        pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh
+        pm2 save
+        gum_success "Background mail sync enabled (syncs every 5 minutes)"
+    else
+        gum_info "pm2 not found - skipping background sync setup"
+        gum_info "Install pm2 and run: pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh"
+    fi
+
     gum_success "NeoMutt and email tools installed successfully."
     gum_info "Next steps:"
     gum_info "  1. Ensure ~/.mutt_secrets has your Gmail app password"
-    gum_info "  2. Run: mbsync -a  (to sync mail)"
-    gum_info "  3. Run: notmuch new  (to index mail)"
-    gum_info "  4. Launch: neomutt -F ~/.config/mutt/muttrc"
+    gum_info "  2. Run: mailsync  (to sync and index mail)"
+    gum_info "  3. Launch: neomutt"
 }
