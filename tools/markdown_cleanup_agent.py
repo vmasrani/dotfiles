@@ -94,7 +94,7 @@ def main():
             sys.exit(1)
 
     # Process all files in parallel using pmap
-    pmap(process_markdown_file, markdown_file_paths, n_jobs=100, prefer="threads")
+    pmap(process_markdown_file, markdown_file_paths, n_jobs=100)
 
 if __name__ == "__main__":
     main()

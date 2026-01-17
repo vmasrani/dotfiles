@@ -6,14 +6,24 @@ __pycache__
 .claude/
 # Ignore specific subdirectories in maintained_global_claude
 maintained_global_claude/.checksums
-maintained_global_claude/ide/
-maintained_global_claude/file-history/
-maintained_global_claude/plugins/marketplaces/
-maintained_global_claude/projects/
-maintained_global_claude/shell-snapshots/
-maintained_global_claude/statsig/
-maintained_global_claude/todos/
+maintained_global_claude/.claude/
+maintained_global_claude/.DS_Store
+maintained_global_claude/archive/
 maintained_global_claude/debug/
+maintained_global_claude/downloads/
+maintained_global_claude/file-history/
 maintained_global_claude/history.jsonl
-# The files we want to keep (CLAUDE.md, settings.json, commands/, hooks/) 
+maintained_global_claude/ide/
+maintained_global_claude/plans/
+maintained_global_claude/plugins/
+maintained_global_claude/projects/
+maintained_global_claude/session-env/
+maintained_global_claude/shell-snapshots/
+maintained_global_claude/stats-cache.json
+maintained_global_claude/statsig/
+maintained_global_claude/statusline.sh
+maintained_global_claude/telemetry/
+maintained_global_claude/todos/
+# The files we want to keep (CLAUDE.md, settings.json, agents/, commands/, hooks/, skills/)
 # will be tracked normally without needing -f
+maintained_global_claude/plugins/marketplaces
