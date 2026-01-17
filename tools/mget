@@ -1,0 +1,267 @@
+#!/usr/bin/env zsh
+# mget - Download attachments from emails
+# Supports both interactive mode (gum) and CLI mode
+
+set -euo pipefail
+
+usage() {
+    gum style --foreground 212 --bold "mget - Download email attachments"
+    echo ""
+    echo "Usage:"
+    echo "  mget                                # Interactive mode"
+    echo "  mget QUERY [-o DIR] [--list]        # CLI mode"
+    echo ""
+    echo "Options:"
+    echo "  -o, --output    Output directory (default: current dir)"
+    echo "  -l, --list      List attachments without downloading"
+    echo "  --json          Output attachment info as JSON (for TUI)"
+    echo "  --all           Download from all matching emails"
+    echo "  --overwrite     Overwrite existing files"
+    echo "  -h, --help      Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  mget 'from:halina subject:tax'"
+    echo "  mget 'id:CAMcim6d...' -o ~/Downloads/"
+    echo "  mget 'from:boss' --list"
+    echo "  mget  # interactive mode"
+}
+
+# Extract attachments from a message
+get_attachments() {
+    local msg_id="$1"
+    notmuch show --format=json "id:$msg_id" 2>/dev/null | jq -r '
+        .. | objects | select(.filename != null and ."content-disposition" == "attachment") |
+        "\(.id)|\(.filename)|\(."content-length" // 0)"
+    ' 2>/dev/null || true
+}
+
+# Download a specific attachment
+download_attachment() {
+    local msg_id="$1"
+    local part_id="$2"
+    local filename="$3"
+    local output_dir="$4"
+    local overwrite="$5"
+
+    local output_path="$output_dir/$filename"
+
+    # Handle existing files
+    if [[ -f "$output_path" && "$overwrite" != "true" ]]; then
+        local base="${filename%.*}"
+        local ext="${filename##*.}"
+        local counter=1
+        while [[ -f "$output_dir/${base}_${counter}.${ext}" ]]; do
+            ((counter++))
+        done
+        output_path="$output_dir/${base}_${counter}.${ext}"
+    fi
+
+    notmuch show --part="$part_id" --format=raw "id:$msg_id" > "$output_path" 2>/dev/null
+    echo "$output_path"
+}
+
+# Initialize variables
+query=""
+output_dir="."
+list_only=false
+json_output=false
+download_all=false
+overwrite=false
+
+# Check if we're in interactive mode
+if [[ $# -eq 0 && -t 0 ]]; then
+    # Interactive mode
+    gum style --foreground 212 --bold "📎 Download Attachments"
+    echo ""
+
+    # Get search query
+    search_query=$(gum input --placeholder "from:sender subject:topic" --header "Search query:" --width 50)
+    if [[ -z "$search_query" ]]; then
+        gum style --foreground 1 "Error: Search query required"
+        exit 1
+    fi
+
+    # Search for emails with attachments
+    query="$search_query tag:attachment"
+    results=$(notmuch search --output=summary "$query" 2>/dev/null | head -20)
+
+    if [[ -z "$results" ]]; then
+        gum style --foreground 3 "No emails with attachments found"
+        exit 0
+    fi
+
+    # Let user select an email
+    gum style --foreground 8 "Select an email:"
+    selected=$(echo "$results" | gum filter --height 15)
+
+    if [[ -z "$selected" ]]; then
+        exit 0
+    fi
+
+    # Extract thread ID and get message IDs
+    thread_id=$(echo "$selected" | awk '{print $1}')
+    msg_ids=($(notmuch search --output=messages "$thread_id" 2>/dev/null))
+
+    if [[ ${#msg_ids[@]} -eq 0 ]]; then
+        gum style --foreground 1 "Error: Could not find messages"
+        exit 1
+    fi
+
+    # Collect all attachments from the thread
+    all_attachments=()
+    for msg_id in "${msg_ids[@]}"; do
+        clean_id="${msg_id#id:}"
+        while IFS='|' read -r part_id filename size; do
+            [[ -n "$filename" ]] && all_attachments+=("$clean_id|$part_id|$filename|$size")
+        done < <(get_attachments "$clean_id")
+    done
+
+    if [[ ${#all_attachments[@]} -eq 0 ]]; then
+        gum style --foreground 3 "No attachments found in selected email"
+        exit 0
+    fi
+
+    # Display attachments and let user select
+    gum style --foreground 8 "Attachments found:"
+    attachment_list=""
+    for att in "${all_attachments[@]}"; do
+        IFS='|' read -r msg_id part_id filename size <<< "$att"
+        size_kb=$((size / 1024))
+        attachment_list+="$filename (${size_kb}KB)\n"
+    done
+
+    selected_files=$(echo -e "$attachment_list" | gum choose --no-limit --height 15)
+
+    if [[ -z "$selected_files" ]]; then
+        gum style --foreground 3 "No attachments selected"
+        exit 0
+    fi
+
+    # Get output directory
+    output_dir=$(gum input --placeholder "." --header "Output directory:" --value ".")
+    mkdir -p "$output_dir"
+
+    # Download selected attachments
+    echo ""
+    while IFS= read -r selected_file; do
+        filename=$(echo "$selected_file" | sed 's/ ([0-9]*KB)$//')
+        for att in "${all_attachments[@]}"; do
+            IFS='|' read -r msg_id part_id att_filename size <<< "$att"
+            if [[ "$att_filename" == "$filename" ]]; then
+                output_path=$(download_attachment "$msg_id" "$part_id" "$att_filename" "$output_dir" "false")
+                gum style --foreground 2 "✓ Downloaded: $output_path"
+                break
+            fi
+        done
+    done <<< "$selected_files"
+
+else
+    # CLI mode - parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -o|--output)
+                output_dir="$2"
+                shift 2
+                ;;
+            -l|--list)
+                list_only=true
+                shift
+                ;;
+            --json)
+                json_output=true
+                shift
+                ;;
+            --all)
+                download_all=true
+                shift
+                ;;
+            --overwrite)
+                overwrite=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                gum style --foreground 1 "Error: Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                query="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$query" ]]; then
+        gum style --foreground 1 "Error: Query required"
+        usage
+        exit 1
+    fi
+
+    # Create output directory
+    mkdir -p "$output_dir"
+
+    # Get message IDs
+    if [[ "$query" == id:* ]]; then
+        msg_ids=("${query#id:}")
+    else
+        if [[ "$download_all" == "true" ]]; then
+            msg_ids=($(notmuch search --output=messages "$query" 2>/dev/null))
+        else
+            msg_ids=($(notmuch search --output=messages "$query" 2>/dev/null | head -1))
+        fi
+    fi
+
+    if [[ ${#msg_ids[@]} -eq 0 ]]; then
+        gum style --foreground 3 "No emails found matching query"
+        exit 0
+    fi
+
+    # JSON output mode for TUI
+    if [[ "$json_output" == "true" ]]; then
+        local all_attachments=()
+        for msg_id in "${msg_ids[@]}"; do
+            clean_id="${msg_id#id:}"
+            while IFS='|' read -r part_id filename size; do
+                if [[ -n "$filename" ]]; then
+                    all_attachments+=("{\"message_id\":\"$clean_id\",\"part_id\":$part_id,\"filename\":\"$filename\",\"size_bytes\":$size}")
+                fi
+            done < <(get_attachments "$clean_id")
+        done
+
+        # Output as JSON array
+        if [[ ${#all_attachments[@]} -eq 0 ]]; then
+            echo '{"attachments":[]}'
+        else
+            local joined=$(IFS=,; echo "${all_attachments[*]}")
+            echo "{\"attachments\":[$joined]}"
+        fi
+        exit 0
+    fi
+
+    # Process each message
+    total_downloaded=0
+    for msg_id in "${msg_ids[@]}"; do
+        clean_id="${msg_id#id:}"
+
+        while IFS='|' read -r part_id filename size; do
+            if [[ -n "$filename" ]]; then
+                if [[ "$list_only" == "true" ]]; then
+                    size_kb=$((size / 1024))
+                    echo "$filename (${size_kb}KB) - $clean_id"
+                else
+                    output_path=$(download_attachment "$clean_id" "$part_id" "$filename" "$output_dir" "$overwrite")
+                    gum style --foreground 2 "✓ Downloaded: $output_path"
+                    ((total_downloaded++))
+                fi
+            fi
+        done < <(get_attachments "$clean_id")
+    done
+
+    if [[ "$list_only" != "true" && $total_downloaded -eq 0 ]]; then
+        gum style --foreground 3 "No attachments found"
+    fi
+fi

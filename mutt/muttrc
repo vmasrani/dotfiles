@@ -172,11 +172,14 @@ set virtual_spool_file = no     # Start with regular INBOX for speed
 # CONTENT HANDLING
 # =============================================================================
 
+auto_view text/plain
+auto_view text/markdown
 auto_view text/html
 auto_view text/calendar
 auto_view application/ics
 auto_view application/pgp-encrypted
-alternative_order text/plain text/enriched text/html text/calendar application/ics
+# Prefer HTML for newsletters (better link formatting), fall back to plain text
+alternative_order text/html text/plain text/markdown text/enriched text/calendar application/ics
 
 # =============================================================================
 # SOUNDS & NOTIFICATIONS

@@ -1,0 +1,300 @@
+/* mtui - Gmail TUI Styles
+   Gum/Dracula inspired dark theme */
+
+/* Color palette */
+$gum-pink: #ff79c6;
+$gum-purple: #bd93f9;
+$gum-cyan: #8be9fd;
+$gum-green: #50fa7b;
+$gum-orange: #ffb86c;
+$gum-red: #ff5555;
+$gum-yellow: #f1fa8c;
+$gum-white: #f8f8f2;
+$gum-gray: #6272a4;
+$gum-dark: #282a36;
+$gum-darker: #1e1f29;
+
+/* Base screen */
+Screen {
+    background: $gum-darker;
+}
+
+/* Header */
+Header {
+    background: $gum-dark;
+    color: $gum-pink;
+    dock: top;
+    height: 1;
+}
+
+/* Footer */
+Footer {
+    background: $gum-dark;
+    dock: bottom;
+}
+
+Footer > .footer--key {
+    background: $gum-purple;
+    color: $gum-darker;
+}
+
+Footer > .footer--description {
+    color: $gum-gray;
+}
+
+/* Tab placeholder - minimal height */
+.tab-placeholder {
+    height: 0;
+}
+
+/* Main layout */
+.mail-view {
+    height: 1fr;
+}
+
+.list-panel {
+    width: 38%;
+    min-width: 40;
+    border-right: solid $gum-gray;
+}
+
+.preview-panel {
+    width: 62%;
+}
+
+/* Tabs */
+#folder-tabs {
+    height: auto;
+}
+
+TabbedContent > Tabs {
+    background: $gum-dark;
+    dock: top;
+}
+
+TabbedContent > ContentSwitcher {
+    height: auto;
+}
+
+Tab {
+    color: $gum-gray;
+    background: $gum-dark;
+    padding: 0 2;
+}
+
+Tab:hover {
+    color: $gum-white;
+}
+
+Tab.-active {
+    color: $gum-pink;
+    text-style: bold;
+    background: $gum-darker;
+}
+
+Underline {
+    background: $gum-pink;
+}
+
+/* Email list - Tree widget */
+#email-tree {
+    height: 1fr;
+    background: $gum-darker;
+    scrollbar-background: $gum-dark;
+    scrollbar-color: $gum-gray;
+}
+
+#email-tree > .tree--label {
+    color: $gum-white;
+}
+
+#email-tree > .tree--cursor {
+    background: $gum-dark;
+    color: $gum-white;
+}
+
+#email-tree > .tree--guides {
+    color: $gum-gray;
+}
+
+/* Status bar */
+#status-bar {
+    height: 1;
+    dock: bottom;
+    background: $gum-dark;
+    color: $gum-gray;
+    padding: 0 1;
+    border-top: solid $gum-gray;
+}
+
+/* Unread style - yellow for visibility */
+.unread {
+    text-style: bold;
+    color: $gum-yellow;
+}
+
+/* Selected email style */
+.selected {
+    background: $gum-purple;
+    color: $gum-darker;
+}
+
+/* Flagged/starred indicator */
+.flagged {
+    color: $gum-orange;
+}
+
+/* Preview panel */
+#preview-container {
+    height: 100%;
+    padding: 1 2;
+}
+
+#preview-headers {
+    color: $gum-gray;
+    margin-bottom: 1;
+    height: auto;
+}
+
+#preview-headers .label {
+    color: $gum-purple;
+    text-style: bold;
+}
+
+#preview-body {
+    height: 1fr;
+    background: $gum-darker;
+}
+
+MarkdownViewer {
+    background: $gum-darker;
+    color: $gum-white;
+}
+
+Markdown {
+    background: $gum-darker;
+}
+
+/* Attachment panel */
+#attachment-panel {
+    height: auto;
+    max-height: 10;
+    border-top: solid $gum-gray;
+    padding: 1;
+    background: $gum-dark;
+}
+
+#attachment-panel .collapsible--title {
+    color: $gum-orange;
+}
+
+#attachment-table {
+    height: auto;
+    max-height: 6;
+    background: $gum-dark;
+}
+
+#attachment-table > .datatable--header {
+    background: $gum-darker;
+    color: $gum-orange;
+}
+
+#attachment-table > .datatable--cursor {
+    background: $gum-purple;
+    color: $gum-darker;
+}
+
+/* Search input */
+#search-input {
+    dock: top;
+    margin: 1;
+    border: solid $gum-gray;
+    background: $gum-dark;
+    color: $gum-white;
+}
+
+#search-input:focus {
+    border: solid $gum-pink;
+}
+
+#search-input > .input--placeholder {
+    color: $gum-gray;
+}
+
+/* Status indicators */
+.status-syncing {
+    color: $gum-yellow;
+}
+
+.status-error {
+    color: $gum-red;
+}
+
+.status-success {
+    color: $gum-green;
+}
+
+/* Loading indicator */
+LoadingIndicator {
+    color: $gum-pink;
+}
+
+/* Collapsible */
+Collapsible {
+    background: $gum-dark;
+    padding: 0;
+}
+
+CollapsibleTitle {
+    color: $gum-orange;
+    background: $gum-dark;
+}
+
+CollapsibleTitle:hover {
+    background: $gum-darker;
+}
+
+/* Help screen */
+#help-screen {
+    align: center middle;
+    background: $gum-dark 80%;
+}
+
+#help-content {
+    width: 60;
+    height: auto;
+    max-height: 80%;
+    padding: 2;
+    background: $gum-darker;
+    border: solid $gum-pink;
+}
+
+#help-content > Static {
+    color: $gum-white;
+}
+
+/* No messages placeholder */
+.empty-state {
+    text-align: center;
+    color: $gum-gray;
+    padding: 4;
+}
+
+/* Toast notifications */
+Toast {
+    background: $gum-dark;
+    color: $gum-white;
+    border: solid $gum-purple;
+}
+
+Toast.-information {
+    border: solid $gum-cyan;
+}
+
+Toast.-warning {
+    border: solid $gum-orange;
+}
+
+Toast.-error {
+    border: solid $gum-red;
+}
