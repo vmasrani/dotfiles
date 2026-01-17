@@ -1,8 +1,11 @@
 # vim: filetype=mailcap
 # MIME type handlers for neomutt
 
-# HTML emails - render inline using beautiful_html_render (html2text + glow)
-text/html; beautiful_html_render %s; nametemplate=%s.html; copiousoutput;
+# HTML emails - html-to-markdown (Rust, fast) then glow renders
+text/html; html-to-markdown | CLICOLOR_FORCE=1 glow -s dark; copiousoutput;
+
+# Markdown emails - render with glow
+text/markdown; CLICOLOR_FORCE=1 glow -s dark %s; copiousoutput;
 
 # Calendar invites - render inline
 text/calendar; render-calendar-attachment.py %s; copiousoutput;

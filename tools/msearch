@@ -1,0 +1,271 @@
+#!/usr/bin/env zsh
+# msearch - Search emails using notmuch
+# Supports both interactive mode (gum) and CLI mode
+
+set -euo pipefail
+
+usage() {
+    gum style --foreground 212 --bold "msearch - Search emails"
+    echo ""
+    echo "Usage:"
+    echo "  msearch                              # Interactive mode"
+    echo "  msearch QUERY [OPTIONS]              # CLI mode"
+    echo "  msearch -f SENDER [-s SUBJECT] ...   # Structured query"
+    echo ""
+    echo "Options:"
+    echo "  -f, --from        Filter by sender"
+    echo "  -s, --subject     Filter by subject"
+    echo "  -d, --date        Date range (e.g., '7d', '2024-01-01..')"
+    echo "  -a, --attachments Only messages with attachments"
+    echo "  -u, --unread      Only unread messages"
+    echo "  -o, --output      Output format: summary, json, json-full, ids (default: summary)"
+    echo "  -n, --limit       Max results (default: 20)"
+    echo "  --offset          Skip first N results (default: 0, for pagination)"
+    echo "  --open            Open selected result in neomutt"
+    echo "  -h, --help        Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  msearch 'from:halina subject:tax'"
+    echo "  msearch -f halina -a"
+    echo "  msearch -d 7d -u"
+    echo "  msearch tag:inbox --output json"
+}
+
+# Build query from structured options
+build_query() {
+    local parts=()
+    [[ -n "$from_filter" ]] && parts+=("from:$from_filter")
+    [[ -n "$subject_filter" ]] && parts+=("subject:$subject_filter")
+    [[ -n "$date_filter" ]] && parts+=("date:$date_filter")
+    [[ "$attachments_only" == "true" ]] && parts+=("tag:attachment")
+    [[ "$unread_only" == "true" ]] && parts+=("tag:unread")
+    [[ -n "$base_query" ]] && parts+=("$base_query")
+
+    echo "${parts[*]}"
+}
+
+# Format date range
+format_date() {
+    local input="$1"
+    case "$input" in
+        *d)
+            local days="${input%d}"
+            echo "$(date -v-${days}d +%Y-%m-%d).."
+            ;;
+        *w)
+            local weeks="${input%w}"
+            local days=$((weeks * 7))
+            echo "$(date -v-${days}d +%Y-%m-%d).."
+            ;;
+        *m)
+            local months="${input%m}"
+            echo "$(date -v-${months}m +%Y-%m-%d).."
+            ;;
+        *)
+            echo "$input"
+            ;;
+    esac
+}
+
+# Initialize variables
+base_query=""
+from_filter=""
+subject_filter=""
+date_filter=""
+attachments_only=false
+unread_only=false
+output_format="summary"
+limit=20
+offset=0
+open_result=false
+
+# Check if we're in interactive mode
+if [[ $# -eq 0 && -t 0 ]]; then
+    # Interactive mode
+    gum style --foreground 212 --bold "🔍 Search Emails"
+    echo ""
+
+    # Build search interactively
+    search_type=$(gum choose "Free-form query" "Structured search")
+
+    if [[ "$search_type" == "Free-form query" ]]; then
+        base_query=$(gum input --placeholder "from:sender subject:topic tag:unread" --header "Search query:" --width 60)
+    else
+        from_filter=$(gum input --placeholder "(optional)" --header "From:" --width 40)
+        subject_filter=$(gum input --placeholder "(optional)" --header "Subject contains:" --width 40)
+
+        # Date filter
+        date_choice=$(gum choose "Any time" "Last 7 days" "Last 30 days" "Last 3 months" "Custom")
+        case "$date_choice" in
+            "Last 7 days") date_filter=$(format_date "7d") ;;
+            "Last 30 days") date_filter=$(format_date "30d") ;;
+            "Last 3 months") date_filter=$(format_date "3m") ;;
+            "Custom")
+                custom_date=$(gum input --placeholder "2024-01-01.. or 7d" --header "Date range:")
+                date_filter=$(format_date "$custom_date")
+                ;;
+        esac
+
+        # Additional filters
+        filters=$(gum choose --no-limit "Has attachments" "Unread only" "None")
+        [[ "$filters" == *"Has attachments"* ]] && attachments_only=true
+        [[ "$filters" == *"Unread only"* ]] && unread_only=true
+    fi
+
+    query=$(build_query)
+
+    if [[ -z "$query" ]]; then
+        query="*"
+    fi
+
+    gum style --foreground 8 "Query: $query"
+    echo ""
+
+    # Execute search
+    results=$(notmuch search --output=summary "$query" 2>/dev/null | head -$limit)
+
+    if [[ -z "$results" ]]; then
+        gum style --foreground 3 "No results found"
+        exit 0
+    fi
+
+    # Let user select a result
+    selected=$(echo "$results" | gum filter --height 20)
+
+    if [[ -n "$selected" ]]; then
+        action=$(gum choose "Open in neomutt" "View details" "Download attachments" "Copy thread ID" "Done")
+
+        thread_id=$(echo "$selected" | awk '{print $1}')
+
+        case "$action" in
+            "Open in neomutt")
+                neomutt -f "notmuch://?query=$thread_id"
+                ;;
+            "View details")
+                notmuch show "$thread_id" | gum pager
+                ;;
+            "Download attachments")
+                mget "$thread_id"
+                ;;
+            "Copy thread ID")
+                echo "$thread_id" | pbcopy
+                gum style --foreground 2 "✓ Copied: $thread_id"
+                ;;
+        esac
+    fi
+
+else
+    # CLI mode - parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -f|--from)
+                from_filter="$2"
+                shift 2
+                ;;
+            -s|--subject)
+                subject_filter="$2"
+                shift 2
+                ;;
+            -d|--date)
+                date_filter=$(format_date "$2")
+                shift 2
+                ;;
+            -a|--attachments)
+                attachments_only=true
+                shift
+                ;;
+            -u|--unread)
+                unread_only=true
+                shift
+                ;;
+            -o|--output)
+                output_format="$2"
+                shift 2
+                ;;
+            -n|--limit)
+                limit="$2"
+                shift 2
+                ;;
+            --offset)
+                offset="$2"
+                shift 2
+                ;;
+            --open)
+                open_result=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                gum style --foreground 1 "Error: Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                base_query="$1"
+                shift
+                ;;
+        esac
+    done
+
+    query=$(build_query)
+
+    if [[ -z "$query" ]]; then
+        query="*"
+    fi
+
+    # Execute search based on output format
+    case "$output_format" in
+        summary)
+            results=$(notmuch search --output=summary "$query" 2>/dev/null | head -$limit)
+            if [[ -z "$results" ]]; then
+                gum style --foreground 3 "No results found"
+                exit 0
+            fi
+
+            if [[ "$open_result" == "true" ]]; then
+                thread_id=$(echo "$results" | head -1 | awk '{print $1}')
+                neomutt -f "notmuch://?query=$thread_id"
+            else
+                echo "$results"
+            fi
+            ;;
+        json)
+            notmuch search --format=json "$query" 2>/dev/null | jq ".[:$limit]"
+            ;;
+        json-full)
+            # Rich JSON output with thread details for TUI consumption
+            # Use offset and limit for pagination: skip $offset, take $limit
+            local end_idx=$((offset + limit))
+            local threads_json=$(notmuch search --format=json "$query" 2>/dev/null | jq ".[$offset:$end_idx]")
+            local total_count=$(notmuch count "$query" 2>/dev/null)
+
+            # Enrich with message IDs and attachment detection
+            echo "$threads_json" | jq --arg query "$query" --argjson total "$total_count" '
+            {
+                threads: [.[] | {
+                    thread_id: .thread,
+                    timestamp: .timestamp,
+                    date_relative: .date_relative,
+                    authors: .authors,
+                    subject: .subject,
+                    tags: .tags,
+                    total_messages: .total,
+                    matched_messages: .matched,
+                    has_attachments: (.tags | contains(["attachment"]))
+                }],
+                total_count: $total,
+                query: $query
+            }'
+            ;;
+        ids)
+            notmuch search --output=messages "$query" 2>/dev/null | head -$limit
+            ;;
+        *)
+            gum style --foreground 1 "Error: Unknown output format: $output_format"
+            exit 1
+            ;;
+    esac
+fi

@@ -1,0 +1,10 @@
+#!/usr/bin/env zsh
+# Daemon wrapper for mailsync - runs periodically for pm2
+# Usage: pm2 start mailsync-daemon --name mailsync
+
+SYNC_INTERVAL=${SYNC_INTERVAL:-300}  # Default 5 minutes
+
+while true; do
+    mailsync 2>&1 | head -20
+    sleep "$SYNC_INTERVAL"
+done

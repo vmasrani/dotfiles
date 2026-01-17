@@ -14,13 +14,15 @@ pgrep -x mbsync >/dev/null && { echo "mbsync is already running."; exit; }
 # Check for internet connection
 ping -q -c 1 1.1.1.1 > /dev/null 2>&1 || { echo "No internet connection detected."; exit; }
 
-# macOS notification function
+# macOS notification function (set MAILSYNC_NOTIFY=1 to enable)
 notify() {
-    osascript -e "display notification \"$2 new mail(s) in $1\" with title \"You've got Mail\" sound name \"Glass\""
+    [[ "$MAILSYNC_NOTIFY" == "1" ]] && osascript -e "display notification \"$2 new mail(s) in $1\" with title \"You've got Mail\" sound name \"Glass\""
+    return 0
 }
 
 messageinfo() {
-    osascript -e "display notification \"$subject\" with title \"$from\""
+    [[ "$MAILSYNC_NOTIFY" == "1" ]] && osascript -e "display notification \"$subject\" with title \"$from\""
+    return 0
 }
 
 # Check account for new mail and notify

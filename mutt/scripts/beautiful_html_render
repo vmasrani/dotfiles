@@ -7,4 +7,4 @@
 html2text "$1" > /tmp/mutt.md 2>/dev/null
 
 # Render with glow, stripping problematic escape codes
-glow -s dark /tmp/mutt.md 2>/dev/null | sed 's/\x1b\[[6-9;]*m//g'
+CLICOLOR_FORCE=1 glow -s dark /tmp/mutt.md 2>/dev/null | sed 's/\x1b\[[6-9;]*m//g'

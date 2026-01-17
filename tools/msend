@@ -1,0 +1,191 @@
+#!/usr/bin/env zsh
+# msend - Send email with attachments
+# Supports both interactive mode (gum) and CLI mode
+
+set -euo pipefail
+
+usage() {
+    gum style --foreground 212 --bold "msend - Send email with attachments"
+    echo ""
+    echo "Usage:"
+    echo "  msend                                    # Interactive mode"
+    echo "  msend -t EMAIL -s SUBJECT [-b BODY] [-a FILE]..."
+    echo ""
+    echo "Options:"
+    echo "  -t, --to        Recipient email address"
+    echo "  -s, --subject   Email subject"
+    echo "  -b, --body      Email body (or pipe via stdin)"
+    echo "  -a, --attach    File to attach (can be used multiple times)"
+    echo "  -c, --cc        CC recipient"
+    echo "  -h, --help      Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  msend -t user@example.com -s 'Report' -a report.pdf"
+    echo "  echo 'Hello' | msend -t user@example.com -s 'Hi'"
+    echo "  msend  # launches interactive mode"
+}
+
+validate_email() {
+    local email="$1"
+    [[ "$email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]
+}
+
+# Initialize variables
+to=""
+subject=""
+body=""
+cc=""
+attachments=()
+
+# Check if we're in interactive mode (no args and stdin is terminal)
+if [[ $# -eq 0 && -t 0 ]]; then
+    # Interactive mode
+    gum style --foreground 212 --bold "📧 Send Email"
+    echo ""
+
+    # Get recipient
+    to=$(gum input --placeholder "recipient@email.com" --header "To:" --width 50)
+    if [[ -z "$to" ]]; then
+        gum style --foreground 1 "Error: Recipient required"
+        exit 1
+    fi
+    if ! validate_email "$to"; then
+        gum style --foreground 1 "Error: Invalid email address"
+        exit 1
+    fi
+
+    # Optional CC
+    cc=$(gum input --placeholder "(optional)" --header "CC:" --width 50)
+
+    # Get subject
+    subject=$(gum input --placeholder "Subject line" --header "Subject:" --width 50)
+    if [[ -z "$subject" ]]; then
+        gum style --foreground 1 "Error: Subject required"
+        exit 1
+    fi
+
+    # Get body
+    gum style --foreground 8 "Message body (Ctrl+D to finish):"
+    body=$(gum write --placeholder "Type your message..." --width 60 --height 10)
+
+    # Get attachments
+    if gum confirm "Add attachments?"; then
+        while true; do
+            file=$(gum file --height 15)
+            if [[ -n "$file" && -f "$file" ]]; then
+                attachments+=("$file")
+                gum style --foreground 2 "✓ Added: $(basename "$file")"
+            fi
+            if ! gum confirm "Add another attachment?"; then
+                break
+            fi
+        done
+    fi
+
+    # Preview
+    echo ""
+    gum style --foreground 212 --bold "Preview:"
+    echo "To: $to"
+    [[ -n "$cc" ]] && echo "CC: $cc"
+    echo "Subject: $subject"
+    if [[ ${#attachments[@]} -gt 0 ]]; then
+        echo "Attachments: ${#attachments[@]} file(s)"
+        for a in "${attachments[@]}"; do
+            echo "  - $(basename "$a")"
+        done
+    fi
+    echo "---"
+    echo "$body" | head -5
+    [[ $(echo "$body" | wc -l) -gt 5 ]] && echo "..."
+    echo ""
+
+    if ! gum confirm "Send this email?"; then
+        gum style --foreground 3 "Cancelled"
+        exit 0
+    fi
+
+else
+    # CLI mode - parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -t|--to)
+                to="$2"
+                shift 2
+                ;;
+            -s|--subject)
+                subject="$2"
+                shift 2
+                ;;
+            -b|--body)
+                body="$2"
+                shift 2
+                ;;
+            -a|--attach)
+                if [[ -f "$2" ]]; then
+                    attachments+=("$2")
+                else
+                    gum style --foreground 1 "Error: File not found: $2"
+                    exit 1
+                fi
+                shift 2
+                ;;
+            -c|--cc)
+                cc="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                gum style --foreground 1 "Error: Unknown option: $1"
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
+    # Read body from stdin if not provided and stdin is not terminal
+    if [[ -z "$body" && ! -t 0 ]]; then
+        body=$(cat)
+    fi
+
+    # Validate required fields
+    if [[ -z "$to" ]]; then
+        gum style --foreground 1 "Error: Recipient (-t) required"
+        usage
+        exit 1
+    fi
+    if ! validate_email "$to"; then
+        gum style --foreground 1 "Error: Invalid email address: $to"
+        exit 1
+    fi
+    if [[ -z "$subject" ]]; then
+        gum style --foreground 1 "Error: Subject (-s) required"
+        usage
+        exit 1
+    fi
+fi
+
+# Build neomutt command
+cmd=(neomutt -s "$subject")
+
+# Add CC if provided
+[[ -n "$cc" ]] && cmd+=(-c "$cc")
+
+# Add attachments
+for file in "${attachments[@]}"; do
+    cmd+=(-a "$file")
+done
+
+# Add separator and recipient
+cmd+=(-- "$to")
+
+# Send the email
+if [[ -n "$body" ]]; then
+    echo "$body" | "${cmd[@]}"
+else
+    echo "" | "${cmd[@]}"
+fi
+
+gum style --foreground 2 "✓ Email sent to $to"

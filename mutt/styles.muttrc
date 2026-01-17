@@ -1,109 +1,143 @@
 # vim: filetype=neomuttrc
-# NeoMutt Styling - Clean Defaults
+# NeoMutt Styling - Gum-Inspired Theme
+# Pink/magenta accents inspired by charmbracelet/gum
 
 # =============================================================================
-# INDEX FORMAT
+# GUM COLOR PALETTE (256-color)
 # =============================================================================
-# %4C  = message number (4 chars)
-# %Z   = message status flags (new/read/replied/etc)
-# %D   = date using date_format
-# %-20.20L = sender (left-aligned, 20 chars)
-# %s   = subject
-# %>   = right-justify remainder
-# %?X?...? = conditional (if attachments)
-
-set date_format = "%b %d"
-set index_format = "%4C %Z  %D  %-22.22L  %?X?[%X]& ?%s"
-
-# =============================================================================
-# STATUS & PAGER FORMATS
-# =============================================================================
-
-set status_format = " %D [%m msgs%?n?, %n new?%?d?, %d del?%?t?, %t tag?%?F?, %F flag?]%>─[%P]"
-set pager_format = " %n: %s%*  %{%b %d %H:%M} [%P]"
-set compose_format = " Compose [Size: ~%l, Attachments: %a]%>─"
-set attach_format = "%u%D  %T%-40.40d %> %5s  %m/%M"
+# color212 = signature gum pink/magenta
+# color99  = purple/violet
+# color141 = light purple
+# color219 = soft pink
+# color51  = cyan
+# color231 = white
+# color236 = dark bg
+# color240 = dark gray
+# color245 = medium gray
+# color255 = bright white
 
 # =============================================================================
-# SIDEBAR FORMAT
-# =============================================================================
-
-set sidebar_format = "%D%?N? [%N]?%* %S"
-
-# =============================================================================
-# COLORS - Terminal Defaults with Highlights
+# BASE COLORS
 # =============================================================================
 
 # General
-color normal default default
-color error brightred default
-color message default default
-color prompt brightcyan default
-color search black brightyellow
+color normal        color255 default
+color error         color197 default           # bright pink for errors
+color message       color141 default           # light purple for messages
+color prompt        color212 default           # gum pink prompt
+color search        color236 color212          # pink highlight for search
 
-# Status bar
-color status brightwhite blue
+# Thread arrows - subtle gray
+color tree          color240 default
 
-# Index - Message list
-color index brightwhite default "~N"          # New
-color index brightwhite default "~U"          # Unread
-color index default default "~R"              # Read
-color index red default "~D"                  # Deleted
-color index brightyellow default "~F"         # Flagged
-color index cyan default "~T"                 # Tagged
-color index brightmagenta default "~v~(~F)"   # Thread with flagged
-color tree brightblack default                # Thread arrows
-color indicator brightwhite black             # Current selection
-
-# Index - Date column
-color index_date brightblack default
-
-# Sidebar
-color sidebar_indicator brightwhite blue
-color sidebar_highlight white brightblack
-color sidebar_ordinary default default
-color sidebar_new brightgreen default
-color sidebar_flagged brightyellow default
-color sidebar_divider brightblack default
-
-# Headers in message view
-color hdrdefault cyan default
-color header brightcyan default "^(From|Subject):"
-color header brightgreen default "^(To|Cc):"
-color header brightblack default "^(Date|X-Mailer|User-Agent):"
-
-# Body - URLs and emails
-color body brightblue default "(https?|ftp)://[^ \t\n\r<>\"]*"
-color body brightgreen default "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
-
-# Body - Quotes (4 levels, alternating colors)
-color quoted cyan default
-color quoted1 yellow default
-color quoted2 green default
-color quoted3 magenta default
-color quoted4 cyan default
-
-# Body - Signatures and dividers
-color signature brightblack default
-color attachment brightyellow default
-color body brightblack default "^[-_=]{3,}"
-
+# Current selection - subtle highlight
+color indicator     color255 color238
 
 # =============================================================================
-# FLAG CHARACTERS
+# INDEX - Message List (Gum-inspired)
 # =============================================================================
-# These appear in the %Z field of index_format
 
-# to_chars: not-to-me, to-me, group, cc, sent-by-me, mailing-list
-set to_chars = " >»<←L"
+# Default messages - soft gray
+color index         color245 default "~A"
 
-# status_chars: unchanged, changed, read-only, attach-mode
-set status_chars = "─*%A"
+# New/Unread - bright white, stands out
+color index         color255 default "~N"
+color index         color255 default "~U"
 
-# flag_chars: tagged, important, deleted, etc.
-# Order: tagged, important, deleted, deleted-attach, replied, encrypted,
-#        signed, old, new, read, replied-encrypted, replied-signed
-set flag_chars = "*!Dd⤷S○●◯"
+# Read messages - dimmed
+color index         color240 default "~R"
 
-# Don't show + marker for wrapped lines
+# Flagged/Important - gum pink
+color index         color212 default "~F"
+
+# Tagged - purple
+color index         color141 default "~T"
+
+# Deleted - dim red
+color index         color203 default "~D"
+
+# From me - cyan
+color index         color51 default "~P"
+
+# Thread with flagged message
+color index         color219 default "~v~(~F)"
+
+# Index columns - subtle differentiation
+color index_author  color141 default "~A"      # purple authors
+color index_author  color212 default "~N"      # pink for new
+color index_author  color51 default "~P"       # cyan for from me
+color index_subject color255 default "~N"      # white subject for new
+color index_subject color245 default "~R"      # gray for read
+color index_date    color240 default           # dim dates
+
+# =============================================================================
+# SIDEBAR
+# =============================================================================
+
+color sidebar_indicator  color236 color212     # pink highlight
+color sidebar_highlight  color255 color236     # white on dark
+color sidebar_ordinary   color245 default      # gray
+color sidebar_new        color212 default      # pink for new
+color sidebar_flagged    color219 default      # soft pink for flagged
+color sidebar_divider    color240 default      # dim divider
+
+# =============================================================================
+# HEADERS (Message View)
+# =============================================================================
+
+color hdrdefault    color240 default           # dim headers
+color header        color212 default "^(From):"
+color header        color141 default "^(Subject):"
+color header        color51 default "^(To|Cc):"
+color header        color240 default "^(Date|X-Mailer|User-Agent):"
+
+# =============================================================================
+# BODY
+# =============================================================================
+
+# URLs - cyan (clickable feel)
+color body          color51 default "(https?|ftp)://[^ \t\n\r<>\"]*"
+
+# Email addresses - purple
+color body          color141 default "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+
+# Quotes - alternating pink/purple tones
+color quoted        color212 default           # pink
+color quoted1       color141 default           # purple
+color quoted2       color219 default           # soft pink
+color quoted3       color99 default            # deep purple
+color quoted4       color212 default           # pink
+
+# Signatures and dividers
+color signature     color240 default
+color attachment    color212 default           # pink attachments
+color body          color240 default "^[-_=]{3,}"
+
+# Bold and underline
+color bold          color255 default
+color underline     color212 default
+
+# =============================================================================
+# COMPOSE
+# =============================================================================
+
+set compose_format = " Compose [Size: ~%l, Attachments: %a]%>─"
+set sidebar_format = "%D%?N? [%N]?%* %S"
 set markers = no
+
+# =============================================================================
+# POWERLINE THEME (formats only, colors overridden above)
+# =============================================================================
+
+# Source fixed powerline theme for formats/icons
+source ~/dotfiles/mutt/powerline-fixed.muttrc
+
+# =============================================================================
+# STATUS BAR - Subtle/Modern
+# =============================================================================
+
+# Dark background with pink accent text - elegant, not loud
+color status color212 color236
+
+# Clean status format (override powerline's arrow-based format)
+set status_format = " %D  %m msgs%?n?  %n new?%?d?  %d del?%?t?  %t tag?%?F?  %F flag?%>  %P "

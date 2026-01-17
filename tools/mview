@@ -1,0 +1,345 @@
+#!/usr/bin/env zsh
+# mview - Quick view email content
+# Supports both interactive mode (gum) and CLI mode
+
+set -euo pipefail
+
+usage() {
+    gum style --foreground 212 --bold "mview - Quick view email"
+    echo ""
+    echo "Usage:"
+    echo "  mview                    # Interactive mode"
+    echo "  mview QUERY              # View first match"
+    echo "  mview 'id:MESSAGE_ID'    # View specific message"
+    echo ""
+    echo "Options:"
+    echo "  --json        Output as JSON (for TUI consumption)"
+    echo "  --raw         Show raw email (no formatting)"
+    echo "  --headers     Show all headers"
+    echo "  --open        Open in neomutt after viewing"
+    echo "  -h, --help    Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  mview 'from:halina subject:tax'"
+    echo "  mview 'id:CAMcim6d...'"
+    echo "  mview  # interactive search"
+}
+
+# Format file size
+format_size() {
+    local bytes=$1
+    if [[ $bytes -lt 1024 ]]; then
+        echo "${bytes}B"
+    elif [[ $bytes -lt 1048576 ]]; then
+        echo "$((bytes / 1024))KB"
+    else
+        echo "$((bytes / 1048576))MB"
+    fi
+}
+
+# Extract and display email
+view_email() {
+    local msg_id="$1"
+    local raw_mode="$2"
+    local show_headers="$3"
+
+    if [[ "$raw_mode" == "true" ]]; then
+        notmuch show --format=raw "id:$msg_id"
+        return 0
+    fi
+
+    # Get message in text format (handles control chars better)
+    local text_output=$(notmuch show "id:$msg_id" 2>/dev/null)
+
+    if [[ -z "$text_output" ]]; then
+        gum style --foreground 1 "Error: Message not found"
+        return 1
+    fi
+
+    # Extract headers from text output
+    local subject=$(echo "$text_output" | sed -n 's/^Subject: //p' | head -1)
+    local from=$(echo "$text_output" | sed -n 's/^From: //p' | head -1)
+    local to=$(echo "$text_output" | sed -n 's/^To: //p' | head -1)
+    local date=$(echo "$text_output" | sed -n 's/^Date: //p' | head -1)
+    local cc=$(echo "$text_output" | sed -n 's/^Cc: //p' | head -1)
+
+    # Display headers
+    echo ""
+    gum style --foreground 212 --bold "${subject:-(no subject)}"
+    echo ""
+    gum style --foreground 8 "From:    ${from:-Unknown}"
+    gum style --foreground 8 "To:      ${to:-Unknown}"
+    [[ -n "$cc" ]] && gum style --foreground 8 "CC:      $cc"
+    gum style --foreground 8 "Date:    ${date:-Unknown}"
+
+    if [[ "$show_headers" == "true" ]]; then
+        echo ""
+        gum style --foreground 8 "--- All Headers ---"
+        # Show all header lines (lines before first empty line in message block)
+        echo "$text_output" | awk '/^$/{exit} /^[A-Za-z-]+:/{print}'
+    fi
+
+    # Check for attachments using notmuch JSON (with sanitization)
+    local json=$(notmuch show --format=json "id:$msg_id" 2>/dev/null | tr -d '\000-\037' | tr -d '\177')
+    local attachments=$(echo "$json" | jq -r '
+        .. | objects | select(.filename != null and ."content-disposition" == "attachment") |
+        "\(.filename)|\(."content-length" // 0)"
+    ' 2>/dev/null || true)
+
+    if [[ -n "$attachments" ]]; then
+        echo ""
+        gum style --foreground 3 "Attachments:"
+        while IFS='|' read -r filename size; do
+            [[ -n "$filename" ]] && echo "   - $filename ($(format_size $size))"
+        done <<< "$attachments"
+    fi
+
+    echo ""
+    gum style --foreground 8 "─────────────────────────────────────────"
+    echo ""
+
+    # Try to get HTML content first, then convert to markdown
+    local html_body=$(echo "$json" | jq -r '
+        .. | objects | select(."content-type" == "text/html") | .content // empty
+    ' 2>/dev/null | head -1)
+
+    if [[ -n "$html_body" && ! "$html_body" =~ ^[[:space:]]*$ ]]; then
+        # Convert HTML to markdown, then render with glow
+        echo "$html_body" | markitdown 2>/dev/null | glow -s dracula -
+    else
+        # Fall back to plain text
+        local body=$(echo "$text_output" | awk '
+            /part\{ ID: [0-9]+, Content-type: text\/plain/ { in_text=1; next }
+            /part\}/ && in_text { in_text=0; next }
+            in_text { print }
+        ')
+
+        if [[ -n "$body" && ! "$body" =~ ^[[:space:]]*$ ]]; then
+            echo "$body" | glow -s dracula -
+        else
+            gum style --foreground 3 "(no text content)"
+        fi
+    fi
+}
+
+# Output email as JSON for TUI consumption
+view_email_json() {
+    local msg_id="$1"
+    local tmpfile="/tmp/mview_json_$$"
+
+    # Get JSON data and save to temp file (avoids shell variable issues with control chars)
+    notmuch show --format=json "id:$msg_id" 2>/dev/null | \
+        perl -pe 's/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]//g' > "$tmpfile" 2>/dev/null
+
+    # Extract headers - use -c to get compact single-line JSON
+    local headers=$(jq -c '
+        [.. | objects | select(has("headers")) | .headers | {
+            subject: .Subject,
+            from: .From,
+            to: .To,
+            date: .Date,
+            cc: .Cc,
+            reply_to: ."Reply-To"
+        }] | first // {}
+    ' "$tmpfile" 2>/dev/null)
+
+    # Handle empty headers
+    if [[ -z "$headers" || "$headers" == "null" || "$headers" == "{}" ]]; then
+        headers='{"subject":null,"from":null,"to":null,"date":null,"cc":null,"reply_to":null}'
+    fi
+
+    # Extract body content - use first match
+    local html_body=$(jq -r '
+        [.. | objects | select(."content-type" == "text/html") | .content // empty] | first // ""
+    ' "$tmpfile" 2>/dev/null)
+
+    local plain_body=$(jq -r '
+        [.. | objects | select(."content-type" == "text/plain") | .content // empty] | first // ""
+    ' "$tmpfile" 2>/dev/null)
+
+    # Convert HTML to markdown if available
+    local markdown_body=""
+    if [[ -n "$html_body" && ! "$html_body" =~ ^[[:space:]]*$ ]]; then
+        markdown_body=$(echo "$html_body" | markitdown 2>/dev/null || echo "")
+    fi
+
+    # Extract attachments - already returns an array
+    local attachments=$(jq -c '
+        [.. | objects | select(.filename) | select(."content-disposition" == "attachment") |
+        {
+            part_id: .id,
+            filename: .filename,
+            content_type: ."content-type",
+            size_bytes: (."content-length" // 0)
+        }]
+    ' "$tmpfile" 2>/dev/null)
+
+    # Handle empty attachments
+    if [[ -z "$attachments" || "$attachments" == "null" ]]; then
+        attachments='[]'
+    fi
+
+    # Extract tags - use first match
+    local tags=$(jq -c '
+        [.. | objects | select(has("tags")) | .tags] | first // []
+    ' "$tmpfile" 2>/dev/null)
+
+    # Handle empty tags
+    if [[ -z "$tags" || "$tags" == "null" ]]; then
+        tags='[]'
+    fi
+
+    # Cleanup temp file
+    rm -f "$tmpfile"
+
+    # Build final JSON output
+    jq -n \
+        --arg msg_id "$msg_id" \
+        --argjson headers "$headers" \
+        --arg body_plain "$plain_body" \
+        --arg body_html "$html_body" \
+        --arg body_markdown "$markdown_body" \
+        --argjson attachments "$attachments" \
+        --argjson tags "$tags" \
+        '{
+            message_id: $msg_id,
+            headers: $headers,
+            body_plain: $body_plain,
+            body_html: $body_html,
+            body_markdown: $body_markdown,
+            attachments: $attachments,
+            tags: $tags
+        }'
+}
+
+# Initialize variables
+query=""
+json_output=false
+raw_mode=false
+show_headers=false
+open_after=false
+
+# Check if we're in interactive mode
+if [[ $# -eq 0 && -t 0 ]]; then
+    # Interactive mode
+    gum style --foreground 212 --bold "👁️ View Email"
+    echo ""
+
+    # Get search query
+    search_query=$(gum input --placeholder "from:sender subject:topic" --header "Search query:" --width 50)
+
+    if [[ -z "$search_query" ]]; then
+        search_query="*"
+    fi
+
+    # Search for emails
+    results=$(notmuch search --output=summary "$search_query" 2>/dev/null | head -20)
+
+    if [[ -z "$results" ]]; then
+        gum style --foreground 3 "No results found"
+        exit 0
+    fi
+
+    # Let user select an email
+    selected=$(echo "$results" | gum filter --height 15)
+
+    if [[ -z "$selected" ]]; then
+        exit 0
+    fi
+
+    # Get message ID from thread
+    thread_id=$(echo "$selected" | awk '{print $1}')
+    msg_id=$(notmuch search --output=messages "$thread_id" 2>/dev/null | head -1)
+    msg_id="${msg_id#id:}"
+
+    # View the email
+    view_email "$msg_id" "false" "false" | gum pager
+
+    # Offer follow-up actions
+    echo ""
+    action=$(gum choose "Done" "Open in neomutt" "Download attachments" "View raw" "View headers")
+
+    case "$action" in
+        "Open in neomutt")
+            neomutt -f "notmuch://?query=id:$msg_id"
+            ;;
+        "Download attachments")
+            mget "id:$msg_id"
+            ;;
+        "View raw")
+            view_email "$msg_id" "true" "false" | gum pager
+            ;;
+        "View headers")
+            view_email "$msg_id" "false" "true" | gum pager
+            ;;
+    esac
+
+else
+    # CLI mode - parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --json)
+                json_output=true
+                shift
+                ;;
+            --raw)
+                raw_mode=true
+                shift
+                ;;
+            --headers)
+                show_headers=true
+                shift
+                ;;
+            --open)
+                open_after=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                gum style --foreground 1 "Error: Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                query="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$query" ]]; then
+        gum style --foreground 1 "Error: Query required"
+        usage
+        exit 1
+    fi
+
+    # Get message ID
+    if [[ "$query" == id:* ]]; then
+        msg_id="${query#id:}"
+    else
+        msg_id=$(notmuch search --output=messages "$query" 2>/dev/null | head -1)
+        msg_id="${msg_id#id:}"
+    fi
+
+    if [[ -z "$msg_id" ]]; then
+        gum style --foreground 3 "No results found"
+        exit 0
+    fi
+
+    # JSON output mode for TUI
+    if [[ "$json_output" == "true" ]]; then
+        view_email_json "$msg_id"
+        exit 0
+    fi
+
+    # View the email
+    view_email "$msg_id" "$raw_mode" "$show_headers"
+
+    # Open in neomutt if requested
+    if [[ "$open_after" == "true" ]]; then
+        neomutt -f "notmuch://?query=id:$msg_id"
+    fi
+fi
