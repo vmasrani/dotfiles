@@ -6,21 +6,21 @@ CACHE_FILE="/tmp/claude_usage_cache.json"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TZ="${TZ:-America/Vancouver}"
 
-# Dracula colors (brighter for contrast)
-muted="#bd93f9"
-primary="#f8f8f2"
-warning="#ffb86c"
+# Catppuccin Macchiato colors
+muted="#c6a0f6"      # mauve
+primary="#cad3f5"    # text
+warning="#f5a97f"    # peach
 
 # Usage color thresholds
 usage_color() {
     local val="${1%\%}"
     [[ -z "$val" || "$val" == "null" ]] && val=0
     if (( val < 50 )); then
-        echo "#4caf50"  # green
+        echo "#a6da95"  # green
     elif (( val <= 80 )); then
-        echo "#ff9800"  # amber
+        echo "#f5a97f"  # peach
     else
-        echo "#f44336"  # red
+        echo "#ed8796"  # red
     fi
 }
 
