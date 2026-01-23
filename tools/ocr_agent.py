@@ -69,7 +69,7 @@ def main():
 
     # Create the message with proper image format
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5.2",
         messages=[
             {
                 "role": "user",
@@ -87,7 +87,7 @@ def main():
                 ]
             }
         ],
-        max_tokens=4096
+        max_completion_tokens=4096
     )
 
     # Write the response to ocr_output.md in the directory
