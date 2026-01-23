@@ -1,108 +1,60 @@
 #!/usr/bin/env bash
-# VS Code-inspired consolidated status line for agents session
-# Output: ⚠ 2 waiting  —  4 agents  —  5h: 45%  —  7d: 72%  —  credits: 30%  —  resets 10pm pst
+# Usage metrics for agents session (RHS only)
 
 CACHE_FILE="/tmp/claude_usage_cache.json"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TZ="${TZ:-America/Vancouver}"
 
-# Catppuccin Macchiato colors
-muted="#c6a0f6"      # mauve
-primary="#cad3f5"    # text
-warning="#f5a97f"    # peach
+base="#24273a"
+crust="#181926"
+green="#a6da95"
+peach="#f5a97f"
+red="#ed8796"
+overlay="#6e738d"
+left_cap=""
+right_cap=""
 
-# Usage color thresholds
 usage_color() {
     local val="${1%\%}"
     [[ -z "$val" || "$val" == "null" ]] && val=0
-    if (( val < 50 )); then
-        echo "#a6da95"  # green
-    elif (( val <= 80 )); then
-        echo "#f5a97f"  # peach
-    else
-        echo "#ed8796"  # red
+    if (( val < 50 )); then echo "$green"
+    elif (( val <= 80 )); then echo "$peach"
+    else echo "$red"
     fi
 }
 
-# Trigger cache refresh in background
+pill() {
+    local color="$1"
+    local content="$2"
+    echo -n "#[fg=$color,bg=$base]$left_cap#[fg=$crust,bg=$color]$content#[fg=$color,bg=$base]$right_cap"
+}
+
 "$SCRIPT_DIR/agents_cache_refresh.sh" &>/dev/null &
 
-# --- Attention count ---
-attention_count=0
-panes=$(tmux list-panes -t agents -F "#{pane_id}" 2>/dev/null)
-if [[ -n "$panes" ]]; then
-    attention_count=$(echo "$panes" | xargs -P 4 -I {} sh -c '
-        if tmux capture-pane -t {} -p 2>/dev/null | tail -5 | \
-           grep -qE "^> $|^> .*\?$|waiting for.*input|What would you like|Enter.*:|Press enter"; then
-            echo 1
-        fi
-    ' | wc -l | tr -d " ")
-fi
-
-# --- Agent count ---
-agent_count=0
-if [[ -n "$panes" ]]; then
-    pane_cmds=$(tmux list-panes -t agents -F "#{pane_current_command}" 2>/dev/null)
-    agent_count=$(echo "$pane_cmds" | grep -cE "^[0-9]+\.[0-9]+|claude|node" || echo 0)
-fi
-
-# --- Usage metrics from cache ---
-five_hour="0"
-seven_day="0"
-credits="0"
-reset_local=""
+five_hour="0"; seven_day="0"; credits="0"; reset_local=""
 
 if [[ -f "$CACHE_FILE" ]]; then
     five_hour=$(jq -r '.five_hour // 0' "$CACHE_FILE" 2>/dev/null)
     seven_day=$(jq -r '.seven_day // 0' "$CACHE_FILE" 2>/dev/null)
     credits=$(jq -r '.credits // 0' "$CACHE_FILE" 2>/dev/null)
-
-    # Reset time
     reset_utc=$(jq -r '.five_hour_resets // empty' "$CACHE_FILE" 2>/dev/null)
     if [[ -n "$reset_utc" ]]; then
         if command -v gdate &>/dev/null; then
-            reset_local=$(TZ="$TZ" gdate -d "$reset_utc" "+%-I%p %Z" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+            reset_local=$(TZ="$TZ" gdate -d "$reset_utc" "+%-I%p" 2>/dev/null | tr '[:upper:]' '[:lower:]')
         else
-            reset_local=$(TZ="$TZ" date -j -f "%Y-%m-%dT%H:%M:%S" "${reset_utc%%.*}" "+%-I%p %Z" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+            reset_local=$(TZ="$TZ" date -j -f "%Y-%m-%dT%H:%M:%S" "${reset_utc%%.*}" "+%-I%p" 2>/dev/null | tr '[:upper:]' '[:lower:]')
         fi
     fi
 fi
 
-# Handle nulls
 [[ "$five_hour" == "null" ]] && five_hour="0"
 [[ "$seven_day" == "null" ]] && seven_day="0"
 [[ "$credits" == "null" ]] && credits="0"
 
-# --- Build status line ---
-sep="#[fg=$muted] — #[fg=$primary]"
 output=""
-
-# Combined agent status: "X waiting, Y agents" or just "Y agents"
-if (( attention_count > 0 )); then
-    output+="#[fg=$warning]${attention_count} waiting#[fg=$primary], "
-fi
-
-if (( agent_count == 1 )); then
-    output+="${agent_count} agent${sep}"
-else
-    output+="${agent_count} agents${sep}"
-fi
-
-# 5h usage
-color_5h=$(usage_color "$five_hour")
-output+="#[fg=$muted]5h: #[fg=$color_5h]${five_hour}%#[fg=$primary]${sep}"
-
-# 7d usage
-color_7d=$(usage_color "$seven_day")
-output+="#[fg=$muted]7d: #[fg=$color_7d]${seven_day}%#[fg=$primary]${sep}"
-
-# Credits
-color_credits=$(usage_color "$credits")
-output+="#[fg=$muted]credits: #[fg=$color_credits]${credits}%#[fg=$primary]"
-
-# Reset time (only if available)
-if [[ -n "$reset_local" ]]; then
-    output+="${sep}#[fg=$muted]resets ${reset_local}#[fg=$primary]"
-fi
+output+="$(pill "$(usage_color "$five_hour")" " 5h ${five_hour}% ")"
+output+="$(pill "$(usage_color "$seven_day")" " 7d ${seven_day}% ")"
+output+="$(pill "$(usage_color "$credits")" " 󰠠 ${credits}% ")"
+[[ -n "$reset_local" ]] && output+="$(pill "$overlay" " 󰦖 $reset_local ")"
 
 echo "$output"
