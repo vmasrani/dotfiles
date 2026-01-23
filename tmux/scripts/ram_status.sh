@@ -1,29 +1,38 @@
 #!/usr/bin/env bash
-# Get RAM usage percentage for tmux status bar
+# Get RAM usage in used/total GB format for tmux status bar
 
 get_ram() {
     case $(uname -s) in
         Darwin)
-            # macOS - use vm_stat
-            local pages_free=$(vm_stat | awk '/Pages free/ {print $3}' | tr -d '.')
-            local pages_active=$(vm_stat | awk '/Pages active/ {print $3}' | tr -d '.')
-            local pages_inactive=$(vm_stat | awk '/Pages inactive/ {print $3}' | tr -d '.')
-            local pages_speculative=$(vm_stat | awk '/Pages speculative/ {print $3}' | tr -d '.')
-            local pages_wired=$(vm_stat | awk '/Pages wired/ {print $4}' | tr -d '.')
-            local pages_compressed=$(vm_stat | awk '/Pages occupied by compressor/ {print $5}' | tr -d '.')
+            # macOS - get total memory from sysctl
+            local total_bytes
+            total_bytes=$(sysctl -n hw.memsize)
+            local total_gb
+            total_gb=$(echo "scale=1; $total_bytes / 1073741824" | bc)
 
-            local total_pages=$((pages_free + pages_active + pages_inactive + pages_speculative + pages_wired + pages_compressed))
-            local used_pages=$((pages_active + pages_wired + pages_compressed))
+            # Get page size and calculate used memory from vm_stat
+            local page_size
+            page_size=$(pagesize)
 
-            if [[ $total_pages -gt 0 ]]; then
-                local percent=$((used_pages * 100 / total_pages))
-                echo "${percent}%"
-            else
-                echo "N/A"
-            fi
+            # Sum active + wired + compressed pages for "used" memory
+            local used_gb
+            used_gb=$(vm_stat | awk -v ps="$page_size" '
+                /Pages active:/ { gsub(/\./, "", $3); active = $3 }
+                /Pages wired down:/ { gsub(/\./, "", $4); wired = $4 }
+                /Pages occupied by compressor:/ { gsub(/\./, "", $5); compressed = $5 }
+                END { printf "%.1f", ((active + wired + compressed) * ps) / 1073741824 }
+            ')
+
+            echo "${used_gb}G/${total_gb}G"
             ;;
         Linux)
-            free | awk '/Mem:/ {printf "%.0f%%", $3/$2 * 100}'
+            # Linux - use /proc/meminfo
+            awk '/MemTotal:/ { total = $2 }
+                 /MemAvailable:/ { avail = $2 }
+                 END {
+                     used = total - avail
+                     printf "%.1fG/%.1fG", used/1048576, total/1048576
+                 }' /proc/meminfo
             ;;
         *)
             echo "N/A"
