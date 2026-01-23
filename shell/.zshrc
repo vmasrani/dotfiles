@@ -42,6 +42,7 @@ source ~/gum_utils.sh
 source ~/lscolors.sh
 source ~/.aliases-and-envs.zsh
 source ~/.local_env.sh  # Should contain API keys and local-specific settings
+source ~/last_cmd_hook.zsh
 source ~/.paths.zsh
 
 # export NVM_DIR="$HOME/.nvm"
