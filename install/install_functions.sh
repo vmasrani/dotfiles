@@ -180,7 +180,10 @@ install_dotfiles() {
         # tmux scripts (Catppuccin theme and custom status)
         "$dotfiles/tmux/scripts/pm2_status.sh:$tmux_scripts/pm2_status.sh"
         "$dotfiles/tmux/scripts/pm2_status_wrapper.sh:$tmux_scripts/pm2_status_wrapper.sh"
+        "$dotfiles/tmux/scripts/cpu_status.sh:$tmux_scripts/cpu.sh"
         "$dotfiles/tmux/scripts/ram_status.sh:$tmux_scripts/ram.sh"
+        "$dotfiles/tmux/scripts/load_status.sh:$tmux_scripts/load.sh"
+        "$dotfiles/tmux/scripts/battery_status.sh:$tmux_scripts/battery.sh"
         "$dotfiles/tmux/scripts/network_status.sh:$tmux_scripts/network.sh"
         "$dotfiles/tmux/scripts/update_session_status.sh:$tmux_scripts/update_session_status.sh"
         "$dotfiles/tmux/scripts/agents_status_vscode.sh:$tmux_scripts/agents_status_vscode.sh"
