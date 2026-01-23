@@ -7,15 +7,15 @@ session_name=$(tmux display-message -p '#S')
 if [[ "$session_name" == "agents" ]]; then
     dir="$HOME/dotfiles/tmux/scripts"
 
-    # Dracula color palette
-    bg="#44475a"
-    dark_gray="#282a36"
-    white="#f8f8f2"
-    light_purple="#bd93f9"
-    dark_purple="#6272a4"
-    orange="#ffb86c"
-    yellow="#f1fa8c"
-    green="#50fa7b"
+    # Catppuccin Macchiato color palette
+    bg="#494d64"           # surface1
+    dark_gray="#24273a"    # base
+    white="#cad3f5"        # text
+    light_purple="#c6a0f6" # mauve
+    dark_purple="#8087a2"  # overlay1
+    orange="#f5a97f"       # peach
+    yellow="#eed49f"       # yellow
+    green="#a6da95"        # green
 
     # Powerline separator (U+E0B0)
     left_sep=""
@@ -38,6 +38,7 @@ if [[ "$session_name" == "agents" ]]; then
     tmux set-option window-status-current-format "#[fg=$orange,bold] #I:#W "
     tmux set-option window-status-separator ""
 else
-    # Non-agents session: Re-run dracula to restore normal status bar
-    ~/.tmux/plugins/tmux/scripts/dracula.sh 2>/dev/null || true
+    # Non-agents session: Let the main .tmux.conf handle the status bar
+    # No action needed - catppuccin plugin sets it up automatically
+    :
 fi
