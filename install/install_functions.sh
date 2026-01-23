@@ -177,15 +177,14 @@ install_dotfiles() {
         "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
         "$dotfiles/editors/.vimrc:$home/.vimrc"
 
-        # tmux scripts (Dracula plugin)
-        "$dotfiles/tmux/scripts/dracula.sh:$tmux_scripts/dracula.sh"
+        # tmux scripts (Catppuccin theme and custom status)
         "$dotfiles/tmux/scripts/pm2_status.sh:$tmux_scripts/pm2_status.sh"
         "$dotfiles/tmux/scripts/pm2_status_wrapper.sh:$tmux_scripts/pm2_status_wrapper.sh"
-        "$dotfiles/tmux/scripts/agents_attention.sh:$tmux_scripts/agents_attention.sh"
-        "$dotfiles/tmux/scripts/agents_count.sh:$tmux_scripts/agents_count.sh"
-        "$dotfiles/tmux/scripts/agents_usage_5h.sh:$tmux_scripts/agents_usage_5h.sh"
-        "$dotfiles/tmux/scripts/agents_usage_7d.sh:$tmux_scripts/agents_usage_7d.sh"
-        "$dotfiles/tmux/scripts/agents_usage_credits.sh:$tmux_scripts/agents_usage_credits.sh"
+        "$dotfiles/tmux/scripts/ram_status.sh:$tmux_scripts/ram.sh"
+        "$dotfiles/tmux/scripts/network_status.sh:$tmux_scripts/network.sh"
+        "$dotfiles/tmux/scripts/update_session_status.sh:$tmux_scripts/update_session_status.sh"
+        "$dotfiles/tmux/scripts/agents_status_vscode.sh:$tmux_scripts/agents_status_vscode.sh"
+        "$dotfiles/tmux/scripts/agents_cache_refresh.sh:$tmux_scripts/agents_cache_refresh.sh"
 
         # linters dotfiles
         "$dotfiles/linters/.pylintrc:$home/.pylintrc"
