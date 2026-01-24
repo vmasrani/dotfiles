@@ -13,6 +13,9 @@ if [[ "$session_name" == "agents" ]]; then
     left_cap=""
     right_cap=""
 
+    # Enable pane borders with titles for agents session
+    tmux set-option pane-border-status top
+
     tmux set-option status-style "bg=$base,fg=#cad3f5"
     tmux set-option status-justify centre
     tmux set-option status-left-length 30
@@ -38,5 +41,6 @@ if [[ "$session_name" == "agents" ]]; then
     
     tmux set-option window-status-separator ""
 else
-    :
+    # Disable pane borders for non-agents sessions
+    tmux set-option pane-border-status off
 fi

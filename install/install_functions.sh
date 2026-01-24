@@ -191,8 +191,6 @@ install_dotfiles() {
         "$dotfiles/tmux/scripts/agents_status_vscode.sh:$tmux_scripts/agents_status_vscode.sh"
         "$dotfiles/tmux/scripts/agents_count.sh:$tmux_scripts/agents_count.sh"
         "$dotfiles/tmux/scripts/agents_cache_refresh.sh:$tmux_scripts/agents_cache_refresh.sh"
-        "$dotfiles/tmux/scripts/last_cmd_status.sh:$tmux_scripts/last_cmd.sh"
-        "$dotfiles/tmux/scripts/last_cmd_status.sh:$config_tmux_scripts/last_cmd.sh"
 
         # linters dotfiles
         "$dotfiles/linters/.pylintrc:$home/.pylintrc"
@@ -223,8 +221,6 @@ install_dotfiles() {
         "$dotfiles/shell/helper_functions.sh:$home/helper_functions.sh"
         "$dotfiles/shell/gum_utils.sh:$home/gum_utils.sh"
         "$dotfiles/shell/update_startup.sh:$home/update_startup.sh"
-        "$dotfiles/shell/last_cmd_hook.zsh:$home/last_cmd_hook.zsh"
-
 
         # local dotfiles
         "$dotfiles/local/.local_env.sh:$home/.local_env.sh"
