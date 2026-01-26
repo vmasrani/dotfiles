@@ -22,7 +22,7 @@ get_cpu() {
 
 result=$(get_cpu)
 if [[ "$result" != "N/A" && -n "$result" ]]; then
-    echo "${result}%"
+    printf "%02d%%\n" "$result"
 else
     echo "N/A"
 fi

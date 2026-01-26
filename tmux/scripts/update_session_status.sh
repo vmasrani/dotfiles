@@ -4,7 +4,7 @@
 session_name=$(tmux display-message -p '#S')
 
 if [[ "$session_name" == "agents" ]]; then
-    dir="$HOME/.config/tmux/scripts"
+    dir="$HOME/dotfiles/tmux/scripts"
 
     base="#24273a"
     crust="#181926"

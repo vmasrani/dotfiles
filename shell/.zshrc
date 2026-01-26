@@ -43,7 +43,6 @@ source ~/lscolors.sh
 source ~/.aliases-and-envs.zsh
 source ~/.local_env.sh  # Should contain API keys and local-specific settings
 source ~/.paths.zsh
-source ~/dotfiles/tools/smart-pane-title-hook.zsh  # AI-powered pane titles
 
 # export NVM_DIR="$HOME/.nvm"
 # [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"

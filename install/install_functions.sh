@@ -59,7 +59,6 @@ install_dotfiles() {
     mkdir -p "$HOME"/bin
     mkdir -p "$HOME/dev/projects"
     mkdir -p "$HOME/.config/helix"
-    mkdir -p "$HOME/.config/tmux/scripts"
     mkdir -p "$HOME/.local/bin"
     mkdir -p "$HOME/.claude"
     mkdir -p "$HOME/.codex"
@@ -74,12 +73,9 @@ install_dotfiles() {
     local bin="$HOME/bin"
     local home="$HOME"
 
-    # Ensure Dracula tmux plugin directory exists so we can symlink our custom scripts into it.
-    # We ensure TPM exists first since `install_plugins` lives under it.
+    # Ensure TPM and tmux plugins are installed
     local tpm_dir="$HOME/.tmux/plugins/tpm"
     local dracula_plugin="$HOME/.tmux/plugins/tmux"
-    local tmux_scripts="$dracula_plugin/scripts"
-    local config_tmux_scripts="$HOME/.config/tmux/scripts"
 
     # Targets we always want to match the repo source (delete existing non-matching
     # file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
@@ -103,8 +99,6 @@ install_dotfiles() {
         "$tpm_dir/bin/install_plugins"
     fi
 
-    mkdir -p "$tmux_scripts"
-
     array_contains() {
         local needle="$1"
         shift
@@ -118,9 +112,6 @@ install_dotfiles() {
 
     should_force_link() {
         local target="$1"
-        if [[ "$target" == "$tmux_scripts/"* ]]; then
-            return 0
-        fi
         if array_contains "$target" "${force_replace_targets[@]}"; then
             return 0
         fi
@@ -178,19 +169,6 @@ install_dotfiles() {
         # editor dotfiles
         "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
         "$dotfiles/editors/.vimrc:$home/.vimrc"
-
-        # tmux scripts (Catppuccin theme and custom status)
-        "$dotfiles/tmux/scripts/pm2_status.sh:$tmux_scripts/pm2_status.sh"
-        "$dotfiles/tmux/scripts/pm2_status_wrapper.sh:$tmux_scripts/pm2_status_wrapper.sh"
-        "$dotfiles/tmux/scripts/cpu_status.sh:$tmux_scripts/cpu.sh"
-        "$dotfiles/tmux/scripts/ram_status.sh:$tmux_scripts/ram.sh"
-        "$dotfiles/tmux/scripts/load_status.sh:$tmux_scripts/load.sh"
-        "$dotfiles/tmux/scripts/battery_status.sh:$tmux_scripts/battery.sh"
-        "$dotfiles/tmux/scripts/network_status.sh:$tmux_scripts/network.sh"
-        "$dotfiles/tmux/scripts/update_session_status.sh:$tmux_scripts/update_session_status.sh"
-        "$dotfiles/tmux/scripts/agents_status_vscode.sh:$tmux_scripts/agents_status_vscode.sh"
-        "$dotfiles/tmux/scripts/agents_count.sh:$tmux_scripts/agents_count.sh"
-        "$dotfiles/tmux/scripts/agents_cache_refresh.sh:$tmux_scripts/agents_cache_refresh.sh"
 
         # linters dotfiles
         "$dotfiles/linters/.pylintrc:$home/.pylintrc"
@@ -285,12 +263,6 @@ install_dotfiles() {
             chmod +x "$source"
         fi
     done
-
-    if [ -d "$dracula_plugin" ]; then
-        gum_dim "Custom tmux scripts symlinked successfully."
-    else
-        gum_warning "Dracula tmux plugin directory not found at $dracula_plugin; skipping custom tmux script symlinks."
-    fi
 
 if [ -d "$HOME/.cursor" ]; then
     ln -sf "$HOME/.cursor" "$HOME/.cursor-server"

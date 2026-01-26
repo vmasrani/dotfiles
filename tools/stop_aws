@@ -21,7 +21,7 @@ if [[ "$INSTANCE_STATE" = "stopped" ]]; then
 elif [[ "$INSTANCE_STATE" = "running" ]]; then
     if gum_confirm "Stop instance $INSTANCE_ID?"; then
         gum_info "Stopping instance..."
-        aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --no-cli-pager > /dev/null
+        aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --force --no-cli-pager > /dev/null
         wait_for_instance_stopped "$INSTANCE_ID"
         gum_success "Instance stopped"
     else
@@ -29,7 +29,8 @@ elif [[ "$INSTANCE_STATE" = "running" ]]; then
         exit 0
     fi
 else
-    gum_warning "Instance is in state: $INSTANCE_STATE. Waiting for it to stop..."
+    gum_warning "Instance is in state: $INSTANCE_STATE. Force stopping..."
+    aws ec2 stop-instances --instance-ids "$INSTANCE_ID" --force --no-cli-pager > /dev/null
     wait_for_instance_stopped "$INSTANCE_ID"
     gum_success "Instance stopped"
 fi

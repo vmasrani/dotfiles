@@ -1,0 +1,306 @@
+#!/bin/zsh
+# Inbox cleanup script - processes existing emails based on sender patterns
+# Safe to run multiple times (idempotent)
+
+set -e
+
+source ~/dotfiles/shell/gum_utils.sh 2>/dev/null || true
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info() { echo "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo "${GREEN}[DONE]${NC} $1"; }
+log_warn() { echo "${YELLOW}[WARN]${NC} $1"; }
+
+MAIL_DIR="$HOME/.local/share/mail/gmail"
+DRY_RUN=${DRY_RUN:-0}
+
+# Check if running dry run
+if [[ "$1" == "--dry-run" ]] || [[ "$1" == "-n" ]]; then
+    DRY_RUN=1
+    log_warn "DRY RUN MODE - no changes will be made"
+fi
+
+# Create labels if they don't exist
+create_label() {
+    local label="$1"
+    local label_dir="$MAIL_DIR/$label"
+    if [[ ! -d "$label_dir" ]]; then
+        log_info "Creating label: $label"
+        if [[ $DRY_RUN -eq 0 ]]; then
+            mkdir -p "$label_dir"/{cur,new,tmp}
+        fi
+    fi
+}
+
+# Tag emails with notmuch
+tag_emails() {
+    local query="$1"
+    local tag="$2"
+    local count=$(notmuch count "$query" 2>/dev/null || echo 0)
+
+    if [[ $count -gt 0 ]]; then
+        log_info "Tagging $count emails: $query -> +$tag"
+        if [[ $DRY_RUN -eq 0 ]]; then
+            notmuch tag +$tag -- "$query"
+        fi
+    fi
+}
+
+# Remove inbox tag (archive)
+archive_emails() {
+    local query="$1"
+    local reason="$2"
+    local count=$(notmuch count "tag:inbox and ($query)" 2>/dev/null || echo 0)
+
+    if [[ $count -gt 0 ]]; then
+        log_info "Archiving $count emails ($reason): $query"
+        if [[ $DRY_RUN -eq 0 ]]; then
+            notmuch tag -inbox +archived -- "tag:inbox and ($query)"
+        fi
+    fi
+}
+
+# Tag as news and archive
+news_emails() {
+    local query="$1"
+    local source="$2"
+    local count=$(notmuch count "tag:inbox and ($query)" 2>/dev/null || echo 0)
+
+    if [[ $count -gt 0 ]]; then
+        log_info "Moving $count emails to News ($source)"
+        if [[ $DRY_RUN -eq 0 ]]; then
+            notmuch tag +news -inbox -- "tag:inbox and ($query)"
+        fi
+    fi
+}
+
+# Tag as receipts and archive
+receipts_emails() {
+    local query="$1"
+    local source="$2"
+    local count=$(notmuch count "tag:inbox and ($query)" 2>/dev/null || echo 0)
+
+    if [[ $count -gt 0 ]]; then
+        log_info "Moving $count emails to Receipts ($source)"
+        if [[ $DRY_RUN -eq 0 ]]; then
+            notmuch tag +receipts -inbox -- "tag:inbox and ($query)"
+        fi
+    fi
+}
+
+# Tag as spam
+spam_emails() {
+    local query="$1"
+    local source="$2"
+    local count=$(notmuch count "tag:inbox and ($query)" 2>/dev/null || echo 0)
+
+    if [[ $count -gt 0 ]]; then
+        log_info "Marking $count emails as spam ($source)"
+        if [[ $DRY_RUN -eq 0 ]]; then
+            notmuch tag +spam -inbox -unread -- "tag:inbox and ($query)"
+        fi
+    fi
+}
+
+echo ""
+echo "=========================================="
+echo "       INBOX CLEANUP SCRIPT"
+echo "=========================================="
+echo ""
+
+# Show current state
+INBOX_COUNT=$(notmuch count 'tag:inbox' 2>/dev/null || echo 0)
+UNREAD_COUNT=$(notmuch count 'tag:inbox and tag:unread' 2>/dev/null || echo 0)
+log_info "Current inbox: $INBOX_COUNT emails ($UNREAD_COUNT unread)"
+echo ""
+
+# Create labels
+log_info "Ensuring labels exist..."
+create_label "News"
+create_label "Receipts"
+
+echo ""
+echo "--- Processing News/Journalism ---"
+
+# Substack (all newsletters)
+news_emails "from:*@substack.com" "Substack"
+
+# Other news sources
+news_emails "from:*@newsletter.newyorker.com" "New Yorker"
+news_emails "from:*@updates.thedispatch.com" "The Dispatch"
+news_emails "from:*@medium.com" "Medium"
+news_emails "from:googlenews-noreply@google.com" "Google News"
+news_emails "from:*@latent.space" "Latent Space"
+news_emails "from:*@llamaindex.ai" "LlamaIndex"
+news_emails "from:*@openai.com" "OpenAI"
+news_emails "from:*@wandb.com" "Weights & Biases"
+news_emails "from:*@cursor.com" "Cursor"
+
+# More news sources (pass 2)
+news_emails "from:*@news.bloomberg.com" "Bloomberg (Matt Levine)"
+news_emails "from:*@theatlantic.com" "The Atlantic"
+news_emails "from:*@news.samharris.org" "Sam Harris"
+news_emails "from:*@supportingcast.fm" "Lexicon Valley"
+news_emails "from:*@munkdebates.com" "Munk Debates"
+news_emails "from:*@heterodoxacademy.org" "Heterodox Academy"
+news_emails "from:*@eml.condenast.com" "Conde Nast"
+
+# Tech community forums -> News
+news_emails "from:*@discoursemail.com" "Discourse Forums"
+news_emails "from:*DEVONtechnologies*" "DEVONthink Forum"
+news_emails "subject:[OpenAI Developer Forum]" "OpenAI Forum"
+news_emails "subject:[W&B Community]" "W&B Forum"
+
+echo ""
+echo "--- Processing Receipts/Tax ---"
+
+receipts_emails "from:*@uber.com" "Uber"
+receipts_emails "from:*@amazon.ca" "Amazon"
+receipts_emails "from:*@airbnb.com" "Airbnb"
+receipts_emails "from:*@aircanada.com" "Air Canada"
+receipts_emails "from:*@homedepot.com" "Home Depot"
+
+# More receipts (pass 2)
+receipts_emails "from:*@paypal.com" "PayPal"
+receipts_emails "from:*@payoneer.com" "Payoneer"
+receipts_emails "from:googleplay-noreply@google.com" "Google Play"
+receipts_emails "from:googlestore-noreply@google.com" "Google Store"
+receipts_emails "from:*@email.apple.com" "Apple"
+receipts_emails "from:*@1password.com" "1Password"
+receipts_emails "from:*@expedia.com" "Expedia"
+receipts_emails "from:*@flyflair.com" "Flair Airlines"
+receipts_emails "from:*@notification.aircanada.ca" "Air Canada Notifications"
+receipts_emails "from:*@flyporter.com" "Porter Airlines"
+receipts_emails "from:*@ticketmaster.ca" "Ticketmaster"
+receipts_emails "from:*@payments.interac.ca" "Interac"
+
+# More receipts (pass 3)
+receipts_emails "from:*@mail.anthropic.com" "Anthropic Invoices"
+receipts_emails "from:*@notifications.westjet.com" "WestJet"
+receipts_emails "from:*@splitwise.com" "Splitwise"
+receipts_emails "from:*@spotify.com" "Spotify"
+receipts_emails "from:*@paramountplus.com" "Paramount+"
+receipts_emails "from:*@ufile.ca" "UFile"
+receipts_emails "from:*@sf-notifications.com" "ShareFile"
+receipts_emails "from:*@amazon.com" "Amazon US"
+receipts_emails "from:*@stripe.com" "Stripe"
+
+echo ""
+echo "--- Processing Spam/Promotional ---"
+
+spam_emails "from:*@vividseats.com" "Vivid Seats"
+spam_emails "from:*@redbubble.com" "Redbubble"
+spam_emails "from:*@shoecarnival.com" "Shoe Carnival"
+spam_emails "from:*@sunglasshut.com" "Sunglass Hut"
+spam_emails "from:*@lenscrafters.com" "LensCrafters"
+
+# More spam (pass 2)
+spam_emails "from:*@rw-co.com" "RW&CO"
+spam_emails "from:*@audible.ca" "Audible"
+spam_emails "from:*@knowledge.ca" "Knowledge Network"
+spam_emails "from:*@unroll.me" "Unroll.Me"
+spam_emails "from:*@mail.yelp.com" "Yelp"
+spam_emails "from:*@microsoft.com" "Microsoft Store"
+spam_emails "from:*@rsvprewards.com" "RSVP Rewards"
+spam_emails "from:*@electriclovemusicfestival.com" "Electric Love"
+spam_emails "from:*@basscoast.ca" "Bass Coast"
+spam_emails "from:*@fitbit.com" "Fitbit"
+spam_emails "from:*@diabetes.ca" "Diabetes Canada"
+spam_emails "from:*@luma-mail.com" "Luma Events"
+
+# More spam (pass 3)
+spam_emails "from:*@stevemadden.ca" "Steve Madden"
+spam_emails "from:*@shakepay.com" "Shakepay"
+spam_emails "from:*@shiny.ca" "Shiny Platform"
+spam_emails "from:*@drawnames.ca" "drawnames"
+spam_emails "from:*@vancouversunrun.com" "Sun Run"
+spam_emails "from:*@gartner.com" "Gartner"
+spam_emails "from:*@insideapple.apple.com" "Apple News"
+spam_emails "from:*@livenation.com" "Live Nation"
+spam_emails "from:*@gorgomish.com" "Afterhours/Gorgomish"
+spam_emails "from:*@quillette.com" "Quillette"
+
+# Final pass spam
+spam_emails "from:*@elementor.com" "Elementor"
+spam_emails "from:*@eddiebauer.ca" "Eddie Bauer"
+spam_emails "from:*@email.meta.com" "Meta/Facebook"
+spam_emails "from:*@sickkidsfoundation.com" "SickKids"
+spam_emails "from:*@cirquedusoleil.com" "Cirque du Soleil"
+spam_emails "from:*@sourcery.ai" "Sourcery"
+spam_emails "from:*@nextdoor.com" "Nextdoor"
+spam_emails "from:*@musictoday.com" "Music Today"
+spam_emails "from:*@envato.com" "Envato"
+spam_emails "from:*@telus.com" "Telus"
+spam_emails "from:*@sayi.do" "Sayi.do"
+spam_emails "from:*@thisisblueprint.com" "Blueprint"
+
+echo ""
+echo "--- Archiving Platform Notifications ---"
+
+archive_emails "from:*@linkedin.com" "LinkedIn"
+archive_emails "from:*@perplexity.ai" "Perplexity"
+archive_emails "from:*@notion.com" "Notion"
+archive_emails "from:*@dragonflyinternational.com" "Dragonfly"
+
+# More platform notifications (pass 2)
+archive_emails "from:no-reply@accounts.google.com" "Google Accounts"
+archive_emails "from:*@account.canva.com" "Canva"
+archive_emails "from:*@dropbox.com" "Dropbox"
+archive_emails "from:*@email.claude.com" "Claude"
+archive_emails "from:*@broadcasts.remnote.com" "RemNote"
+archive_emails "from:*@hootsuite.com" "Hootsuite"
+archive_emails "from:*@calendar.google.com" "Google Calendar"
+
+# More platform notifications (pass 3)
+archive_emails "from:*@underline.io" "Underline"
+archive_emails "from:*@alumni.svc.ubc.ca" "UBC Alumni"
+
+# UBC mailing lists and admin (keep real people)
+archive_emails "from:head@cs.ubc.ca" "CPSC Head"
+archive_emails "from:grad-info@cs.ubc.ca" "CPSC Grad Program"
+archive_emails "from:*@LISTS.UBC.CA" "UBC Mailing Lists"
+archive_emails "from:MAILER-DAEMON@cs.ubc.ca" "Mail Delivery Errors"
+archive_emails "from:*@survey.svc.ubc.ca" "UBC Surveys"
+archive_emails "from:*@science.svc.ubc.ca" "UBC Science"
+archive_emails "from:*@sauder.ubc.ca" "Sauder"
+archive_emails "from:noreply@*ubc.ca" "UBC No-Reply"
+archive_emails "from:do-not-reply@*ubc.ca" "UBC Do-Not-Reply"
+archive_emails "from:*@give.svc.ubc.ca" "UBC Giving/Fundraising"
+archive_emails "from:*@svc.ubc.ca" "UBC Services"
+
+echo ""
+echo "=========================================="
+
+# Show final state
+if [[ $DRY_RUN -eq 0 ]]; then
+    # Re-index
+    log_info "Re-indexing..."
+    notmuch new 2>/dev/null
+
+    NEW_INBOX_COUNT=$(notmuch count 'tag:inbox' 2>/dev/null || echo 0)
+    NEW_UNREAD_COUNT=$(notmuch count 'tag:inbox and tag:unread' 2>/dev/null || echo 0)
+    NEWS_COUNT=$(notmuch count 'tag:news' 2>/dev/null || echo 0)
+    RECEIPTS_COUNT=$(notmuch count 'tag:receipts' 2>/dev/null || echo 0)
+    SPAM_COUNT=$(notmuch count 'tag:spam' 2>/dev/null || echo 0)
+
+    echo ""
+    log_success "Cleanup complete!"
+    echo ""
+    echo "  Inbox:    $INBOX_COUNT -> $NEW_INBOX_COUNT emails"
+    echo "  Unread:   $UNREAD_COUNT -> $NEW_UNREAD_COUNT"
+    echo "  News:     $NEWS_COUNT tagged"
+    echo "  Receipts: $RECEIPTS_COUNT tagged"
+    echo "  Spam:     $SPAM_COUNT tagged"
+else
+    echo ""
+    log_warn "DRY RUN complete - no changes made"
+    log_info "Run without --dry-run to apply changes"
+fi
+
+echo ""

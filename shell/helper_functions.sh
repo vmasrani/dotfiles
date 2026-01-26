@@ -86,3 +86,7 @@ remove_broken_symlinks() {
         echo "No broken symbolic links found in $dir."
     fi
 }
+
+marvin() {
+    cd ~/marvin && claude
+}
