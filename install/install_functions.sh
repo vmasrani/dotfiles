@@ -75,7 +75,7 @@ install_dotfiles() {
 
     # Ensure TPM and tmux plugins are installed
     local tpm_dir="$HOME/.tmux/plugins/tpm"
-    local dracula_plugin="$HOME/.tmux/plugins/tmux"
+    local catppuccin_plugin="$HOME/.tmux/plugins/tmux"
 
     # Targets we always want to match the repo source (delete existing non-matching
     # file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
@@ -94,10 +94,13 @@ install_dotfiles() {
         install_tpm
     fi
 
-    if [ ! -d "$dracula_plugin" ]; then
-        gum_info "Installing tmux plugins (including Dracula theme)..."
-        "$tpm_dir/bin/install_plugins"
+    if [ ! -d "$catppuccin_plugin" ]; then
+        gum_info "Installing Catppuccin tmux theme..."
+        install_catppuccin_tmux
     fi
+
+    # Install remaining tmux plugins via TPM
+    "$tpm_dir/bin/install_plugins"
 
     array_contains() {
         local needle="$1"
@@ -598,6 +601,23 @@ install_hypers() {
 install_tpm() {
     git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
     gum_success "tmux plugin manager installed successfully."
+}
+
+install_catppuccin_tmux() {
+    local catppuccin_dir="$HOME/.tmux/plugins/tmux"
+    
+    # Remove existing plugin if it's not catppuccin (e.g., dracula)
+    if [ -d "$catppuccin_dir" ] && [ ! -f "$catppuccin_dir/catppuccin.tmux" ]; then
+        gum_warning "Removing existing non-Catppuccin tmux theme..."
+        rm -rf "$catppuccin_dir"
+    fi
+    
+    if [ ! -d "$catppuccin_dir" ]; then
+        git clone -b v2.1.3 https://github.com/catppuccin/tmux.git "$catppuccin_dir"
+        gum_success "Catppuccin tmux theme installed successfully."
+    else
+        gum_dim "Catppuccin tmux theme is already installed."
+    fi
 }
 
 install_git_fuzzy() {
