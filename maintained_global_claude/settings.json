@@ -54,7 +54,6 @@
     "deny": [],
     "defaultMode": "plan"
   },
-  "model": "opus",
   "hooks": {
     "PostToolUse": [
       {
