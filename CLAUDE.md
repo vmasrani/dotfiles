@@ -4,128 +4,111 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-This is a comprehensive dotfiles repository that automates the setup and configuration of a development environment across Linux and macOS systems. The codebase is organized by functionality: shell configurations, tools, editor configs, and installation scripts.
+Dotfiles repository automating dev environment setup across Linux and macOS. Everything is symlinked from this repo into `$HOME` via `setup.sh`.
 
 ## Key Commands
 
-### Initial Setup
 ```bash
-./setup.sh  # Master installation script - installs all tools and creates symlinks
+./setup.sh                             # Full install + symlink pass (idempotent, safe to re-run)
+source ~/.zshrc                        # Reload shell config (alias: refresh)
+shellcheck setup.sh install/*.sh       # Lint shell scripts
 ```
 
-### Shell Configuration
-After running setup, refresh your shell environment:
+## Architecture
+
+### How Installation Works
+
+`setup.sh` orchestrates everything by sourcing `install/install_functions.sh`, which provides:
+
+- **`install_if_missing <cmd> <fn>`**: Skips if command already exists, otherwise calls the install function
+- **`install_if_dir_missing <dir> <fn>`**: Skips if directory exists
+- **`install_on_brew_or_mac <pkg>`**: Abstracts `apt` (Linux) vs `brew` (macOS) via `OS_TYPE` detection
+- **`install_dotfiles`**: Creates all symlinks from this repo into `$HOME`
+
+**To add a new tool**: Write an `install_<tool>` function in `install/install_functions.sh`, then add an `install_if_missing` line in `setup.sh`.
+
+### Symlink System
+
+`install_dotfiles` in `install/install_functions.sh` defines ~160 source→target pairs. Key mappings:
+
+| Source | Target |
+|--------|--------|
+| `shell/.zshrc` | `~/.zshrc` |
+| `shell/.aliases-and-envs.zsh` | `~/.aliases-and-envs.zsh` |
+| `shell/.paths.zsh` | `~/.paths.zsh` |
+| `tmux/.tmux.conf` | `~/.tmux.conf` |
+| `editors/hx_config.toml` | `~/.config/helix/config.toml` |
+| `editors/hx_languages.toml` | `~/.config/helix/languages.toml` |
+| `tools/*` | `~/tools/` (entire directory) |
+| `preview/*.sh` | `~/bin/` |
+| `maintained_global_claude/agents` | `~/.claude/agents/` |
+| `maintained_global_claude/commands` | `~/.claude/commands/` |
+| `maintained_global_claude/hooks` | `~/.claude/hooks/` |
+| `maintained_global_claude/skills` | `~/.claude/skills/` |
+| `maintained_global_claude/settings.json` | `~/.claude/settings.json` |
+
+The `force_replace_targets` array ensures Claude/Codex configs always match the repo (deletes stale targets before re-symlinking).
+
+### Shell Configuration Chain
+
+`.zshrc` sources files in this order:
+1. Zprezto init (`~/.zprezto/init.zsh`)
+2. `shell/helper_functions.sh` — utility functions (`command_exists`, `move_and_symlink`, etc.)
+3. `shell/gum_utils.sh` — terminal UI wrappers with non-TTY fallback
+4. `shell/lscolors.sh` — color scheme definitions
+5. `shell/.aliases-and-envs.zsh` — all aliases and env vars
+6. `local/.local_env.sh` — API keys and secrets (git-ignored)
+7. `shell/.paths.zsh` — PATH construction with dedup
+8. `fzf/.fzf-config.zsh` — fuzzy finder config
+9. Powerlevel10k prompt (`~/.p10k.zsh`)
+
+### Terminal UI: gum_utils.sh
+
+All shell scripts should use these functions for user-facing output instead of raw `echo`:
+
 ```bash
-source ~/.zshrc  # or use alias: refresh
+gum_success "Done"          # Green ✓
+gum_error "Failed"          # Red ✗ with border
+gum_warning "Caution"       # Orange ⚠
+gum_info "Starting..."      # Magenta →
+gum_dim "Already installed" # Gray dimmed
+gum_spin_quick "Loading..." cmd args  # Spinner
+gum_confirm "Continue?"     # Interactive yes/no
 ```
 
-### Linting and Validation
-```bash
-shellcheck setup.sh                    # Lint shell scripts
-shellcheck install/*.sh tools/*.sh     # Lint all shell files
-```
+All functions fall back to plain text when gum is unavailable or in non-TTY contexts.
 
-### Common Development Tools Installed
-- **Shell**: zsh with Prezto framework and Powerlevel10k theme
-- **Editor**: Helix (hx) with LSP support, Vim
-- **Terminal**: tmux with custom configuration and popup support
-- **Git**: Enhanced with git-fuzzy and diff-so-fancy
-- **Search**: ripgrep (rg), fd, fzf with extensive configuration
-- **File viewing**: bat, eza with icons and git integration
-- **Python**: uv package manager, machine learning helpers
-- **Network**: curl, wget for data transfer
-- **Data processing**: jq, yq, parquet-tools
+### Claude AI Config Management
 
-## Architecture and Conventions
+`maintained_global_claude/` is the source of truth for Claude Code configuration. It is version-controlled here and symlinked into `~/.claude/` during setup. Subdirectories:
 
-### Directory Structure
-- `shell/`: Shell configurations (.zshrc, .bashrc, aliases, environment variables)
-- `install/`: Tool installation scripts with OS detection (Linux/macOS)
-- `tools/`: Utility scripts for file management, AWS operations, system info
-- `tmux/`: Tmux configuration with custom key bindings and session management
-- `editors/`: Vim and Helix configurations with LSP setup
-- `local/`: Local environment settings and secrets (not tracked in git)
-- `fzf/`: Fuzzy finder configurations and environment setup
-- `linters/`: Code quality configurations (pylint, sourcery, pyright)
-- `preview/`: File preview scripts for various formats
-- `claude/`: Claude AI integration and allowed tools ruleset
+- `agents/` — Agent definitions (e.g., structural-completeness-reviewer)
+- `commands/` — Custom slash commands
+- `hooks/` — Event-driven shell scripts
+- `skills/` — Custom skill definitions
+- `settings.json` — Global Claude settings
 
-### Installation System Architecture
-The setup uses a sophisticated modular approach:
+Changes to Claude config should be made in `maintained_global_claude/`, never directly in `~/.claude/`.
 
-1. **OS Detection**: `install_functions.sh` detects Linux vs macOS at runtime
-2. **Conditional Installation**: Uses `install_if_missing` and `install_if_dir_missing` functions
-3. **Package Manager Abstraction**: `install_on_brew_or_mac` handles apt/brew differences
-4. **Fallback Strategy**: Downloads binaries when package managers fail
-5. **Symlink Management**: Creates symlinks for all dotfiles to their proper locations
-6. **Helper Functions**: Reusable functions in `shell/helper_functions.sh`
+### tools/ Directory
 
-### Key Aliases and Functions
-File operations are heavily enhanced:
-- **File listing**: `l` (detailed), `lt` (by time), `lf` (by size), `ld` (directories only)
-- **Tree views**: `t`, `t1`, `t2`, `t3`, `t4` (with depth levels), excludes common dev directories
-- **Navigation**: `..`, `.1` through `.9` for quick parent directory access
-- **Enhanced commands**: 
-  - `fd -HI` (find with hidden and ignored files)
-  - `rg --no-ignore` (ripgrep without ignore files)
-  - `bat -n --color=always` (cat with line numbers and color)
+CLI utilities (bash and Python) symlinked to `~/tools/`. Python scripts use uv inline dependencies with the shebang `#!/usr/bin/env -S uv run --script`. Key tools include AI wrappers (`oai`, `ddgs`, `google_search`), data processing utilities (`print_csv`, `pdf_extract_pages`), and system helpers.
 
-### Environment Variables and PATH
-Complex PATH management system in `shell/.aliases-and-envs.zsh`:
-- Consolidates multiple tool paths (Node, Go, Python, npm, etc.)
-- Removes duplicates automatically
-- Handles version-specific paths (e.g., Node v18.20.8)
-- Sets PYTHONPATH for custom modules
+### tmux Architecture
 
-### Python Development Setup
-- **Package Manager**: `uv` for modern Python dependency management
-- **Custom Modules**: Machine learning helpers at `~/.python`
-- **ML Tools**: PyTorch, scikit-learn, pandas, matplotlib pre-configured
-- **Development Tools**: IPython, Jupyter, rich for enhanced REPL experience
+`tmux/.tmux.conf` with supporting scripts in `tmux/scripts/`:
+- Vi-mode navigation, popup windows (`L` for sidepanel, `F11` for agents)
+- Status bar scripts (`cpu_status.sh`, `ram_status.sh`, `agents_count.sh`, etc.)
+- Agent session management with dynamic pane titles
+- Plugins via TPM: tmux-sensible, extrakto, fzf-pane-switch
 
-### Security Considerations
-- **Secrets Management**: Dedicated `local/` directory for API keys and tokens
-- **Git Security**: `.gitignore` prevents sensitive data commits
-- **SSL Warning**: Git config disables SSL verification (review this setting)
-- **Allowed Tools**: Claude integration has extensive tool restrictions in `claude/allowed-tools-ruleset.txt`
+### Secrets and Local Overrides
 
-### Cross-Platform Compatibility
-- **OS Detection**: Automatic Linux/macOS detection
-- **Package Managers**: Seamless apt (Linux) and brew (macOS) integration
-- **Binary Fallbacks**: Downloads from GitHub releases when package managers unavailable
-- **Path Handling**: OS-specific path configurations
+`local/` is git-ignored. Contains `.local_env.sh` (API keys), `.secrets`, and `.mutt_secrets`. Machine-specific overrides go here, never in tracked files.
 
-## Custom Tools Available
+## Conventions
 
-### File and System Management
-Located in `~/dotfiles/tools/`:
-- `colorize-columns.sh`: Add color coding to columnar output
-- `find_files.sh`: Enhanced file finding with filters
-- `rfz.sh`: Fuzzy file search integration
-- `system_info.sh`: Comprehensive system information display
-- `copy.sh`: Enhanced file copying utilities
-- `split_by_size.sh`: Split large files by size
-
-### Development Workflow
-- `fzf-helix.sh`: Fuzzy finder integration with Helix editor
-- `imgcat.sh`: Display images in terminal (iTerm2 compatible)
-
-### Remote Operations
-- `start_aws.sh` / `stop_aws.sh`: AWS instance management
-- `rsync-all.sh`: Batch rsync operations
-- `run-command-on-all-addresses.sh`: Execute commands across multiple hosts
-- `mount_remotes.sh`: Mount remote filesystems
-- `sshget`: Secure file retrieval over SSH
-
-### File Processing
-- `symlink_pdfs.sh`: Create organized PDF symlinks
-- Preview scripts for various formats (feather, numpy, torch files)
-
-## tmux Configuration
-
-Extensive tmux setup in `tmux/.tmux.conf`:
-- **Custom Key Bindings**: Vi-mode navigation, pane management
-- **Session Management**: Automatic session restoration
-- **Popup Windows**: Integrated terminal popups for quick tasks
-- **Plugin System**: TPM (Tmux Plugin Manager) integration
-- **Status Bar**: Custom status bar with system information
+- **Shell scripts**: Target zsh, use `set -e`, guard with helpers from `helper_functions.sh`, use lowercase-hyphen CLI names (`update-packages`)
+- **Idempotency**: All install scripts and setup.sh must be safe to run multiple times
+- **OS branching**: Use `install_on_brew_or_mac` or check `$OS_TYPE` for platform-specific logic
+- **Commit style**: Imperative one-liners (`fix tmux theme`, `add helix bindings`), group related changes
