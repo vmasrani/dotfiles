@@ -25,6 +25,7 @@ install_if_dir_missing ~/dotfiles/local install_local_dotfiles
 # generate_plugin_configs
 
 install_dotfiles
+install_if_missing gum install_gum # Terminal UI styling (Charm)
 install_meslo_font # MesloLGS NF font for Powerlevel10k theme
 install_iterm2 # iTerm2 terminal emulator (macOS only)
 

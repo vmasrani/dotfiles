@@ -14,7 +14,11 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
-# _setup_sudo_shim (in install_functions.sh) handles the sudo-as-root case
+# RunPod containers run as root without sudo — install it for real
+if [ "$(id -u)" -eq 0 ] && ! command -v sudo &>/dev/null; then
+    apt-get update -qq && apt-get install -y -qq sudo >/dev/null
+fi
+
 source "$SCRIPT_DIR/install/install_functions.sh"
 source "$SCRIPT_DIR/install/runpod_functions.sh"
 source "$SCRIPT_DIR/shell/.aliases-and-envs.zsh"
@@ -53,6 +57,7 @@ bridge_root_to_workspace
 # --- Phase C: Install tools ---
 gum_info "Phase C: Installing tools ..."
 
+install_if_missing gum install_gum
 install_meslo_font
 
 # install essentials

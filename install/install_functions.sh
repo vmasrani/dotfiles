@@ -17,16 +17,6 @@ else
     exit 1
 fi
 
-# When running as root without sudo (e.g. RunPod containers), shim sudo as a no-op passthrough.
-_setup_sudo_shim() {
-    if [ "$(id -u)" -eq 0 ] && ! command -v sudo &>/dev/null; then
-        sudo() { "$@"; }
-        export -f sudo
-    fi
-}
-_setup_sudo_shim
-
-
 install_on_brew_or_mac() {
     local linux_package=$1
     local mac_package=${2:-$1}  # Use first arg if second not provided
@@ -476,8 +466,15 @@ install_chafa() {
     install_on_brew_or_mac "chafa"
 }
 
-
-
+_install_gum_charm_repo() {
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
+    sudo apt update && sudo apt install -y gum
+}
+install_gum() {
+    install_with_fallback "gum" "" "_install_gum_charm_repo"
+}
 
 _install_yq_binary() {
     wget -qO "$HOME/bin/yq" "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
