@@ -1,0 +1,31 @@
+#!/usr/bin/env zsh
+# Show directory tree using eza, optimized for codebase exploration.
+# Usage: ctx-tree [directory] [depth]
+#   directory: path to explore (default: .)
+#   depth:     max depth (default: 3)
+
+set -e
+
+dir="${1:-.}"
+depth="${2:-3}"
+
+eza --tree \
+    --level "$depth" \
+    --git-ignore \
+    --ignore-glob '__pycache__|node_modules|.git|dist|build|.next|.venv|*.pyc|*.egg-info' \
+    --group-directories-first \
+    --icons=auto \
+    --only-dirs \
+    "$dir" 2>/dev/null
+
+echo ""
+echo "--- files ---"
+
+eza --tree \
+    --level "$depth" \
+    --git-ignore \
+    --ignore-glob '__pycache__|node_modules|.git|dist|build|.next|.venv|*.pyc|*.egg-info' \
+    --group-directories-first \
+    --icons=auto \
+    --only-files \
+    "$dir" 2>/dev/null
