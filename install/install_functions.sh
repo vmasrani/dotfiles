@@ -105,6 +105,7 @@ install_dotfiles() {
     mkdir -p "$home/.codex"
     # chmod bash files
     find "$dotfiles" -name "*.sh" -type f -exec chmod +x {} \;
+    mkdir -p "$dotfiles/local"
     touch "$dotfiles/local/.local_env.sh"
 
     gum_dim "Creating symbolic links..."
