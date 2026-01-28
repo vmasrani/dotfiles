@@ -24,7 +24,7 @@ wget "$url" -O ~/$file_name
 
 mkdir ~/bin/$dir_name
 # Extract the tar file
-tar -xvf ~/$file_name -C ~/bin/$dir_name
+tar --no-same-owner -xvf ~/$file_name -C ~/bin/$dir_name
 
 # Symlink the executables
 find ~/bin/$dir_name -maxdepth 2 -type f -executable -exec ln -s {} ~/bin \;
