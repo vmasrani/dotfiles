@@ -2,6 +2,12 @@
 # # see /usr/share/doc/bash/examples/startup-files (in the package bash-doc)
 # # for examples
 
+# RunPod boot guard: re-bridge ephemeral /root -> persistent /workspace/home
+if [[ -d "/workspace/home" ]]; then
+    [[ ! -e "$HOME/dotfiles" ]] && ln -sf /workspace/dotfiles "$HOME/dotfiles"
+    source "$HOME/dotfiles/shell/runpod_boot_guard.sh"
+fi
+
 echo "hello from bashrc"
 
 # # If not running interactively, don't do anything
@@ -151,4 +157,4 @@ echo "hello from bashrc"
 # . "$HOME/.local/bin/env"
 echo "Sourcing $0"
 
-alias claude-mem='bun "/Users/vmasrani/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
+alias claude-mem='bun "$HOME/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'

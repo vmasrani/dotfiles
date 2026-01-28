@@ -16,6 +16,13 @@
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
+
+# RunPod boot guard: re-bridge ephemeral /root -> persistent /workspace/home
+if [[ -d "/workspace/home" ]]; then
+    [[ ! -e "$HOME/dotfiles" ]] && ln -sf /workspace/dotfiles "$HOME/dotfiles"
+    source "$HOME/dotfiles/shell/runpod_boot_guard.sh"
+fi
+
 #
 # Executes commands at the start of an interactive session.
 #
@@ -78,11 +85,11 @@ bindkey '^[[1;3C' forward-word
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
-. "$HOME/.cargo/env"
+[[ -f "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env"
 
 
 # bun completions
-[ -s "/Users/vmasrani/.bun/_bun" ] && source "/Users/vmasrani/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
@@ -93,7 +100,7 @@ export OLLAMA_CONTEXT_LENGTH=40000
 # HACK
 export OLLAMA_CONTEXT_LENGTH=40000
 
-alias claude-mem='bun "/Users/vmasrani/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
+alias claude-mem='bun "$HOME/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
 
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 

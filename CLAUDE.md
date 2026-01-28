@@ -106,6 +106,32 @@ CLI utilities (bash and Python) symlinked to `~/tools/`. Python scripts use uv i
 
 `local/` is git-ignored. Contains `.local_env.sh` (API keys), `.secrets`, and `.mutt_secrets`. Machine-specific overrides go here, never in tracked files.
 
+### RunPod Support
+
+RunPod pods have ephemeral `/root` but persistent `/workspace`. The dotfiles support this via a two-layer approach:
+
+1. **`setup_runpod.sh`** — Alternative entry point (instead of `setup.sh`):
+   - Phase A: Installs dotfiles into `/workspace/home` (persistent across pod restarts)
+   - Phase B: Bridges `/root` -> `/workspace/home` via symlinks
+   - Phase C: Installs tools
+
+2. **Boot guard** (`shell/runpod_boot_guard.sh`) — Sourced from `.zshrc`/`.bashrc` on every shell start. Re-establishes the `/root` -> `/workspace/home` bridge after pod restarts. No-op on non-RunPod machines (guard: `[[ -d "/workspace/home" ]]`).
+
+3. **`install/runpod_functions.sh`** — Contains `bridge_root_to_workspace()` which creates force-mode symlinks for directories and dotfiles from `/root` to `/workspace/home`.
+
+**RunPod workflow:**
+```bash
+# First time on a new pod:
+git clone https://github.com/vmasrani/dotfiles.git /workspace/dotfiles
+cd /workspace/dotfiles && ./setup_runpod.sh
+exec zsh
+
+# After pod restart (automatic via boot guard, or manual):
+# Just open a new shell — the boot guard re-bridges automatically
+```
+
+Key design: `install_dotfiles()` accepts optional `[dotfiles_dir] [target_home]` args, defaulting to `$HOME/dotfiles` and `$HOME`. This keeps `setup.sh` backward-compatible while allowing `setup_runpod.sh` to target `/workspace/home`.
+
 ## Conventions
 
 - **Shell scripts**: Target zsh, use `set -e`, guard with helpers from `helper_functions.sh`, use lowercase-hyphen CLI names (`update-packages`)

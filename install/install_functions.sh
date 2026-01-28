@@ -1,8 +1,10 @@
 #!/bin/bash
 # shellcheck shell=bash
 
-source "$HOME/dotfiles/shell/helper_functions.sh"
-source "$HOME/dotfiles/shell/gum_utils.sh"
+_INSTALL_FUNCS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_DOTFILES_ROOT="$(dirname "$_INSTALL_FUNCS_DIR")"
+source "$_DOTFILES_ROOT/shell/helper_functions.sh"
+source "$_DOTFILES_ROOT/shell/gum_utils.sh"
 
 
 # Detect operating system
@@ -54,28 +56,62 @@ install_if_dir_missing() {
     fi
 }
 
-install_dotfiles() {
+ensure_symlink() {
+    local source="$1"
+    local target="$2"
+    local force_link="$3"
 
-    mkdir -p "$HOME"/bin
-    mkdir -p "$HOME/dev/projects"
-    mkdir -p "$HOME/.config/helix"
-    mkdir -p "$HOME/.local/bin"
-    mkdir -p "$HOME/.claude"
-    mkdir -p "$HOME/.codex"
+    # Check if target already exists and points to the correct source
+    if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
+        gum_dim "Symlink already exists: $(basename "$source") -> $target"
+        return 0
+    fi
+
+    gum_info "Linking $(basename "$source") to $target"
+
+    if [[ "$force_link" == "true" ]]; then
+        if [ -e "$target" ] || [ -L "$target" ]; then
+            gum_warning "Replacing existing path at $target (will re-symlink to $source)"
+            rm -rf "$target"
+        fi
+        ln -sf "$source" "$target"
+        return 0
+    fi
+
+    # Only remove if it's a broken symlink
+    if [ -L "$target" ] && [ ! -e "$target" ]; then
+        rm -f "$target"
+    fi
+
+    # Create symlink only if target doesn't exist
+    if [ ! -e "$target" ]; then
+        ln -sf "$source" "$target"
+        return 0
+    fi
+
+    gum_warning "Warning: $target already exists and is not a symlink to $source"
+}
+
+install_dotfiles() {
+    local dotfiles="${1:-$HOME/dotfiles}"
+    local home="${2:-$HOME}"
+    local bin="$home/bin"
+
+    mkdir -p "$bin"
+    mkdir -p "$home/dev/projects"
+    mkdir -p "$home/.config/helix"
+    mkdir -p "$home/.local/bin"
+    mkdir -p "$home/.claude"
+    mkdir -p "$home/.codex"
     # chmod bash files
-    find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
-    touch $HOME/dotfiles/local/.local_env.sh
+    find "$dotfiles" -name "*.sh" -type f -exec chmod +x {} \;
+    touch "$dotfiles/local/.local_env.sh"
 
     gum_dim "Creating symbolic links..."
 
-  # Define base paths
-    local dotfiles="$HOME/dotfiles"
-    local bin="$HOME/bin"
-    local home="$HOME"
-
     # Ensure TPM and tmux plugins are installed
-    local tpm_dir="$HOME/.tmux/plugins/tpm"
-    local catppuccin_plugin="$HOME/.tmux/plugins/tmux"
+    local tpm_dir="$home/.tmux/plugins/tpm"
+    local catppuccin_plugin="$home/.tmux/plugins/tmux"
 
     # Targets we always want to match the repo source (delete existing non-matching
     # file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
@@ -91,12 +127,12 @@ install_dotfiles() {
 
     if [ ! -d "$tpm_dir" ]; then
         gum_info "Installing tmux plugin manager (tpm)..."
-        install_tpm
+        install_tpm "$tpm_dir"
     fi
 
     if [ ! -d "$catppuccin_plugin" ]; then
         gum_info "Installing Catppuccin tmux theme..."
-        install_catppuccin_tmux
+        install_catppuccin_tmux "$catppuccin_plugin"
     fi
 
     # Install remaining tmux plugins via TPM
@@ -119,42 +155,6 @@ install_dotfiles() {
             return 0
         fi
         return 1
-    }
-
-    ensure_symlink() {
-        local source="$1"
-        local target="$2"
-        local force_link="$3"
-
-        # Check if target already exists and points to the correct source
-        if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
-            gum_dim "Symlink already exists: $(basename "$source") -> $target"
-            return 0
-        fi
-
-        gum_info "Linking $(basename "$source") to $target"
-
-        if [[ "$force_link" == "true" ]]; then
-            if [ -e "$target" ] || [ -L "$target" ]; then
-                gum_warning "Replacing existing path at $target (will re-symlink to $source)"
-                rm -rf "$target"
-            fi
-            ln -sf "$source" "$target"
-            return 0
-        fi
-
-        # Only remove if it's a broken symlink
-        if [ -L "$target" ] && [ ! -e "$target" ]; then
-            rm -f "$target"
-        fi
-
-        # Create symlink only if target doesn't exist
-        if [ ! -e "$target" ]; then
-            ln -sf "$source" "$target"
-            return 0
-        fi
-
-        gum_warning "Warning: $target already exists and is not a symlink to $source"
     }
 
     # Create an array of source:target pairs
@@ -267,8 +267,8 @@ install_dotfiles() {
         fi
     done
 
-if [ -d "$HOME/.cursor" ]; then
-    ln -sf "$HOME/.cursor" "$HOME/.cursor-server"
+if [ -d "$home/.cursor" ]; then
+    ln -sf "$home/.cursor" "$home/.cursor-server"
     gum_dim "Symlink created from ~/.cursor to ~/.cursor-server"
 fi
 
@@ -277,9 +277,10 @@ fi
 
 
 install_local_dotfiles() {
-    mkdir -p "$HOME/dotfiles/local"
-    touch "$HOME/dotfiles/local/.local_env.sh"
-    touch "$HOME/dotfiles/local/.secrets"
+    local dotfiles="${1:-$HOME/dotfiles}"
+    mkdir -p "$dotfiles/local"
+    touch "$dotfiles/local/.local_env.sh"
+    touch "$dotfiles/local/.secrets"
 }
 
 generate_plugin_configs() {
@@ -599,19 +600,20 @@ install_hypers() {
 }
 
 install_tpm() {
-    git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+    local target="${1:-$HOME/.tmux/plugins/tpm}"
+    git clone https://github.com/tmux-plugins/tpm "$target"
     gum_success "tmux plugin manager installed successfully."
 }
 
 install_catppuccin_tmux() {
-    local catppuccin_dir="$HOME/.tmux/plugins/tmux"
-    
+    local catppuccin_dir="${1:-$HOME/.tmux/plugins/tmux}"
+
     # Remove existing plugin if it's not catppuccin (e.g., dracula)
     if [ -d "$catppuccin_dir" ] && [ ! -f "$catppuccin_dir/catppuccin.tmux" ]; then
         gum_warning "Removing existing non-Catppuccin tmux theme..."
         rm -rf "$catppuccin_dir"
     fi
-    
+
     if [ ! -d "$catppuccin_dir" ]; then
         git clone -b v2.1.3 https://github.com/catppuccin/tmux.git "$catppuccin_dir"
         gum_success "Catppuccin tmux theme installed successfully."
