@@ -126,18 +126,22 @@ install_dotfiles() {
         "$home/.codex/config.toml"
     )
 
-    if [ ! -d "$tpm_dir" ]; then
-        gum_info "Installing tmux plugin manager (tpm)..."
-        install_tpm "$tpm_dir"
-    fi
+    if command_exists tmux; then
+        if [ ! -d "$tpm_dir" ]; then
+            gum_info "Installing tmux plugin manager (tpm)..."
+            install_tpm "$tpm_dir"
+        fi
 
-    if [ ! -d "$catppuccin_plugin" ]; then
-        gum_info "Installing Catppuccin tmux theme..."
-        install_catppuccin_tmux "$catppuccin_plugin"
-    fi
+        if [ ! -d "$catppuccin_plugin" ]; then
+            gum_info "Installing Catppuccin tmux theme..."
+            install_catppuccin_tmux "$catppuccin_plugin"
+        fi
 
-    # Install remaining tmux plugins via TPM
-    "$tpm_dir/bin/install_plugins"
+        # Install remaining tmux plugins via TPM
+        "$tpm_dir/bin/install_plugins"
+    else
+        gum_dim "tmux not installed yet — skipping plugin setup"
+    fi
 
     array_contains() {
         local needle="$1"
