@@ -397,7 +397,16 @@ install_fzf() {
 
 install_helix() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        snap install --classic helix
+        if command_exists snap; then
+            snap install --classic helix
+        else
+            sudo apt install -y software-properties-common
+            sudo add-apt-repository -y ppa:maveonair/helix-editor 2>/dev/null || true
+            sudo apt update && sudo apt install -y helix 2>/dev/null || {
+                gum_info "Falling back to cargo install for helix..."
+                cargo install --locked --git https://github.com/helix-editor/helix helix-term
+            }
+        fi
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install helix
     fi
@@ -436,7 +445,14 @@ install_lazysql() {
 
 install_btop() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo snap install btop
+        if command_exists snap; then
+            sudo snap install btop
+        else
+            sudo apt install -y btop 2>/dev/null || {
+                gum_warning "btop not available via apt or snap — skipping"
+                return 0
+            }
+        fi
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install btop
     fi
@@ -479,7 +495,12 @@ install_chafa() {
 
 install_yq() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo snap install yq
+        if command_exists snap; then
+            sudo snap install yq
+        else
+            local yq_url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+            wget -qO "$HOME/bin/yq" "$yq_url" && chmod +x "$HOME/bin/yq"
+        fi
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install yq
     fi
