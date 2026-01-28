@@ -14,6 +14,12 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
+# RunPod containers run as root — make sudo a no-op
+if [ "$(id -u)" -eq 0 ] && ! command -v sudo &>/dev/null; then
+    sudo() { "$@"; }
+    export -f sudo
+fi
+
 source "$SCRIPT_DIR/install/install_functions.sh"
 source "$SCRIPT_DIR/install/runpod_functions.sh"
 source "$SCRIPT_DIR/shell/.aliases-and-envs.zsh"
