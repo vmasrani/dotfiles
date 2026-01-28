@@ -1,5 +1,5 @@
-#!/bin/zsh
-# shellcheck shell=zsh
+#!/bin/bash
+# shellcheck shell=bash
 # ===================================================================
 # RunPod Dotfiles Setup Script
 # ===================================================================
