@@ -8,7 +8,10 @@ if [[ -d "/workspace/home" ]]; then
     source "$HOME/dotfiles/shell/runpod_boot_guard.sh"
 fi
 
-echo "hello from bashrc"
+# Switch to zsh on RunPod (where chsh is unavailable)
+if [[ -d "/workspace/home" ]] && command -v zsh &>/dev/null && [[ -z "$ZSH_VERSION" ]]; then
+    exec zsh -l
+fi
 
 # # If not running interactively, don't do anything
 # case $- in
@@ -155,6 +158,5 @@ echo "hello from bashrc"
 # [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 # . "$HOME/.local/bin/env"
-echo "Sourcing $0"
 
 alias claude-mem='bun "$HOME/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'

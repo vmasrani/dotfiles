@@ -38,6 +38,14 @@ fi
 install_if_dir_missing /workspace/dotfiles/local install_local_dotfiles
 install_dotfiles "/workspace/dotfiles" "/workspace/home"
 
+# Persist SSH keys into /workspace/home so they survive pod restarts
+if [[ -d "/root/.ssh" && ! -d "/workspace/home/.ssh" ]]; then
+    cp -a /root/.ssh /workspace/home/.ssh
+    gum_success "Copied /root/.ssh -> /workspace/home/.ssh"
+elif [[ -d "/workspace/home/.ssh" ]]; then
+    gum_dim "/workspace/home/.ssh already exists, skipping copy"
+fi
+
 # --- Phase B: Bridge /root -> /workspace/home ---
 gum_info "Phase B: Bridging /root -> /workspace/home ..."
 bridge_root_to_workspace
