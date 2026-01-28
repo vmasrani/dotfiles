@@ -14,12 +14,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
-# RunPod containers run as root — make sudo a no-op
-if [ "$(id -u)" -eq 0 ] && ! command -v sudo &>/dev/null; then
-    sudo() { "$@"; }
-    export -f sudo
-fi
-
+# _setup_sudo_shim (in install_functions.sh) handles the sudo-as-root case
 source "$SCRIPT_DIR/install/install_functions.sh"
 source "$SCRIPT_DIR/install/runpod_functions.sh"
 source "$SCRIPT_DIR/shell/.aliases-and-envs.zsh"
@@ -29,6 +24,9 @@ source "$SCRIPT_DIR/shell/gum_utils.sh"
 gum_info "Phase A: Installing dotfiles into /workspace/home ..."
 
 mkdir -p /workspace/home
+
+# zsh must be available before dotfiles are symlinked (shell configs depend on it)
+install_if_missing zsh install_zsh
 
 # Ensure dotfiles repo is at /workspace/dotfiles
 if [[ ! -d "/workspace/dotfiles" ]]; then
@@ -46,9 +44,6 @@ bridge_root_to_workspace
 
 # --- Phase C: Install tools ---
 gum_info "Phase C: Installing tools ..."
-
-# install zsh
-install_if_missing zsh install_zsh
 
 install_meslo_font
 

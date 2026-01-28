@@ -17,6 +17,15 @@ else
     exit 1
 fi
 
+# When running as root without sudo (e.g. RunPod containers), shim sudo as a no-op passthrough.
+_setup_sudo_shim() {
+    if [ "$(id -u)" -eq 0 ] && ! command -v sudo &>/dev/null; then
+        sudo() { "$@"; }
+        export -f sudo
+    fi
+}
+_setup_sudo_shim
+
 
 install_on_brew_or_mac() {
     local linux_package=$1
@@ -27,6 +36,30 @@ install_on_brew_or_mac() {
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install "$mac_package"
     fi
+}
+
+
+install_with_fallback() {
+    local package="$1"
+    local snap_flags="${2:-}"
+    local fallback_fn="${3:-}"
+
+    if [[ "$OS_TYPE" == "mac" ]]; then
+        brew install "$package"
+        return
+    fi
+    # Linux: apt -> snap -> fallback fn -> skip
+    if sudo apt install -y "$package" 2>/dev/null; then return 0; fi
+    if command_exists snap; then
+        # shellcheck disable=SC2086
+        if sudo snap install $snap_flags "$package" 2>/dev/null; then return 0; fi
+    fi
+    if [[ -n "$fallback_fn" ]]; then
+        gum_info "apt/snap unavailable for $package, trying fallback..."
+        "$fallback_fn"
+        return
+    fi
+    gum_warning "$package not available via apt or snap -- skipping"
 }
 
 
@@ -318,31 +351,15 @@ generate_plugin_configs() {
 
 
 install_zsh() {
-    read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
-    case "$choice" in
-        y|Y )
-            if [[ "$OS_TYPE" == "linux" ]]; then
-                if [ "$(id -u)" -eq 0 ]; then
-                    apt update && apt upgrade -y
-                    apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-                    chsh -s $(which zsh)
-                else
-                    sudo apt update && sudo apt upgrade -y
-                    sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-                    sudo chsh -s $(which zsh) $USER
-                fi
-            elif [[ "$OS_TYPE" == "mac" ]]; then
-                brew update
-                brew install zsh vim
-                chsh -s $(which zsh)
-            fi
-            gum_success "Installation complete. Please restart your shell to use zsh."
-            ;;
-        * )
-            gum_info "Skipping installation."
-            return 1
-            ;;
-    esac
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt update
+        sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+        sudo chsh -s "$(which zsh)" "${USER:-root}" || gum_warning "chsh failed -- set default shell manually"
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew update
+        brew install zsh vim
+        chsh -s "$(which zsh)"
+    fi
 }
 
 
@@ -367,11 +384,6 @@ install_tealdeer() {
     tldr --update
 }
 
-install_zprezto() {
-    git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$HOME}/.zprezto"
-}
-
-
 install_npm() {
     bash install/install_npm.sh
 }
@@ -395,22 +407,12 @@ install_fzf() {
     "$HOME/.fzf/install" --all --no-update-rc
 }
 
+_install_helix_cargo() {
+    source "$HOME/.cargo/env" 2>/dev/null || true
+    cargo install --locked --git https://github.com/helix-editor/helix helix-term
+}
 install_helix() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        if command_exists snap; then
-            snap install --classic helix
-        else
-            sudo apt install -y software-properties-common
-            sudo add-apt-repository -y ppa:maveonair/helix-editor 2>/dev/null || true
-            sudo apt update && sudo apt install -y helix 2>/dev/null || {
-                gum_info "Falling back to cargo install for helix..."
-                cargo install --locked --git https://github.com/helix-editor/helix helix-term
-            }
-        fi
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install helix
-    fi
-
+    install_with_fallback "helix" "--classic" "_install_helix_cargo"
     hx --grammar fetch
     hx --grammar build
     gum_success "Helix grammars updated successfully."
@@ -444,28 +446,16 @@ install_lazysql() {
 }
 
 install_btop() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        if command_exists snap; then
-            sudo snap install btop
-        else
-            sudo apt install -y btop 2>/dev/null || {
-                gum_warning "btop not available via apt or snap — skipping"
-                return 0
-            }
-        fi
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install btop
-    fi
-    gum_success "btop installed successfully."
+    install_with_fallback "btop"
 }
 
 install_ctop() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-amd64
+        curl -Lo "$HOME/bin/ctop" https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-amd64
     elif [[ "$OS_TYPE" == "mac" ]]; then
-        sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-amd64
+        curl -Lo "$HOME/bin/ctop" https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-amd64
     fi
-    sudo chmod +x /usr/local/bin/ctop
+    chmod +x "$HOME/bin/ctop"
     gum_success "ctop installed successfully."
 }
 
@@ -483,27 +473,18 @@ install_claude_code_cli() {
 }
 
 install_chafa() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install chafa -y
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install chafa
-    fi
+    install_on_brew_or_mac "chafa"
 }
 
 
 
 
+_install_yq_binary() {
+    wget -qO "$HOME/bin/yq" "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
+    chmod +x "$HOME/bin/yq"
+}
 install_yq() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        if command_exists snap; then
-            sudo snap install yq
-        else
-            local yq_url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64"
-            wget -qO "$HOME/bin/yq" "$yq_url" && chmod +x "$HOME/bin/yq"
-        fi
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install yq
-    fi
+    install_with_fallback "yq" "" "_install_yq_binary"
 }
 
 install_csvcut() {
@@ -514,22 +495,21 @@ install_csvcut() {
 
 
 install_xclip() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y xclip
-        gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
-        gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
-    elif [[ "$OS_TYPE" == "mac" ]]; then
+    if [[ "$OS_TYPE" == "mac" ]]; then
         gum_info "pbcopy and pbpaste are built into macOS - no additional xclip installation needed"
+        return
     fi
+    install_on_brew_or_mac "xclip"
+    gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
+    gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
 }
 
 install_xsel() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y xsel
-        gum_success "xsel installed successfully."
-    elif [[ "$OS_TYPE" == "mac" ]]; then
+    if [[ "$OS_TYPE" == "mac" ]]; then
         gum_info "pbcopy and pbpaste are built into macOS - no additional xsel installation needed"
+        return
     fi
+    install_on_brew_or_mac "xsel"
 }
 
 
@@ -682,7 +662,7 @@ install_meslo_font() {
         if [[ "$OS_TYPE" == "mac" ]]; then
             brew install --cask font-meslo-lg-nerd-font
         else
-            sudo apt install fontconfig
+            install_on_brew_or_mac "fontconfig"
             # Direct download method for Linux
             mkdir -p "$HOME/.local/share/fonts"
             curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
