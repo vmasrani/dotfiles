@@ -378,9 +378,13 @@ install_npm() {
 
 install_go() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo add-apt-repository -y ppa:longsleep/golang-backports
-        sudo apt update
-        sudo apt install golang-go -y
+        local go_version="1.24.4"
+        local go_tar="go${go_version}.linux-amd64.tar.gz"
+        wget -q "https://go.dev/dl/${go_tar}" -O "/tmp/${go_tar}"
+        sudo rm -rf /usr/local/go
+        sudo tar -C /usr/local -xzf "/tmp/${go_tar}"
+        rm -f "/tmp/${go_tar}"
+        export PATH="/usr/local/go/bin:$PATH"
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install go
     fi
