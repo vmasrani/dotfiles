@@ -30,9 +30,17 @@ if [[ "$usage" != "null" ]]; then
     size=$(echo "$input" | jq '.context_window.context_window_size')
     if [[ "$size" -gt 0 ]]; then
         pct=$((current * 100 / size))
-        context_info=" ${pct}%"
+        if [[ "$pct" -lt 40 ]]; then
+            context_info=" \033[32m${pct}%\033[0m"
+        elif [[ "$pct" -lt 60 ]]; then
+            context_info=" \033[33m${pct}%\033[0m"
+        elif [[ "$pct" -lt 80 ]]; then
+            context_info=" \033[31m${pct}%\033[0m"
+        else
+            context_info=" \033[1;31m${pct}%\033[0m"
+        fi
     fi
 fi
 
 # Output status line (colors will be dimmed by terminal)
-printf "%s%s %s%s" "$dir_name" "$git_branch" "$current_time" "$context_info"
+printf "%s%s %s%b" "$dir_name" "$git_branch" "$current_time" "$context_info"
