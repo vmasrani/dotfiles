@@ -5,6 +5,7 @@
   },
   "permissions": {
     "allow": [
+      "Read",
       "Write",
       "Edit",
       "WebSearch",
