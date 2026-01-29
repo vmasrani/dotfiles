@@ -86,6 +86,7 @@ install_dotfiles() {
         "$home/.claude/skills"
         "$home/.claude/CLAUDE.md"
         "$home/.claude/settings.json"
+        "$home/.claude/statusline.sh"
         "$home/.codex/config.toml"
     )
 
@@ -218,6 +219,7 @@ install_dotfiles() {
         "$dotfiles/maintained_global_claude/hooks:$home/.claude/hooks"
         "$dotfiles/maintained_global_claude/skills:$home/.claude/skills"
         "$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
+        "$dotfiles/maintained_global_claude/statusline.sh:$home/.claude/statusline.sh"
         "$dotfiles/maintained_global_claude/CLAUDE.md:$home/.claude/CLAUDE.md"
 
         # codex config
@@ -466,6 +468,21 @@ install_chafa() {
 
 
 
+
+_install_gum_charm_repo() {
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
+    sudo apt update && sudo apt install -y gum
+}
+
+install_gum() {
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        _install_gum_charm_repo
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        brew install gum
+    fi
+}
 
 install_yq() {
     if [[ "$OS_TYPE" == "linux" ]]; then
