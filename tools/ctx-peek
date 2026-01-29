@@ -7,22 +7,24 @@
 
 set -e
 
+source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
+
 dir="${1:-.}"
 lines="${2:-12}"
 
 context_files=("${(@f)$(fd --no-ignore --glob '*-context.md' "$dir" --type f 2>/dev/null)}")
 
 if [[ ${#context_files[@]} -eq 0 || -z "${context_files[1]}" ]]; then
-    echo "No *-context.md files found under $dir"
+    gum_dim "No *-context.md files found under $dir" 2>/dev/null || echo "No *-context.md files found under $dir"
     exit 0
 fi
 
-echo "Found ${#context_files[@]} context file(s) under $dir"
+gum_dim "Found ${#context_files[@]} context file(s) under $dir" 2>/dev/null || echo "Found ${#context_files[@]} context file(s) under $dir"
 echo ""
 
 for f in "${context_files[@]}"; do
     [[ -z "$f" ]] && continue
-    echo "=== ${f#$dir/} ==="
+    gum_info "${f#$dir/}" 2>/dev/null || echo "=== ${f#$dir/} ==="
     head -n "$lines" "$f"
     echo "..."
     echo ""

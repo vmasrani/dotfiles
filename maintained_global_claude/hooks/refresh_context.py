@@ -22,14 +22,13 @@ SYSTEM_PROMPT = """You are a codebase analyst. Analyze the provided directory li
 Output format (raw markdown, no code fences):
 
 # {Directory Name}
-
-## Purpose
-{1-2 sentences}
+> {One-sentence summary, max ~120 chars. Self-contained. No "This directory..." prefix.}
+`{N} files | {YYYY-MM-DD}`
 
 ## Key Files
-| File | Role | Notable Exports |
-|------|------|-----------------|
-| {file} | {role} | {exports} |
+| File | Role |
+|------|------|
+| {file} | {role} |
 
 ## Patterns
 {Architectural patterns used}
@@ -42,11 +41,13 @@ Output format (raw markdown, no code fences):
 {Main entry files}
 
 ## Subdirectories
-| Directory | Purpose | Has Context File |
-|-----------|---------|-----------------|
-| {subdir} | {one-liner} | {yes/no} |
+| Directory | Has Context |
+|-----------|-------------|
+| {subdir} | {yes/no} |
 
-Only include sections with content. Be concise."""
+Line 2 (blockquote) is the most important line — it must be a self-contained summary of what this directory IS and DOES. Max ~120 chars. No "This directory..." prefix.
+Line 3 is metadata: backtick-wrapped file count and today's date.
+Only include sections with content. Be concise. Target 25-40 lines total."""
 
 SKIP_EXTENSIONS = {".pyc", ".pyo", ".so", ".dylib", ".o", ".a", ".class", ".jar", ".whl", ".egg", ".lock", ".min.js", ".min.css", ".map"}
 SKIP_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "uv.lock", ".DS_Store", "Thumbs.db"}
