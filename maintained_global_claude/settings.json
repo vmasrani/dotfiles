@@ -5,51 +5,21 @@
   },
   "permissions": {
     "allow": [
-      "Bash(mkdir:*)",
-      "Bash(uv:*)",
-      "Bash(find:*)",
-      "Bash(fd:*)",
-      "Bash(rg:*)",
-      "Bash(mv:*)",
-      "Bash(grep:*)",
-      "Bash(npm:*)",
-      "Bash(ls:*)",
-      "Bash(cp:*)",
+      "Read",
       "Write",
       "Edit",
-      "Bash(chmod:*)",
-      "Bash(touch:*)",
-      "Bash(createdb:*)",
-      "Bash(psql:*)",
-      "Bash(rm:*)",
-      "WebFetch(domain:platform.openai.com)",
+      "Bash",
+      "WebFetch",
       "WebSearch",
-      "WebFetch(domain:cookbook.openai.com)",
-      "Bash(for f in /Users/vmasrani/dev/projects/saas_proj/data/test_corpus/**/*.pdf)",
-      "Bash(do [ -f $f ])",
-      "Bash(pdfinfo:*)",
-      "Bash(wc:*)",
-      "Bash(git add:*)",
-      "Bash(for:*)",
-      "Bash(do echo \"=== $file ===\")",
-      "Bash(done)",
-      "Bash(python:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nFinalize codebase refactoring and cleanup\n\n- Consolidate src_comms/ into src/extractors/ and src/process_comms.py\n- Reorganize into modular structure: extractors/, schemas/, prompts/\n- Rename db_utils.py -> db.py, models_general.py -> schemas/universal.py\n- Move unused preprocessing scripts to bkup_scripts/\n- Remove obsolete prompt.md and pycache files\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(./sql/migrate_unified_search.sh:*)",
-      "Bash(tree:*)",
-      "Bash(zsh:*)",
-      "WebFetch(domain:openrouter.ai)",
-      "Bash(git log:*)",
-      "Bash(du:*)",
+      "Skill(arewedone)",
+      "Skill(db-search)",
       "Skill(design-principles)",
-      "WebFetch(domain:python.useinstructor.com)",
-      "WebFetch(domain:villoro.com)",
-      "WebFetch(domain:github.com)",
-      "Bash(./src/db_status.py status:*)",
-      "Bash(./src/db_status.py needs-processing)",
-      "Bash(pgrep:*)",
-      "Bash(curl:*)",
-      "Bash(python3:*)"
+      "Skill(frontend-design)",
+      "Skill(person-profiler)",
+      "mcp__context7__get-library-docs",
+      "mcp__context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "mcp__plugin_context7_context7__resolve-library-id"
     ],
     "deny": [],
     "defaultMode": "plan"
@@ -84,6 +54,17 @@
           {
             "type": "command",
             "command": "uv run ~/.claude/hooks/subagent_stop.py"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run ~/.claude/hooks/pre_compact.py"
           }
         ]
       }
