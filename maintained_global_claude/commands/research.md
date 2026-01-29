@@ -9,7 +9,7 @@ You have four helper tools on PATH (in `~/tools/`):
 - **`ctx-index [dir] [--full]`** — Project map: one summary line per directory from all `*-context.md` files. Use `--full` to include file count and date metadata.
 - **`ctx-tree [dir] [depth]`** — Shows directory tree using eza (respects gitignore, filters noise). Default depth: 3.
 - **`ctx-peek [dir] [lines]`** — Shows first N lines of all `*-context.md` files under a directory. Default: 12 lines. Use this to scan existing context files without loading them fully.
-- **`ctx-stale [dir]`** — Lists directories with missing or stale context files. A context file is "stale" if any sibling file has been modified more recently.
+- **`ctx-stale [dir] [--max-depth N] [--min-files N]`** — Lists directories with missing or stale context files. Skips dirs with fewer than N files (default: 2) and limits scan depth (default: 4).
 
 ## Steps
 
@@ -25,20 +25,20 @@ Run `ctx-stale $ARGUMENTS` (or `ctx-stale .` if no arguments) via Bash. This wil
 Only directories listed as MISSING or STALE need processing.
 
 ### 3. Generation
-For each directory needing a context file, launch a `context-researcher` agent via the Task tool with `run_in_background: true`, `model: sonnet`, and `max_turns: 12`. Batch 3-5 at a time.
+For each directory needing a context file, launch a `context-researcher` agent via the Task tool with `model: haiku`.
+
+**Launch ALL agents in a single message** — multiple Task calls in one response. Do **NOT** use `run_in_background`. Do **NOT** use `TaskOutput`. Parallel Task calls in a single message already run concurrently.
 
 Use a **short** description (e.g., `"ctx: src/utils"`). The agent prompt should be:
-> Analyze the directory `{path}` and write the context file to `{path}/{dirname}-context.md`.
+> Analyze the directory `{path}` and write the context file to `{path}/{dirname}-context.md`. Return ONLY "SUCCESS: wrote {path}" or "ERROR: {path} — {reason}". Nothing else.
 
-Do NOT read or process the agent's output beyond checking for SUCCESS/ERROR.
+Each agent returns a single status line as its Task return value. That is all you need.
 
-**CRITICAL:** Do NOT try to read all the generated context files after they're written. They are designed to be consumed one at a time by agents that need them, not loaded in bulk.
+**CRITICAL:** Do NOT read the generated context files. Do NOT use TaskOutput or Read to check agent output files. The Task return values are your only input for the report.
 
 ### 4. Report
-After all agents complete, check each agent's status line for SUCCESS or ERROR. Summarize:
+Read each Task return value (a single status line per agent). Summarize:
 - **Created:** N new context files
 - **Updated:** N refreshed context files
 - **Skipped:** N up-to-date directories
-- **Errors:** N failures (if any)
-
-Do NOT read the generated context files. Just report the SUCCESS/ERROR counts.
+- **Errors:** N failures (list any error messages)

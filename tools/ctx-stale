@@ -1,12 +1,28 @@
 #!/usr/bin/env zsh
 # Find directories with missing or stale *-context.md files.
 # A context file is "stale" if any sibling file is newer than it.
-# Usage: ctx-stale [directory]
-#   directory: root to scan (default: .)
+# Usage: ctx-stale [directory] [--max-depth N] [--min-files N]
+#   directory:   root to scan (default: .)
+#   --max-depth: how deep to scan (default: 4)
+#   --min-files: skip dirs with fewer non-context files (default: 2)
 
 set -e
 
-dir="${1:-.}"
+source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
+
+dir="."
+max_depth=4
+min_files=2
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --max-depth) max_depth="$2"; shift 2 ;;
+        --min-files) min_files="$2"; shift 2 ;;
+        *) dir="$1"; shift ;;
+    esac
+done
+
+dir="${dir:A}"
 
 skip_dirs=('.git' '.venv' '.vscode' '.cursor' '.claude' 'node_modules' '__pycache__' 'dist' 'build' '.next' '.mypy_cache' '.pytest_cache' '.tox' 'egg-info' 'tmp')
 
@@ -21,9 +37,10 @@ should_skip() {
 missing=()
 stale=()
 fresh=()
+skipped_small=0
 
 # Find all directories (non-hidden, depth-limited)
-dirs=("${(@f)$(fd --type d --max-depth 4 '' "$dir" 2>/dev/null)}")
+dirs=("${(@f)$(fd --type d --max-depth "$max_depth" '' "$dir" 2>/dev/null)}")
 # Include root
 dirs=("$dir" "${dirs[@]}")
 
@@ -35,12 +52,17 @@ for d in "${dirs[@]}"; do
     [[ -z "$dirname" || "$dirname" == "." ]] && dirname="${dir:t}"
     ctx_file="$d/${dirname}-context.md"
 
+    # Count non-context files in directory
+    file_count=$(fd --no-ignore --max-depth 1 --type f --exclude '*-context.md' '' "$d" 2>/dev/null | wc -l | tr -d ' ')
+
+    # Skip directories with too few files
+    if [[ "$file_count" -lt "$min_files" ]]; then
+        skipped_small=$((skipped_small + 1))
+        continue
+    fi
+
     if [[ ! -f "$ctx_file" ]]; then
-        # Check if directory has any non-context files worth documenting
-        file_count=$(fd --no-ignore --max-depth 1 --type f --exclude '*-context.md' '' "$d" 2>/dev/null | wc -l | tr -d ' ')
-        if [[ "$file_count" -gt 0 ]]; then
-            missing+=("$d")
-        fi
+        missing+=("$d")
     else
         # Check if any sibling is newer than the context file
         ctx_mtime=$(stat -f '%m' "$ctx_file" 2>/dev/null || stat -c '%Y' "$ctx_file" 2>/dev/null)
@@ -74,5 +96,8 @@ if [[ ${#stale[@]} -gt 0 ]]; then
 fi
 
 echo "FRESH (${#fresh[@]}): up-to-date, no action needed"
+if [[ "$skipped_small" -gt 0 ]]; then
+    gum_dim "Skipped $skipped_small dirs with <$min_files files" 2>/dev/null || echo "Skipped $skipped_small dirs with <$min_files files"
+fi
 echo ""
 echo "Total: ${#missing[@]} missing, ${#stale[@]} stale, ${#fresh[@]} fresh"

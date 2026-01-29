@@ -98,6 +98,7 @@ alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
 alias archive-agent='/Users/vmasrani/dev/archive-agent/Archive-Agent/archive-agent.sh'
 alias cc='claude'
 alias ccc='claude --continue'
+alias ccd='claude --dangerously-skip-permissions'
 alias upd='update-packages'
 alias updq='update-packages --quiet'
 

@@ -38,12 +38,23 @@ Present the spec to the user and confirm before continuing.
 
 ## Phase 3 -- Test Suite
 
-1. Auto-detect the project's test framework (look for `pytest.ini`, `jest.config.*`, `vitest.config.*`, `go.mod`, `Cargo.toml`, etc.)
-2. Generate test files from the success criteria. Each SC maps to one or more test cases.
-3. Tests should fail initially (red-green-refactor).
-4. Present the test structure for user approval.
+Launch the `test-generator` agent via the Task tool with the spec path from Phase 2:
 
-Write tests to the project's standard test directory.
+```
+Task(subagent_type="general-purpose", model="sonnet",
+     prompt="You are a test-generator agent. Read the agent instructions at maintained_global_claude/agents/test-generator.md, then execute all 7 phases. Spec file: .claude/specs/{feature-name}-spec.md")
+```
+
+The agent handles:
+- Reading the spec and extracting SC test targets
+- Language/framework detection
+- Generating exhaustive tests across 5 categories (happy path, boundary, error, edge, integration smoke)
+- Creating/updating the justfile with `test`, `test-verbose`, `test-cov` recipes
+- Installing test dependencies
+- Running `just test` to verify the red phase
+- Updating the spec's `## Test File Locations` section
+
+Present the test generation report to the user. Confirm all success criteria are covered before proceeding.
 
 ## Phase 4 -- Codebase Research
 
@@ -87,12 +98,13 @@ Task(subagent_type="general-purpose",
 ```
 
 After each subtask completes:
-1. Run the relevant tests
-2. If tests fail, give the subagent the failure output to fix
+1. Run `just test` and compare to the previous run (new passes? new failures? regressions?)
+2. If the subtask's tests still fail, give the subagent `just test-verbose` output to fix
 3. Continue to the next subtask
 
 After all subtasks complete:
-1. Run the full test suite
-2. Launch the `structural-completeness-reviewer` agent for a final review
-3. Address any review findings
-4. Report final status to the user
+1. Run `just test` -- all tests should pass (green phase)
+2. If failures remain, launch a focused fix subagent with `just test-verbose` output
+3. Run `just test-cov` to check coverage
+4. Launch the `structural-completeness-reviewer` agent for a final review
+5. Report to the user: passed/total tests, coverage %, structural review status
