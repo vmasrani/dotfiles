@@ -27,4 +27,4 @@ maintained_global_claude/todos/
 # The files we want to keep (CLAUDE.md, settings.json, agents/, commands/, hooks/, skills/)
 # will be tracked normally without needing -f
 maintained_global_claude/plugins/marketplaces
-*-context.md
+# *-context.md

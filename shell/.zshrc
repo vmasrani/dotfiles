@@ -97,3 +97,6 @@ alias claude-mem='bun "/Users/vmasrani/.claude/plugins/marketplaces/thedotmack/p
 
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
+
+# OpenClaw Completion
+source <(openclaw completion --shell zsh)
