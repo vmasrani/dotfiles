@@ -24,7 +24,33 @@ done
 
 dir="${dir:A}"
 
-skip_dirs=('.git' '.venv' '.vscode' '.cursor' '.claude' 'node_modules' '__pycache__' 'dist' 'build' '.next' '.mypy_cache' '.pytest_cache' '.tox' 'egg-info' 'tmp')
+# Directories to always skip (caches, build outputs, IDE configs, etc.)
+skip_dirs=(
+    # Version control
+    '.git' '.svn' '.hg'
+    # IDE/editor configs
+    '.vscode' '.cursor' '.idea' '.eclipse'
+    # Claude/AI tools
+    '.claude' '.codex'
+    # Python
+    '.venv' 'venv' '.env' '__pycache__' '.mypy_cache' '.pytest_cache' '.ruff_cache'
+    '.tox' '.nox' '.eggs' 'egg-info' '.pytype' 'htmlcov' '.coverage'
+    # Node/JS
+    'node_modules' '.next' '.nuxt' '.output' '.svelte-kit' '.parcel-cache'
+    '.turbo' 'bower_components' '.yarn' '.pnpm-store'
+    # Build outputs
+    'dist' 'build' 'out' 'target' '_build'
+    # Package manager caches
+    '.uv' '.uv-cache' '.cache' '.npm' '.pnpm'
+    # Rust
+    '.cargo'
+    # Go
+    'vendor'
+    # Ruby
+    '.bundle'
+    # Misc
+    'tmp' 'temp' 'logs' '.terraform' '.serverless' '.vercel' '.netlify'
+)
 
 # Cross-platform mtime function
 get_mtime() {
