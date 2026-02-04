@@ -40,5 +40,6 @@ Each agent returns a single status line as its Task return value. That is all yo
 Read each Task return value (a single status line per agent). Summarize:
 - **Created:** N new context files
 - **Updated:** N refreshed context files
-- **Skipped:** N up-to-date directories
+- **Skipped (SKIP marker):** N directories with intentional SKIP markers
+- **Skipped (up-to-date):** N fresh directories (from ctx-stale output)
 - **Errors:** N failures (list any error messages)
