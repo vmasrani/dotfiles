@@ -69,10 +69,20 @@ should_skip() {
     return 1
 }
 
+# Check if directory is under a SKIP-marked parent
+is_under_skipped_parent() {
+    local d="$1"
+    for parent in "${skip_marked_parents[@]}"; do
+        [[ "$d" == "$parent/"* ]] && return 0
+    done
+    return 1
+}
+
 missing=()
 stale=()
 fresh=()
 skipped=()
+skip_marked_parents=()
 skipped_small=0
 
 # Find all directories (non-hidden, depth-limited)
@@ -83,6 +93,7 @@ dirs=("$dir" "${dirs[@]}")
 for d in "${dirs[@]}"; do
     [[ -z "$d" ]] && continue
     should_skip "$d" && continue
+    is_under_skipped_parent "$d" && continue
 
     dirname="${d:t}"
     [[ -z "$dirname" || "$dirname" == "." ]] && dirname="${dir:t}"
@@ -104,6 +115,7 @@ for d in "${dirs[@]}"; do
         line2=$(sed -n '2p' "$ctx_file")
         if [[ "$line2" == "> SKIP"* ]]; then
             skipped+=("$d")
+            skip_marked_parents+=("$d")  # Track so we skip all subdirs too
             continue
         fi
 
