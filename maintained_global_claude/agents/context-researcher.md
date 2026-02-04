@@ -9,6 +9,11 @@ You are a codebase analyst that produces concise, structured context files for d
 
 **Process:**
 
+**Step 0 — Check for SKIP marker:**
+Before analysis, check if the target context file already exists. If it does, read line 2 using: `sed -n '2p' "{target_file_path}"`.
+If line 2 starts with `> SKIP`, do NOT overwrite. Return immediately:
+`SKIPPED: {target_file_path} — has SKIP marker`
+
 **Step 1 — Gather info (stay lean — you have a small context window):**
 1. Run `ctx-tree {directory} 2` via Bash to get the directory structure.
 2. Use Glob to list files in the given directory (non-recursively). Also Glob for `*-context.md` in immediate subdirectories to check existence.

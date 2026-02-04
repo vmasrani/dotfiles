@@ -1,0 +1,46 @@
+#!/usr/bin/env zsh
+# Mark a directory as skipped for context generation.
+# Creates a stub *-context.md file with a SKIP marker.
+# Usage: ctx-skip [directory] [reason]
+#   directory: path to mark as skipped (default: current directory)
+#   reason:    optional explanation (e.g., "Auto-generated files")
+
+set -e
+
+source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
+
+dir="${1:-.}"
+reason="${2:-}"
+dir="${dir:A}"
+dirname="${dir:t}"
+ctx_file="$dir/${dirname}-context.md"
+
+if [[ ! -d "$dir" ]]; then
+    gum_error "Directory does not exist: $dir" 2>/dev/null || echo "Error: Directory does not exist: $dir"
+    exit 1
+fi
+
+if [[ -f "$ctx_file" ]]; then
+    line2=$(sed -n '2p' "$ctx_file")
+    if [[ "$line2" == "> SKIP"* ]]; then
+        gum_dim "Already skipped: $ctx_file" 2>/dev/null || echo "Already skipped: $ctx_file"
+        exit 0
+    fi
+    if ! gum_confirm "Context file exists. Overwrite with SKIP marker?" 2>/dev/null; then
+        echo "Aborted"
+        exit 1
+    fi
+fi
+
+if [[ -n "$reason" ]]; then
+    skip_line="> SKIP: $reason"
+else
+    skip_line="> SKIP"
+fi
+
+cat > "$ctx_file" << EOF
+# $dirname
+$skip_line
+EOF
+
+gum_success "Created SKIP marker: $ctx_file" 2>/dev/null || echo "Created SKIP marker: $ctx_file"

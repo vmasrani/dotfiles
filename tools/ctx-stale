@@ -26,6 +26,15 @@ dir="${dir:A}"
 
 skip_dirs=('.git' '.venv' '.vscode' '.cursor' '.claude' 'node_modules' '__pycache__' 'dist' 'build' '.next' '.mypy_cache' '.pytest_cache' '.tox' 'egg-info' 'tmp')
 
+# Cross-platform mtime function
+get_mtime() {
+    if [[ "$(uname)" == "Darwin" ]]; then
+        stat -f '%m' "$1"
+    else
+        stat -c '%Y' "$1"
+    fi
+}
+
 should_skip() {
     local d="$1"
     for skip in "${skip_dirs[@]}"; do
@@ -37,6 +46,7 @@ should_skip() {
 missing=()
 stale=()
 fresh=()
+skipped=()
 skipped_small=0
 
 # Find all directories (non-hidden, depth-limited)
@@ -64,12 +74,19 @@ for d in "${dirs[@]}"; do
     if [[ ! -f "$ctx_file" ]]; then
         missing+=("$d")
     else
+        # Check for SKIP marker on line 2
+        line2=$(sed -n '2p' "$ctx_file")
+        if [[ "$line2" == "> SKIP"* ]]; then
+            skipped+=("$d")
+            continue
+        fi
+
         # Check if any sibling is newer than the context file
-        ctx_mtime=$(stat -f '%m' "$ctx_file" 2>/dev/null || stat -c '%Y' "$ctx_file" 2>/dev/null)
+        ctx_mtime=$(get_mtime "$ctx_file")
         is_stale=false
         while IFS= read -r sibling; do
             [[ -z "$sibling" ]] && continue
-            sib_mtime=$(stat -f '%m' "$sibling" 2>/dev/null || stat -c '%Y' "$sibling" 2>/dev/null)
+            sib_mtime=$(get_mtime "$sibling")
             if [[ "$sib_mtime" -gt "$ctx_mtime" ]]; then
                 is_stale=true
                 break
@@ -95,9 +112,15 @@ if [[ ${#stale[@]} -gt 0 ]]; then
     echo ""
 fi
 
+if [[ ${#skipped[@]} -gt 0 ]]; then
+    echo "SKIPPED (${#skipped[@]}): intentionally excluded via SKIP marker"
+    printf '  %s\n' "${skipped[@]}"
+    echo ""
+fi
+
 echo "FRESH (${#fresh[@]}): up-to-date, no action needed"
 if [[ "$skipped_small" -gt 0 ]]; then
     gum_dim "Skipped $skipped_small dirs with <$min_files files" 2>/dev/null || echo "Skipped $skipped_small dirs with <$min_files files"
 fi
 echo ""
-echo "Total: ${#missing[@]} missing, ${#stale[@]} stale, ${#fresh[@]} fresh"
+echo "Total: ${#missing[@]} missing, ${#stale[@]} stale, ${#skipped[@]} skipped, ${#fresh[@]} fresh"
