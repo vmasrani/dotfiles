@@ -1,0 +1,316 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = "==3.13.*"
+# dependencies = [
+#   "senko @ git+https://github.com/narcotic-sh/senko.git",
+#   "pydantic",
+#   "typer",
+#   "rich",
+# ]
+# ///
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+import typer
+from pydantic import BaseModel
+from rich.console import Console
+
+console = Console()
+
+
+# Default: base.en model in your whisper.cpp checkout
+DEFAULT_MODEL = Path("~/dev/packages/whisper.cpp/models/ggml-base.en.bin").expanduser().resolve()
+DEFAULT_WHISPER_BIN = "whisper"
+CLEANUP_PROMPT = Path('~/dotfiles/prompt_bank/cleanup_transcript.md').expanduser().resolve()
+
+class DiarSegment(BaseModel):
+    start: float
+    end: float
+    speaker: str
+
+
+@dataclass(frozen=True)
+class WhisperSeg:
+    start: float
+    end: float
+    text: str
+
+
+def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    # Suppress output by default
+    kwargs.setdefault('stdout', subprocess.DEVNULL)
+    kwargs.setdefault('stderr', subprocess.DEVNULL)
+    return subprocess.run(cmd, check=True, text=True, **kwargs)
+
+
+def sh(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    # Suppress output by default
+    kwargs.setdefault('stdout', subprocess.DEVNULL)
+    kwargs.setdefault('stderr', subprocess.DEVNULL)
+    return subprocess.run(cmd, check=True, **kwargs)
+
+
+def sanitize_filename(name: str) -> str:
+    name = name.strip()
+    name = re.sub(r"[\/:*?\"<>|]+", "_", name)
+    name = re.sub(r"\s+", " ", name)
+    return name[:180].strip() or "transcript"
+
+
+def yt_title(url: str) -> str:
+    cp = subprocess.run(
+        ["uvx", "yt-dlp", "--print", "%(title)s", url],
+        check=True,
+        text=True,
+        capture_output=True
+    )
+    return cp.stdout.strip()
+
+
+def download_wav(url: str, wav_path: Path) -> None:
+    if wav_path.exists():
+        return
+
+    work = wav_path.parent
+    outtmpl = str(work / "audio.%(ext)s")
+    sh([
+        "uvx", "yt-dlp",
+        "--extract-audio",
+        "--audio-format", "wav",
+        "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",
+        "--no-warnings",
+        "-o", outtmpl,
+        url
+    ], cwd=work)
+
+    # Rename from temporary name to title-based name
+    temp_wav = work / "audio.wav"
+    assert temp_wav.exists(), f"yt-dlp did not create {temp_wav}"
+    temp_wav.rename(wav_path)
+    assert wav_path.exists(), f"expected wav at {wav_path}"
+
+
+def whisper_to_json(wav: Path, model: Path, whisper_bin: str, json_path: Path) -> None:
+    if json_path.exists():
+        return
+
+    out_prefix = json_path.with_suffix("")
+    sh(
+        [
+            whisper_bin,
+            "-m",
+            str(model),
+            "-l", "en",
+            "-t", "4",
+            "-oj",
+            "-of",
+            str(out_prefix),
+            str(wav),
+        ]
+    )
+    assert json_path.exists(), f"whisper did not produce {json_path}"
+
+
+def load_whisper_segments(path: Path) -> list[WhisperSeg]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    # Handle case where data is already a list of segments
+    if isinstance(data, list):
+        segs = data
+    elif isinstance(data, dict):
+        # Try to find segments in various nested locations
+        segs = data.get("segments")
+
+        if not segs:
+            transcription = data.get("transcription")
+            if isinstance(transcription, list):
+                segs = transcription
+            elif isinstance(transcription, dict):
+                segs = transcription.get("segments")
+
+        if not segs:
+            result = data.get("result")
+            if isinstance(result, list):
+                segs = result
+            elif isinstance(result, dict):
+                segs = result.get("segments")
+
+        if not segs:
+            segs = []
+    else:
+        segs = []
+
+    assert segs, f"Could not find segments in whisper JSON. Data type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'N/A'}"
+
+    # Convert segments to WhisperSeg format
+    result = []
+    for s in segs:
+        text = str(s.get("text", "")).strip()
+        if not text:
+            continue
+
+        # Handle different JSON formats from whisper.cpp
+        if "start" in s and "end" in s:
+            # Standard format: {"start": 0.0, "end": 4.96, "text": "..."}
+            start = float(s["start"])
+            end = float(s["end"])
+        elif "offsets" in s:
+            # whisper.cpp format: {"offsets": {"from": 0, "to": 4960}, "text": "..."}
+            offsets = s["offsets"]
+            start = float(offsets["from"]) / 1000.0  # Convert milliseconds to seconds
+            end = float(offsets["to"]) / 1000.0
+        else:
+            # Skip segments without timing information
+            continue
+
+        result.append(WhisperSeg(start=start, end=end, text=text))
+
+    return result
+
+
+def diarize(wav: Path) -> list[DiarSegment]:
+    import senko
+
+    diarizer = senko.Diarizer(device="auto", warmup=True, quiet=True)
+    result = diarizer.diarize(str(wav))
+    segs = [DiarSegment.model_validate(s) for s in result["merged_segments"]]
+    return segs
+
+
+def gemini_cleanup(raw_transcript: str) -> str:
+    prompt = CLEANUP_PROMPT.read_text(encoding="utf-8")
+    cp = subprocess.run(
+        ["gemini", "-m", "gemini-2.5-pro", "-p", prompt],
+        input=raw_transcript,
+        check=True,
+        text=True,
+        capture_output=True
+    )
+    return cp.stdout
+
+
+def overlap(a0: float, a1: float, b0: float, b1: float) -> float:
+    return max(0.0, min(a1, b1) - max(a0, b0))
+
+
+def best_speaker_for_segment(diar_segs: list[DiarSegment], seg: WhisperSeg) -> str:
+    scores: dict[str, float] = {}
+    for d in diar_segs:
+        o = overlap(seg.start, seg.end, d.start, d.end)
+        if o > 0:
+            scores[d.speaker] = scores.get(d.speaker, 0.0) + o
+    return max(scores.items(), key=lambda kv: kv[1])[0] if scores else "SPEAKER_??"
+
+
+def fmt_ts(seconds: float) -> str:
+    s = int(round(seconds))
+    hh = s // 3600
+    mm = (s % 3600) // 60
+    ss = s % 60
+    return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+
+def merge_transcript(segs: list[WhisperSeg], diar: list[DiarSegment]) -> str:
+    lines: list[str] = []
+    cur_speaker: str | None = None
+
+    for seg in segs:
+        spk = best_speaker_for_segment(diar, seg)
+        if spk != cur_speaker:
+            lines.append(f"\n[{spk}] ({fmt_ts(seg.start)}–{fmt_ts(seg.end)})")
+            cur_speaker = spk
+        lines.append(seg.text)
+
+    return "\n".join(lines).strip() + "\n"
+
+
+def main(
+    url: str = typer.Argument(..., help="YouTube URL"),
+    out_dir: str = typer.Option(".", help="Where to write the transcript"),
+    model: str = typer.Option(str(DEFAULT_MODEL), help="Whisper model path"),
+    whisper_bin: str = typer.Option(DEFAULT_WHISPER_BIN, help="whisper.cpp binary"),
+    keep_intermediates: bool = typer.Option(False, "--keep-intermediates", help="Keep intermediate files (WAV, JSON)"),
+) -> None:
+    """YouTube -> WAV -> whisper.cpp -> senko -> gemini cleanup -> transcript"""
+
+    model_path = Path(model).expanduser().resolve()
+    out_dir_path = Path(out_dir).expanduser().resolve()
+    out_dir_path.mkdir(parents=True, exist_ok=True)
+
+    if not model_path.exists():
+        console.print(f"[red]Error: Whisper model not found at {model_path}[/red]")
+        raise typer.Exit(1)
+
+    # Fetch title
+    with console.status("[bold cyan]Fetching video title...[/bold cyan]"):
+        title = sanitize_filename(yt_title(url))
+    console.print(f"[green]✓[/green] Video: {title}")
+
+    # Define all paths in output directory for idempotent caching
+    out_path = out_dir_path / f"{title}.transcript.txt"
+    raw_path = out_dir_path / f"{title}.transcript.raw.txt"
+    wav_path = out_dir_path / f"{title}.audio.wav"
+    json_path = out_dir_path / f"{title}.whisper.json"
+
+    # Check if final transcript already exists
+    if out_path.exists():
+        console.print(f"[yellow]⚠[/yellow] Transcript already exists: {out_path}")
+        console.print("[dim]Delete the file to regenerate, or use a different output directory[/dim]")
+        return
+
+    # Step 1: Download audio (idempotent - skips if exists)
+    if wav_path.exists():
+        console.print("[green]✓[/green] Using cached audio file")
+    else:
+        with console.status("[bold cyan]Downloading and converting audio...[/bold cyan]"):
+            download_wav(url, wav_path)
+        console.print("[green]✓[/green] Audio downloaded")
+
+    # Step 2: Transcribe with Whisper (idempotent - skips if exists)
+    if json_path.exists():
+        console.print("[green]✓[/green] Using cached transcription")
+    else:
+        with console.status("[bold cyan]Transcribing with Whisper...[/bold cyan]"):
+            whisper_to_json(wav_path, model_path, whisper_bin, json_path)
+        console.print("[green]✓[/green] Transcription complete")
+
+    segs = load_whisper_segments(json_path)
+
+    # Step 3: Diarize (always runs - no cache since it's fast enough)
+    with console.status("[bold cyan]Running speaker diarization...[/bold cyan]"):
+        diar = diarize(wav_path)
+    console.print(f"[green]✓[/green] Diarization complete ({len(diar)} segments)")
+
+    merged = merge_transcript(segs, diar)
+
+    # Step 4: Save raw transcript (intermediate)
+    raw_path.write_text(merged, encoding="utf-8")
+
+    # Step 5: Clean up transcript with Gemini
+    with console.status("[bold cyan]Cleaning transcript with Gemini 2.5 Pro...[/bold cyan]"):
+        cleaned = gemini_cleanup(merged)
+    console.print("[green]✓[/green] Transcript cleaned")
+
+    out_path.write_text(cleaned, encoding="utf-8")
+    console.print(f"\n[bold green]Transcript saved to:[/bold green] {out_path}")
+
+    # Step 6: Clean up intermediate files unless --keep-intermediates
+    if not keep_intermediates:
+        for p in [wav_path, json_path, raw_path]:
+            if p.exists():
+                p.unlink()
+    else:
+        console.print("\n[dim]Kept intermediate files:[/dim]")
+        console.print(f"  [dim]• Audio: {wav_path}[/dim]")
+        console.print(f"  [dim]• Transcription: {json_path}[/dim]")
+        console.print(f"  [dim]• Raw transcript: {raw_path}[/dim]")
+
+
+if __name__ == "__main__":
+    typer.run(main)

@@ -17,7 +17,7 @@ ocr_file="$dir_path/ocr.txt"
 [[ ! -f "$img_file" ]] && { gum_error "Error: Image file 'img.png' not found in directory '$dir_path'"; exit 1; }
 [[ ! -f "$ocr_file" ]] && { gum_error "Error: OCR text file 'ocr.txt' not found in directory '$dir_path'"; exit 1; }
 
-prompt="$(cat $HOME/.claude/commands/ocr.md) ---
+prompt="$(cat $HOME/dotfiles/prompt_bank/ocr.md) ---
 The file to OCR is: $img_file
 A preliminary OCR text file is available at: $ocr_file
 "
