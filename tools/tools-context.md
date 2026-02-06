@@ -33,7 +33,7 @@ Symlinked CLI utilities for AI, web search, document processing, email managemen
 ## Dependencies
 - **External (Python)**: dspy, openai, ddgs, requests, pandas, sqlalchemy, pymupdf, pypdf, typer, rich, loguru, textual, pydantic, tabstack, ipdb
 - **External (CLI)**: gum, notmuch, jq, rg, fzf, bat, helix, aws-cli, sshfs, fusermount, fswatch, git, curl, ssh, rsync
-- **Internal**: gum_utils.sh, helper_functions.sh, update_functions.sh, ~/.claude/commands/ocr.md
+- **Internal**: gum_utils.sh, helper_functions.sh, update_functions.sh, ~/dotfiles/prompt_bank/ocr.md
 
 ## Entry Points
 - **Python CLI tools**: oai, ddgs, google_search, print_csv, pdf_extract_pages, summarize_url.py, ocr_agent.py, mtui.py, markdown_cleanup_agent.py, check_limits.py
@@ -44,5 +44,5 @@ Symlinked CLI utilities for AI, web search, document processing, email managemen
 ## Subdirectories
 None — flat structure. Related directories referenced:
 - `~/dotfiles/update_checks/` — update check functions
-- `~/.claude/commands/` — OCR prompt definitions
+- `~/dotfiles/prompt_bank/` — OCR and cleanup prompt definitions
 - `~/dotfiles/shell/` — gum_utils.sh, helper_functions.sh

@@ -106,7 +106,7 @@ alias updq='update-packages --quiet'
 alias mutt='neomutt -F ~/.config/mutt/muttrc'
 export ESCDELAY=0  # Required for responsive neomutt keybindings
 export NOTMUCH_CONFIG="$HOME/.config/notmuch/notmuchrc"
-
+export NODE_OPTIONS="--dns-result-order=ipv4first"
 
 # uwu shorcut
 alias ::='uwu-cli'
