@@ -253,7 +253,7 @@ def main(
     console.print(f"[green]✓[/green] Video: {title}")
 
     # Define all paths in output directory for idempotent caching
-    out_path = out_dir_path / f"{title}.transcript.txt"
+    out_path = out_dir_path / f"{title}.transcript.md"
     raw_path = out_dir_path / f"{title}.transcript.raw.txt"
     wav_path = out_dir_path / f"{title}.audio.wav"
     json_path = out_dir_path / f"{title}.whisper.json"
