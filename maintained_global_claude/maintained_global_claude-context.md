@@ -16,7 +16,7 @@ Central repository of Claude Code configuration and automation, symlinked to `~/
 | agents/context-researcher.md | Analysis agent for directory context generation | Context file output format and methodology |
 | commands/arewedone.md | Structural completeness review workflow | Command entry point invoking reviewer agent |
 | commands/research.md | Context file generation and refresh workflow | Discovery, generation, and batching of context files |
-| commands/ocr.md | OCR-to-markdown conversion master prompt | Technical manual page extraction rules |
+| commands/ocr.md | (Moved to ~/dotfiles/prompt_bank/ocr.md) | OCR-to-markdown conversion master prompt |
 | commands/process-parallel.md | Parallel processing pipeline template | Worker/runner/system-prompt pattern |
 | hooks/notification.py | Session notification handler with TTS | API key-based TTS selection (ElevenLabs > OpenAI > pyttsx3) |
 | hooks/post_tool_use.py | Logs tool execution events | JSON logging to `.claude/logs/post_tool_use.json` |
