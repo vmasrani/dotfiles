@@ -253,10 +253,11 @@ def main(
     console.print(f"[green]✓[/green] Video: {title}")
 
     # Define all paths in output directory for idempotent caching
-    out_path = out_dir_path / f"{title}.transcript.md"
-    raw_path = out_dir_path / f"{title}.transcript.raw.txt"
-    wav_path = out_dir_path / f"{title}.audio.wav"
-    json_path = out_dir_path / f"{title}.whisper.json"
+    safe_title = title.replace(" ", "_")
+    out_path = out_dir_path / f"{safe_title}.transcript.md"
+    raw_path = out_dir_path / f"{safe_title}.transcript.raw.txt"
+    wav_path = out_dir_path / f"{safe_title}.audio.wav"
+    json_path = out_dir_path / f"{safe_title}.whisper.json"
 
     # Check if final transcript already exists
     if out_path.exists():
@@ -280,17 +281,17 @@ def main(
             whisper_to_json(wav_path, model_path, whisper_bin, json_path)
         console.print("[green]✓[/green] Transcription complete")
 
-    segs = load_whisper_segments(json_path)
-
-    # Step 3: Diarize (always runs - no cache since it's fast enough)
-    with console.status("[bold cyan]Running speaker diarization...[/bold cyan]"):
-        diar = diarize(wav_path)
-    console.print(f"[green]✓[/green] Diarization complete ({len(diar)} segments)")
-
-    merged = merge_transcript(segs, diar)
-
-    # Step 4: Save raw transcript (intermediate)
-    raw_path.write_text(merged, encoding="utf-8")
+    # Step 3: Diarize + merge (idempotent - skips if raw transcript exists)
+    if raw_path.exists():
+        console.print("[green]✓[/green] Using cached raw transcript")
+        merged = raw_path.read_text(encoding="utf-8")
+    else:
+        segs = load_whisper_segments(json_path)
+        with console.status("[bold cyan]Running speaker diarization...[/bold cyan]"):
+            diar = diarize(wav_path)
+        console.print(f"[green]✓[/green] Diarization complete ({len(diar)} segments)")
+        merged = merge_transcript(segs, diar)
+        raw_path.write_text(merged, encoding="utf-8")
 
     # Step 5: Clean up transcript with Gemini
     with console.status("[bold cyan]Cleaning transcript with Gemini 2.5 Pro...[/bold cyan]"):

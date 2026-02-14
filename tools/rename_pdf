@@ -48,21 +48,23 @@ extension="${file##*.}"
 old_basename="$(basename "$file")"
 dir="$(dirname "$file")"
 
-# Extract text from PDF
-text=$(pdf_extract_pages "$file" | markitdown)
+# Extract text from PDF (optional - proceed even if it fails)
+text=$(pdf_extract_pages "$file" | markitdown 2>/dev/null || true)
 
-# Check if extraction succeeded
-if [[ -z "$text" ]]; then
-    tag --set Red "$file" 2>/dev/null
-    gum_error "Error: Failed to extract text from PDF"
-    exit 1
+# Build prompt: always include filename, optionally include extracted text
+system_prompt="$(cat $HOME/dotfiles/prompt_bank/file-renamer.md) $file."
+if [[ -n "$text" ]]; then
+    system_prompt="$system_prompt
+
+Extracted text from the PDF:
+$text"
+else
+    gum_dim "Could not extract text, using filename only"
 fi
 
-# Generate new name using AI
-system_prompt="$(cat $HOME/.claude/commands/file-renamer.md) $file."
 # Save prompt to temp file to avoid shell escaping issues
 temp_prompt="/tmp/rename_pdf_prompt_$$.txt"
-echo "$system_prompt $text" > "$temp_prompt"
+echo "$system_prompt" > "$temp_prompt"
 new_name=$(oai "$(cat "$temp_prompt")")
 rm -f "$temp_prompt"
 
