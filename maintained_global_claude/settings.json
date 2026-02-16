@@ -16,6 +16,7 @@
       "Skill(design-principles)",
       "Skill(frontend-design)",
       "Skill(person-profiler)",
+      "Skill(log-to-daily)",
       "mcp__context7__get-library-docs",
       "mcp__context7__resolve-library-id",
       "mcp__plugin_context7_context7__query-docs",
@@ -23,6 +24,7 @@
     ],
     "deny": []
   },
+  "model": "opus",
   "hooks": {
     "PostToolUse": [
       {
@@ -89,6 +91,7 @@
     "commit-commands@claude-plugins-official": false,
     "claude-mem@thedotmack": false
   },
+  "skipDangerousModePermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006
   }
