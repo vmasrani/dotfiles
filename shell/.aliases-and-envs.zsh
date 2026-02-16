@@ -107,6 +107,7 @@ alias mutt='neomutt -F ~/.config/mutt/muttrc'
 export ESCDELAY=0  # Required for responsive neomutt keybindings
 export NOTMUCH_CONFIG="$HOME/.config/notmuch/notmuchrc"
 export NODE_OPTIONS="--dns-result-order=ipv4first"
+export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 
 # uwu shorcut
 alias ::='uwu-cli'
@@ -118,7 +119,6 @@ alias gpt='oai'
 #   command codex --dangerously-bypass-approvals-and-sandbox --enable web_search_request -s workspace-write -c "sandbox_workspace_write.writable_roots=['/Users/my-user/.cache/uv']" "$@"
 # }
 
-export TABSTACK_API_KEY="23d0b47596440ff73e012c941e343dba6c861df78c5346047dfa340d7aa56877"
 alias g='glow'
 
 autoload -Uz bracketed-paste-magic
