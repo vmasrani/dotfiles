@@ -42,6 +42,14 @@ source ~/gum_utils.sh
 source ~/lscolors.sh
 source ~/.aliases-and-envs.zsh
 source ~/.local_env.sh  # Should contain API keys and local-specific settings
+
+# Theme: Gruvbox Dark for SSH sessions, Palenight locally
+if [[ -n "$SSH_CLIENT" || -n "$SSH_TTY" ]]; then
+    source ~/dotfiles/shell/themes/gruvbox-dark.zsh
+else
+    export DOTFILES_THEME="palenight"
+fi
+
 source ~/.paths.zsh
 
 # export NVM_DIR="$HOME/.nvm"

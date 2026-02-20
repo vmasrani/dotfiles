@@ -4,8 +4,12 @@
 CACHE_FILE="/tmp/claude_usage_cache.json"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Catppuccin Macchiato colors
-base="#24273a" crust="#181926" green="#a6da95" red="#ed8796" overlay="#6e738d"
+# Theme-aware colors
+if [[ -n "$SSH_CLIENT" || -n "$SSH_TTY" ]]; then
+    base="#282828" crust="#1d2021" green="#b8bb26" red="#fb4934" overlay="#928374"
+else
+    base="#24273a" crust="#181926" green="#a6da95" red="#ed8796" overlay="#6e738d"
+fi
 left_cap="" right_cap=""
 
 # Interpolate between two hex colors (ratio: 0-100)

@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Battery pill for tmux status bar
 # Outputs full tmux-formatted pill with dynamic color and icon based on charge level
-# Colors use Catppuccin Macchiato palette, gradient from green (full) → red (empty)
+# Colors are theme-aware: Gruvbox Dark on SSH, Catppuccin Macchiato locally
 
-BASE="#24273a"
-CRUST="#181926"
+# Theme-aware colors: Gruvbox Dark on SSH, Catppuccin Macchiato locally
+if [[ -n "$SSH_CLIENT" || -n "$SSH_TTY" ]]; then
+    BASE="#282828"
+    CRUST="#1d2021"
+else
+    BASE="#24273a"
+    CRUST="#181926"
+fi
 
 get_battery_percent() {
     case $(uname -s) in
@@ -43,11 +49,22 @@ is_charging() {
 
 get_color() {
     local pct=$1
-    if   (( pct >= 80 )); then echo "#a6da95"  # green
-    elif (( pct >= 60 )); then echo "#eed49f"  # yellow
-    elif (( pct >= 40 )); then echo "#f5a97f"  # peach
-    elif (( pct >= 20 )); then echo "#ed8796"  # red
-    else                       echo "#ee99a0"  # maroon
+    if [[ -n "$SSH_CLIENT" || -n "$SSH_TTY" ]]; then
+        # Gruvbox Dark gradient
+        if   (( pct >= 80 )); then echo "#b8bb26"  # green
+        elif (( pct >= 60 )); then echo "#fabd2f"  # yellow
+        elif (( pct >= 40 )); then echo "#fe8019"  # orange
+        elif (( pct >= 20 )); then echo "#fb4934"  # red
+        else                       echo "#cc241d"  # dark red
+        fi
+    else
+        # Catppuccin Macchiato gradient
+        if   (( pct >= 80 )); then echo "#a6da95"  # green
+        elif (( pct >= 60 )); then echo "#eed49f"  # yellow
+        elif (( pct >= 40 )); then echo "#f5a97f"  # peach
+        elif (( pct >= 20 )); then echo "#ed8796"  # red
+        else                       echo "#ee99a0"  # maroon
+        fi
     fi
 }
 
