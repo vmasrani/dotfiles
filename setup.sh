@@ -16,6 +16,7 @@ source "./shell/.aliases-and-envs.zsh"
 source "./shell/gum_utils.sh"
 
 # install zsh
+install_if_missing brew install_homebrew
 install_if_missing zsh install_zsh
 
 # install dotfiles
@@ -62,6 +63,11 @@ install_if_missing btop install_btop # Resource monitor with CPU, memory, disk, 
 install_if_missing ctop install_ctop # Container metrics and monitoring
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
+
+# Install tmux plugins now that tmux is available
+if [ -d "$HOME/.tmux/plugins/tpm" ]; then
+    "$HOME/.tmux/plugins/tpm/bin/install_plugins" || gum_warning "Some tmux plugins failed to install"
+fi
 install_if_missing rg install_rg # Fast recursive grep alternative
 install_if_missing fd install_fd # Fast find alternative
 install_if_missing jq install_jq # Command-line JSON processor

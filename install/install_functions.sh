@@ -100,9 +100,6 @@ install_dotfiles() {
         install_catppuccin_tmux
     fi
 
-    # Install remaining tmux plugins via TPM
-    "$tpm_dir/bin/install_plugins"
-
     array_contains() {
         local needle="$1"
         shift
@@ -313,6 +310,14 @@ generate_plugin_configs() {
 }
 
 
+install_homebrew() {
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    # Add to PATH for the current session (Apple Silicon Macs use /opt/homebrew)
+    if [[ -d "/opt/homebrew/bin" ]]; then
+        export PATH="/opt/homebrew/bin:$PATH"
+    fi
+}
+
 install_zsh() {
     read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
     case "$choice" in
@@ -363,9 +368,6 @@ install_tealdeer() {
     tldr --update
 }
 
-install_zprezto() {
-    git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$HOME}/.zprezto"
-}
 
 
 install_npm() {
@@ -662,7 +664,16 @@ install_zprezto() {
 }
 
 install_meslo_font() {
-    if ! fc-list -q "MesloLGS NF"; then
+    local font_installed=false
+    if command_exists fc-list; then
+        fc-list -q "MesloLGS NF" && font_installed=true
+    elif [[ "$OS_TYPE" == "mac" ]]; then
+        # On macOS without fc-list, check the font directory directly
+        ls ~/Library/Fonts/*MesloLGS*NF* &>/dev/null && font_installed=true
+        ls /Library/Fonts/*MesloLGS*NF* &>/dev/null && font_installed=true
+    fi
+
+    if [[ "$font_installed" == "false" ]]; then
         gum_info "Installing MesloLGS NF font..."
         if [[ "$OS_TYPE" == "mac" ]]; then
             brew install --cask font-meslo-lg-nerd-font
@@ -695,6 +706,13 @@ install_iterm2() {
         else
             gum_dim "iTerm2 is already installed."
         fi
+
+        # Map Cmd+Shift+L to F11 escape sequence (ESC[23~)
+        # Used by tmux F11 binding to toggle agents session
+        defaults write com.googlecode.iterm2 GlobalKeyMap -dict-add \
+            "0x4c-0x120000-0x25" \
+            '{"Action"=10;"Apply Mode"=1;"Escaping"=2;"Text"="[23~";"Version"=2;}'
+        gum_dim "iTerm2 Cmd+Shift+L → F11 key mapping configured."
     else
         gum_warning "iTerm2 is only available on macOS."
     fi
