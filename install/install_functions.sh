@@ -784,12 +784,12 @@ install_rich_cli() {
 }
 
 install_markitdown() {
-    uv tool install "markitdown[all]"
+    uv tool install --python 3.13 "markitdown[all]"
     gum_success "markitdown installed successfully."
 }
 
 install_visidata() {
-    uv tool install --with lxml --with pdfminer.six visidata
+    uv tool install --python 3.13 --with lxml --with pdfminer.six visidata
     gum_success "visidata installed successfully."
 }
 
