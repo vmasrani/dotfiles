@@ -152,3 +152,5 @@ echo "hello from bashrc"
 echo "Sourcing $0"
 
 alias claude-mem='bun "/Users/vmasrani/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
+
+[ -f ~/.fzf.bash ] && source ~/.fzf.bash
