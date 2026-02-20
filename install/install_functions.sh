@@ -438,6 +438,7 @@ install_btop() {
 }
 
 install_ctop() {
+    sudo mkdir -p /usr/local/bin
     if [[ "$OS_TYPE" == "linux" ]]; then
         sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-amd64
     elif [[ "$OS_TYPE" == "mac" ]]; then

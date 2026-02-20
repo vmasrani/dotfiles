@@ -30,16 +30,6 @@ if [[ "$session_name" == "agents" ]]; then
     # Right: Usage metrics only
     tmux set-option status-right "#($dir/agents_status_vscode.sh)"
 
-    # Window list: non-current windows muted
-    tmux set-option window-status-format "#[fg=#5b6078] #W "
-    
-    # Current window: Orange pill with icon, window name + agent count (bold)
-    tmux set-option window-status-current-format "\
-#[fg=$peach,bg=$base]$left_cap\
-#[fg=$crust,bg=$peach,bold] #W · 󰚩 #($dir/agents_count.sh) \
-#[fg=$peach,bg=$base]$right_cap"
-    
-    tmux set-option window-status-separator ""
 else
     # Disable pane borders for non-agents sessions
     tmux set-option pane-border-status off

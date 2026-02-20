@@ -1,0 +1,122 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.14"
+# dependencies = [
+#     "httpx",
+#     "typer",
+#     "rich",
+#     "pillow",
+# ]
+# ///
+
+from __future__ import annotations
+
+import base64
+import io
+import os
+import subprocess
+from pathlib import Path
+
+import httpx
+import typer
+from PIL import Image
+from rich.console import Console
+
+console = Console()
+
+MAX_PIXELS = 1_000_000
+API_URL = "https://api.stability.ai/v2beta/stable-image/upscale/conservative"
+DEFAULT_PROMPT = "High quality professional headshot photograph, sharp detail, natural skin texture"
+
+
+def load_env():
+    """Source ~/.local_env.sh and inject STABILITY_API_KEY into os.environ."""
+    cp = subprocess.run(
+        ["zsh", "-c", "source ~/.local_env.sh && env"],
+        capture_output=True, text=True,
+    )
+    for line in cp.stdout.splitlines():
+        k, _, v = line.partition("=")
+        if k and "STABILITY" in k:
+            os.environ[k] = v
+
+
+def validate_input(path: Path) -> Path:
+    path = path.expanduser().resolve()
+    assert path.exists(), f"File not found: {path}"
+    assert path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}, f"Unsupported format: {path.suffix}"
+    return path
+
+
+def prepare_image(path: Path) -> tuple[bytes, int, int]:
+    """Load image, downscale if >1MP, return (png_bytes, orig_w, orig_h)."""
+    img = Image.open(path)
+    orig_w, orig_h = img.size
+    pixels = orig_w * orig_h
+
+    if pixels > MAX_PIXELS:
+        scale = (MAX_PIXELS / pixels) ** 0.5
+        new_w, new_h = int(orig_w * scale), int(orig_h * scale)
+        console.print(f"  [yellow]Downscaled {orig_w}x{orig_h} -> {new_w}x{new_h} for API (max 1MP)[/yellow]")
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue(), orig_w, orig_h
+
+
+def upscale_image(image_bytes: bytes, prompt: str, creativity: float) -> bytes:
+    """Call Stability AI conservative upscale. Returns raw image bytes."""
+    api_key = os.environ.get("STABILITY_API_KEY")
+    assert api_key, "STABILITY_API_KEY not set. Add it to ~/.local_env.sh"
+
+    response = httpx.post(
+        API_URL,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+        },
+        files={"image": ("image.png", image_bytes, "image/png")},
+        data={
+            "prompt": prompt,
+            "creativity": str(creativity),
+            "output_format": "png",
+        },
+        timeout=120.0,
+    )
+    assert response.status_code == 200, f"API error {response.status_code}: {response.text}"
+
+    b64_data = response.json()["image"]
+    return base64.b64decode(b64_data)
+
+
+def main(
+    image_path: Path = typer.Argument(..., help="Path to image file"),
+    output: Path = typer.Option(None, "--output", "-o", help="Output path (default: {stem}_4k.png)"),
+    creativity: float = typer.Option(0.2, "--creativity", "-c", min=0.01, max=0.35, help="How much to enhance (0.01-0.35)"),
+    prompt: str = typer.Option(DEFAULT_PROMPT, "--prompt", "-p", help="Guidance prompt"),
+) -> None:
+    """Upscale an image to ~4K using Stability AI Conservative Upscale."""
+    load_env()
+
+    path = validate_input(image_path)
+    output_path = output or path.with_name(f"{path.stem}_4k.png")
+
+    console.print(f"\n[bold]Upscaling:[/bold] {path.name}")
+
+    with console.status("[bold cyan]Preparing image...[/bold cyan]"):
+        image_bytes, orig_w, orig_h = prepare_image(path)
+    console.print(f"  Input: {orig_w}x{orig_h} ({orig_w * orig_h:,} pixels)")
+
+    with console.status("[bold cyan]Upscaling via Stability AI...[/bold cyan]"):
+        result_bytes = upscale_image(image_bytes, prompt, creativity)
+
+    output_path.write_bytes(result_bytes)
+
+    result = Image.open(output_path)
+    console.print(f"  Output: {result.width}x{result.height} ({result.width * result.height:,} pixels)")
+    console.print(f"\n[bold green]Saved:[/bold green] {output_path}")
+
+
+if __name__ == "__main__":
+    typer.run(main)
