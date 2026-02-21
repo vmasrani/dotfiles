@@ -6,17 +6,27 @@ session_name=$(tmux display-message -p '#S')
 if [[ "$session_name" == "agents" ]]; then
     dir="$HOME/dotfiles/tmux/scripts"
 
-    base="#24273a"
-    crust="#181926"
-    peach="#f5a97f"
-    yellow="#eed49f"
+    # Theme-aware colors
+    if [[ -n "$SSH_CLIENT" || -n "$SSH_TTY" ]]; then
+        base="#282828"
+        crust="#1d2021"
+        peach="#fe8019"
+        yellow="#fabd2f"
+        status_fg="#ebdbb2"
+    else
+        base="#24273a"
+        crust="#181926"
+        peach="#f5a97f"
+        yellow="#eed49f"
+        status_fg="#cad3f5"
+    fi
     left_cap=""
     right_cap=""
 
     # Enable pane borders with titles for agents session
     tmux set-option pane-border-status top
 
-    tmux set-option status-style "bg=$base,fg=#cad3f5"
+    tmux set-option status-style "bg=$base,fg=$status_fg"
     tmux set-option status-justify centre
     tmux set-option status-left-length 30
     tmux set-option status-right-length 200

@@ -187,8 +187,10 @@
   #################################[ os_icon: os identifier ]##################################
   # OS identifier color.
   typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=
-  # Custom icon.
-  # typeset -g POWERLEVEL9K_OS_ICON_CONTENT_EXPANSION='⭐'
+  # Show home icon on Mac Mini, default Apple logo elsewhere.
+  if [[ "$(hostname)" == *mac-mini* ]]; then
+    typeset -g POWERLEVEL9K_OS_ICON_CONTENT_EXPANSION='󰋜'
+  fi
 
   ################################[ prompt_char: prompt symbol ]################################
   # Green prompt symbol if the last command succeeded.

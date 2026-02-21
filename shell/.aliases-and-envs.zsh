@@ -75,6 +75,16 @@ alias reset-tmux='rm -rf ~/.local/share/tmux/resurrect'
 alias zshrc='hx ~/.zshrc'
 alias dots='cd ~/dotfiles/'
 alias rsync='rsync -avz --compress --verbose --human-readable --partial --progress'
+
+# Switch iTerm2 profile on SSH to Mac Mini, revert on disconnect
+ssh() {
+    local mac_mini="vadens-mac-mini"
+    if [[ "$*" == *"$mac_mini"* ]]; then
+        echo -ne "\033]1337;SetProfile=SSH-Server\007"
+    fi
+    command ssh "$@"
+    echo -ne "\033]1337;SetProfile=Default\007"
+}
 alias ga="lazygit"
 alias bfs='bfs -L'
 alias chals='alias | grep' #check aliases
