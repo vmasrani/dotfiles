@@ -9,6 +9,27 @@ command_exists() {
     command -v "$1" > /dev/null
 }
 
+# Track command output boundaries in tmux for copy-last-output
+if [[ -n "$TMUX" ]]; then
+    _clo_preexec() {
+        # Record scroll position just as command starts (command line is in buffer)
+        local h y
+        h=$(tmux display-message -p '#{history_size}')
+        y=$(tmux display-message -p '#{cursor_y}')
+        tmux set-option -p @clo_start "$((h + y))"
+    }
+    _clo_precmd() {
+        # Record scroll position after command finishes (before prompt draws)
+        local h y
+        h=$(tmux display-message -p '#{history_size}')
+        y=$(tmux display-message -p '#{cursor_y}')
+        tmux set-option -p @clo_end "$((h + y))"
+    }
+    autoload -Uz add-zsh-hook
+    add-zsh-hook preexec _clo_preexec
+    add-zsh-hook precmd _clo_precmd
+fi
+
 uwu() {
   local cmd
   cmd="$(uwu-cli "$@")" || return

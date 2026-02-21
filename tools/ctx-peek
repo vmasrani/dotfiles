@@ -1,9 +1,10 @@
 #!/usr/bin/env zsh
 # Peek at context files without loading them fully.
 # Shows first N lines of each *-context.md file found under a directory.
-# Usage: ctx-peek [directory] [lines]
+# Usage: ctx-peek [directory] [lines] [--depth N]
 #   directory: path to search (default: .)
 #   lines:     lines per file to show (default: 12)
+#   --depth N: directory levels to show (1=top-level dirs, 2=one nesting level, etc.)
 
 set -e
 
@@ -11,8 +12,22 @@ source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
 
 dir="${1:-.}"
 lines="${2:-12}"
+depth=""
 
-context_files=("${(@f)$(fd --no-ignore --glob '*-context.md' "$dir" --type f 2>/dev/null)}")
+# Parse --depth flag from remaining args
+shift 2 2>/dev/null || true
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --depth) depth="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+fd_args=(--no-ignore --glob '*-context.md' "$dir" --type f)
+# --depth N = N levels of directories; fd needs N+1 because context files are inside dirs
+[[ -n "$depth" ]] && fd_args+=(--max-depth "$((depth + 1))")
+
+context_files=("${(@f)$(fd "${fd_args[@]}" 2>/dev/null)}")
 
 if [[ ${#context_files[@]} -eq 0 || -z "${context_files[1]}" ]]; then
     gum_dim "No *-context.md files found under $dir" 2>/dev/null || echo "No *-context.md files found under $dir"

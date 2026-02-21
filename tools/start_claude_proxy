@@ -1,0 +1,70 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+# ── Config ──────────────────────────────────────────────────────────
+PROXY_DIR="$HOME/dev/projects/greyhaven/proxyclaude"
+PORT=8082
+
+# ── Args ────────────────────────────────────────────────────────────
+env_file="${1:-}"
+if [[ -z "$env_file" ]]; then
+    gum log -l error "Usage: start_claude_proxy <path-to-env-file>"
+    exit 1
+fi
+env_file="$(realpath "$env_file")"
+project_dir="$(pwd)"
+settings_file="$project_dir/.claude/settings.local.json"
+
+# ── Validate ────────────────────────────────────────────────────────
+[[ -f "$env_file" ]] || { gum log -l error "Env file not found: $env_file"; exit 1; }
+[[ -d "$PROXY_DIR" ]] || { gum log -l error "Proxy dir not found: $PROXY_DIR"; exit 1; }
+
+# ── Kill existing process on port ────────────────────────────────────
+if lsof -ti :$PORT > /dev/null 2>&1; then
+    existing_pid=$(lsof -ti :$PORT | head -1)
+    gum log -l warn "Port $PORT in use (PID: $existing_pid) — killing it"
+    kill "$existing_pid" 2>/dev/null || true
+    sleep 0.5
+fi
+
+# ── Write ANTHROPIC_BASE_URL to settings ─────────────────────────────
+mkdir -p "$project_dir/.claude"
+python3 -c "
+import json, pathlib
+p = pathlib.Path('$settings_file')
+data = json.loads(p.read_text()) if p.exists() and p.stat().st_size > 0 else {}
+data.setdefault('env', {})['ANTHROPIC_BASE_URL'] = 'http://localhost:$PORT'
+p.write_text(json.dumps(data, indent=2) + '\n')
+"
+
+# ── Cleanup on exit (remove ANTHROPIC_BASE_URL) ──────────────────────
+cleanup() {
+    python3 -c "
+import json, pathlib
+p = pathlib.Path('$settings_file')
+if not p.exists(): exit()
+data = json.loads(p.read_text())
+data.get('env', {}).pop('ANTHROPIC_BASE_URL', None)
+if not data.get('env'): data.pop('env', None)
+p.write_text(json.dumps(data, indent=2) + '\n') if data else p.unlink()
+"
+    gum log -l info "Removed ANTHROPIC_BASE_URL from settings"
+}
+trap cleanup EXIT INT TERM
+
+# ── Start proxy (foreground) ─────────────────────────────────────────
+gum style --border rounded --padding "0 1" --border-foreground 2 \
+    "$(gum format -- \
+    "**Claude proxy starting**" \
+    "" \
+    "  Port:    $PORT" \
+    "  Env:     $env_file" \
+    "  Project: $project_dir" \
+    "" \
+    "Press **Ctrl-C** to stop.")"
+
+cd "$PROXY_DIR"
+set -a
+source "$env_file"
+set +a
+uv run python server.py

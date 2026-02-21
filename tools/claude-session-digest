@@ -1,0 +1,405 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "typer",
+#     "rich",
+#     "pydantic",
+# ]
+# ///
+"""Scan Claude Code sessions, extract transcripts, output JSON for subagent summarization."""
+
+from __future__ import annotations
+
+import json
+import shlex
+import subprocess
+from collections import Counter, defaultdict
+from datetime import datetime, date
+from pathlib import Path
+
+import typer
+from pydantic import BaseModel
+from rich.console import Console
+from rich.table import Table
+
+app = typer.Typer(pretty_exceptions_enable=False)
+console = Console(stderr=True)
+
+CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+REMOTE_SESSIONS_DIR = Path.home() / ".claude" / "remote-sessions"
+HISTORY_FILE = Path.home() / ".zsh_history"
+SSH_CONFIG_FILE = Path.home() / ".ssh" / "config"
+VAULT_PRIMARY = Path.home() / "dev" / "dendron" / "vault"
+VAULT_FALLBACK = Path.home() / "dotfiles" / "local" / "daily-logs"
+MIN_ASSISTANT_CHARS = 200
+MAX_TRANSCRIPT_CHARS = 30_000
+RSYNC_TIMEOUT = 10
+SSH_CONNECT_TIMEOUT = 5
+
+
+# ── Model ────────────────────────────────────────────────────────────────────
+
+class SessionMeta(BaseModel):
+    session_id: str
+    project_path: str
+    project_name: str
+    slug: str = ""
+    git_branch: str = ""
+    timestamp: str
+    date: str
+    time_hhmm: str
+    file_path: Path
+    user_message_count: int = 0
+    assistant_text_chars: int = 0
+    remote_host: str = ""
+
+
+# ── SSH / Remote Helpers ─────────────────────────────────────────────────────
+
+def parse_ssh_config_hosts() -> set[str]:
+    """Extract Host aliases from ~/.ssh/config, excluding wildcards and FQDNs."""
+    if not SSH_CONFIG_FILE.is_file():
+        return set()
+    hosts = set()
+    for line in SSH_CONFIG_FILE.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("host ") and not stripped.startswith("#"):
+            alias = stripped.split(None, 1)[1].strip()
+            if "*" in alias or "." in alias:
+                continue
+            hosts.add(alias)
+    return hosts
+
+
+def parse_history_ssh(target_date: str, known_hosts: set[str]) -> list[str]:
+    """Find unique SSH host aliases used on target_date from zsh history."""
+    if not HISTORY_FILE.is_file():
+        return []
+    found: dict[str, None] = {}  # ordered set via dict
+    # SSH flags that take an argument (skip flag + its value when parsing)
+    flags_with_arg = {"-b", "-c", "-D", "-E", "-e", "-F", "-I", "-i", "-J",
+                      "-L", "-l", "-m", "-O", "-o", "-p", "-Q", "-R", "-S", "-W", "-w"}
+    for line in HISTORY_FILE.read_text(errors="replace").splitlines():
+        if not line.startswith(": "):
+            continue
+        parts = line.split(";", 1)
+        if len(parts) != 2:
+            continue
+        meta, cmd = parts
+        # meta format: ": timestamp:0"
+        ts_str = meta.split(":")[1].strip()
+        if not ts_str.isdigit():
+            continue
+        cmd_date = datetime.fromtimestamp(int(ts_str)).strftime("%Y-%m-%d")
+        if cmd_date != target_date:
+            continue
+        cmd = cmd.strip()
+        if not cmd.startswith("ssh "):
+            continue
+        # Extract destination: skip flags and their args
+        try:
+            tokens = shlex.split(cmd)[1:]  # drop "ssh"
+        except ValueError:
+            continue
+        i = 0
+        while i < len(tokens):
+            if tokens[i] in flags_with_arg:
+                i += 2
+            elif tokens[i].startswith("-"):
+                i += 1
+            else:
+                dest = tokens[i]
+                if dest in known_hosts:
+                    found[dest] = None
+                break
+    return list(found)
+
+
+def sync_host(host: str) -> tuple[str, str, int]:
+    """Rsync .claude/projects/ from a remote host. Returns (host, status, session_count)."""
+    dest = REMOTE_SESSIONS_DIR / host / "projects"
+    dest.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [
+            "rsync", "-az", f"--timeout={RSYNC_TIMEOUT}",
+            "-e", f"ssh -o ConnectTimeout={SSH_CONNECT_TIMEOUT} -o StrictHostKeyChecking=accept-new -o BatchMode=yes",
+            f"{host}:.claude/projects/",
+            str(dest) + "/",
+        ],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        # Clean up empty dir if rsync failed
+        if dest.exists() and not any(dest.iterdir()):
+            dest.rmdir()
+        return (host, "unreachable", 0)
+    count = len(list(dest.glob("*/*.jsonl")))
+    if count == 0:
+        return (host, "no-sessions", 0)
+    return (host, "synced", count)
+
+
+# ── Session Discovery ────────────────────────────────────────────────────────
+
+def scan_all_sessions() -> list[SessionMeta]:
+    sessions = []
+    # Local sessions
+    for jsonl in CLAUDE_PROJECTS_DIR.glob("*/*.jsonl"):
+        meta = _extract_meta(jsonl)
+        if meta:
+            sessions.append(meta)
+    # Remote sessions
+    if REMOTE_SESSIONS_DIR.is_dir():
+        for host_dir in REMOTE_SESSIONS_DIR.iterdir():
+            if not host_dir.is_dir():
+                continue
+            for jsonl in (host_dir / "projects").glob("*/*.jsonl"):
+                meta = _extract_meta(jsonl, remote_host=host_dir.name)
+                if meta:
+                    sessions.append(meta)
+    return sorted(sessions, key=lambda s: s.timestamp)
+
+
+def _extract_meta(path: Path, remote_host: str = "") -> SessionMeta | None:
+    session_id = path.stem
+    project_dir = path.parent.name
+    user_count = 0
+    asst_chars = 0
+    first_user = None
+
+    with open(path, "r") as f:
+        for line in f:
+            row = json.loads(line)
+            msg_type = row.get("type", "")
+            if msg_type == "user" and first_user is None:
+                first_user = row
+            if msg_type == "user":
+                user_count += 1
+            if msg_type == "assistant":
+                for block in row.get("message", {}).get("content", []):
+                    if block.get("type") == "text":
+                        asst_chars += len(block.get("text", ""))
+
+    if first_user is None:
+        return None
+
+    ts_str = first_user.get("timestamp", "")
+    if not ts_str:
+        ts_str = datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+
+    dt = _parse_ts(ts_str)
+    cwd = first_user.get("cwd", "")
+
+    return SessionMeta(
+        session_id=session_id,
+        project_path=cwd,
+        project_name=Path(cwd).name if cwd else project_dir,
+        slug=first_user.get("slug", ""),
+        git_branch=first_user.get("gitBranch", ""),
+        timestamp=ts_str,
+        date=dt.strftime("%Y-%m-%d"),
+        time_hhmm=dt.strftime("%H:%M"),
+        file_path=path,
+        user_message_count=user_count,
+        assistant_text_chars=asst_chars,
+        remote_host=remote_host,
+    )
+
+
+def _parse_ts(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone()
+
+
+def sessions_for_date(sessions: list[SessionMeta], target: str) -> list[SessionMeta]:
+    return [s for s in sessions if s.date == target]
+
+
+def filter_noise(sessions: list[SessionMeta]) -> list[SessionMeta]:
+    return [s for s in sessions if s.assistant_text_chars >= MIN_ASSISTANT_CHARS]
+
+
+# ── Transcript Extraction (jq) ───────────────────────────────────────────────
+
+JQ_FILTER = r"""
+select(.type == "user" or (.type == "assistant" and .message.role == "assistant"))
+| if .type == "user" then
+    "USER: " + (
+      if (.message.content | type) == "string" then .message.content[:500]
+      elif (.message.content | type) == "array" then
+        [.message.content[] | select(type == "object" and .type == "text") | .text[:500]] | join(" ")
+      else ""
+      end
+    )
+  else
+    "ASSISTANT: " + ([.message.content[]? | select(.type == "text") | .text[:500]] | join(" "))
+  end
+"""
+
+
+def extract_transcript(meta: SessionMeta) -> str:
+    result = subprocess.run(
+        ["jq", "-r", JQ_FILTER, str(meta.file_path)],
+        capture_output=True, text=True,
+    )
+    return result.stdout[:MAX_TRANSCRIPT_CHARS]
+
+
+# ── Dedup Time Headings ──────────────────────────────────────────────────────
+
+def dedup_times(sessions: list[SessionMeta]) -> list[SessionMeta]:
+    counts: Counter = Counter()
+    seen: dict[str, int] = {}
+    for s in sessions:
+        counts[s.time_hhmm] += 1
+
+    result = []
+    for s in sessions:
+        if counts[s.time_hhmm] > 1:
+            idx = seen.get(s.time_hhmm, 0)
+            suffix = chr(ord("a") + idx)
+            seen[s.time_hhmm] = idx + 1
+            s = s.model_copy(update={"time_hhmm": f"{s.time_hhmm}{suffix}"})
+        result.append(s)
+    return result
+
+
+# ── Vault / Status ───────────────────────────────────────────────────────────
+
+def get_vault_path() -> Path:
+    return VAULT_PRIMARY if VAULT_PRIMARY.is_dir() else VAULT_FALLBACK
+
+
+def existing_log_dates(vault: Path) -> set[str]:
+    dates = set()
+    for f in vault.glob("daily.log.*.md"):
+        parts = f.stem.split(".")
+        if len(parts) == 5:
+            dates.add(f"{parts[2]}-{parts[3]}-{parts[4]}")
+    return dates
+
+
+def count_logged_sessions(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return path.read_text().count("## Session Log")
+
+
+# ── CLI Commands ─────────────────────────────────────────────────────────────
+
+@app.command()
+def sync(target: str = typer.Argument(help="Date to sync: 'today' or YYYY-MM-DD")):
+    """Sync Claude sessions from remote hosts discovered in SSH history."""
+    target_date = date.today().isoformat() if target == "today" else target
+    known_hosts = parse_ssh_config_hosts()
+    if not known_hosts:
+        console.print("[yellow]No SSH config aliases found in ~/.ssh/config[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[dim]Known SSH aliases: {', '.join(sorted(known_hosts))}[/dim]")
+    hosts = parse_history_ssh(target_date, known_hosts)
+    if not hosts:
+        console.print(f"[yellow]No SSH sessions found in history for {target_date}[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[bold]Discovered {len(hosts)} host(s) from history for {target_date}:[/bold]")
+    for h in hosts:
+        console.print(f"  [cyan]{h}[/cyan]")
+
+    results_table = Table(title="Sync Results")
+    results_table.add_column("Host", style="cyan")
+    results_table.add_column("Status")
+    results_table.add_column("Sessions", justify="right")
+
+    for host in hosts:
+        console.print(f"[dim]Syncing {host}...[/dim]")
+        host_name, status_str, count = sync_host(host)
+        style = {"synced": "green", "unreachable": "red", "no-sessions": "yellow"}[status_str]
+        results_table.add_row(host_name, f"[{style}]{status_str}[/{style}]", str(count))
+
+    console.print(results_table)
+
+
+@app.command()
+def status():
+    """Show a table of dates, session counts, and log status."""
+    console.print("[dim]Scanning sessions...[/dim]")
+    all_sessions = scan_all_sessions()
+    vault = get_vault_path()
+    logged = existing_log_dates(vault)
+
+    by_date: dict[str, list[SessionMeta]] = defaultdict(list)
+    for s in all_sessions:
+        by_date[s.date].append(s)
+
+    table = Table(title="Claude Session Digest Status")
+    table.add_column("Date", style="cyan")
+    table.add_column("Day", style="dim")
+    table.add_column("Total", justify="right")
+    table.add_column("Remote", justify="right", style="magenta")
+    table.add_column("Non-trivial", justify="right", style="green")
+    table.add_column("Logged", justify="center")
+    table.add_column("# Logged", justify="right")
+
+    for d in sorted(by_date.keys(), reverse=True)[:30]:
+        sessions = by_date[d]
+        remote_count = sum(1 for s in sessions if s.remote_host)
+        non_trivial = filter_noise(sessions)
+        is_logged = d in logged
+        log_file = vault / f"daily.log.{d.replace('-', '.')}.md"
+        n_logged = count_logged_sessions(log_file)
+        day_name = datetime.strptime(d, "%Y-%m-%d").strftime("%a")
+
+        table.add_row(
+            d,
+            day_name,
+            str(len(sessions)),
+            str(remote_count) if remote_count else "-",
+            str(len(non_trivial)),
+            "[green]yes[/green]" if is_logged else "[red]no[/red]",
+            str(n_logged) if is_logged else "-",
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Vault: {vault}[/dim]")
+    console.print(f"[dim]Total sessions across all projects: {len(all_sessions)}[/dim]")
+
+
+@app.command()
+def extract(target: str = typer.Argument(help="Date to extract: 'today' or YYYY-MM-DD")):
+    """Extract session metadata + transcripts for a date as JSON array to stdout."""
+    target_date = date.today().isoformat() if target == "today" else target
+
+    console.print(f"[dim]Scanning sessions for {target_date}...[/dim]")
+    all_sessions = scan_all_sessions()
+    day_sessions = sessions_for_date(all_sessions, target_date)
+    meaningful = filter_noise(day_sessions)
+    meaningful = dedup_times(meaningful)
+
+    console.print(f"[dim]Found {len(day_sessions)} total, {len(meaningful)} non-trivial sessions[/dim]")
+
+    if not meaningful:
+        print("[]")
+        raise typer.Exit(0)
+
+    console.print(f"[dim]Extracting transcripts for {len(meaningful)} sessions...[/dim]")
+
+    results = []
+    for meta in meaningful:
+        transcript = extract_transcript(meta)
+        results.append({
+            "session_id": meta.session_id,
+            "project_name": meta.project_name,
+            "project_path": meta.project_path,
+            "slug": meta.slug,
+            "git_branch": meta.git_branch,
+            "time_hhmm": meta.time_hhmm,
+            "remote_host": meta.remote_host,
+            "transcript": transcript,
+        })
+
+    print(json.dumps(results))
+
+
+if __name__ == "__main__":
+    app()

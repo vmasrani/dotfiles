@@ -1,8 +1,9 @@
 #!/usr/bin/env zsh
 # Build a project map from *-context.md files — one summary line per directory.
-# Usage: ctx-index [directory] [--full]
+# Usage: ctx-index [directory] [--full] [--depth N]
 #   directory: root to scan (default: .)
 #   --full:    append file count and date metadata
+#   --depth N: directory levels to show (1=top-level dirs, 2=one nesting level, etc.)
 
 set -e
 
@@ -10,10 +11,15 @@ source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
 
 dir="."
 full=false
+depth=""
 
 for arg in "$@"; do
     if [[ "$arg" == "--full" ]]; then
         full=true
+    elif [[ "$arg" == "--depth" ]]; then
+        depth="next"
+    elif [[ "$depth" == "next" ]]; then
+        depth="$arg"
     else
         dir="$arg"
     fi
@@ -21,7 +27,11 @@ done
 
 dir="${dir:A}"
 
-context_files=("${(@f)$(fd --no-ignore --glob '*-context.md' "$dir" --type f 2>/dev/null | sort)}")
+fd_args=(--no-ignore --glob '*-context.md' "$dir" --type f)
+# --depth N = N levels of directories; fd needs N+1 because context files are inside dirs
+[[ -n "$depth" && "$depth" != "next" ]] && fd_args+=(--max-depth "$((depth + 1))")
+
+context_files=("${(@f)$(fd "${fd_args[@]}" 2>/dev/null | sort)}")
 
 if [[ ${#context_files[@]} -eq 0 || -z "${context_files[1]}" ]]; then
     gum_dim "No *-context.md files found under $dir" 2>/dev/null || echo "No *-context.md files found under $dir"

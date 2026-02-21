@@ -1,0 +1,41 @@
+#!/usr/bin/env zsh
+# Copies the output of the last completed command from tmux scrollback to clipboard.
+# Requires _clo_preexec/_clo_precmd hooks (sourced from helper_functions.sh).
+# All feedback via tmux display-message (status bar) to avoid disrupting the pane.
+set -e
+
+msg() { tmux display-message "$1"; }
+
+start=$(tmux show-options -pv @clo_start 2>/dev/null)
+end=$(tmux show-options -pv @clo_end 2>/dev/null)
+
+if [[ -z "$start" || -z "$end" ]]; then
+    msg "No command markers found"
+    exit 0
+fi
+
+# Convert absolute positions to capture-pane relative coordinates
+h=$(tmux display-message -p '#{history_size}')
+rel_start=$((start - h + 1))   # +1 to skip the command line itself
+rel_end=$((end - h - 1))       # -1 to exclude the cursor line
+
+if (( rel_start > rel_end )); then
+    msg "No output to copy"
+    exit 0
+fi
+
+output=$(tmux capture-pane -p -S "$rel_start" -E "$rel_end")
+
+# Trim trailing blank lines
+while [[ "$output" == *$'\n' ]]; do
+    output="${output%$'\n'}"
+done
+
+if [[ -z "$output" ]]; then
+    msg "No output to copy"
+    exit 0
+fi
+
+printf '%s' "$output" | pbcopy
+lines=$(printf '%s\n' "$output" | wc -l | tr -d ' ')
+msg "Copied $lines lines to clipboard"

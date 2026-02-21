@@ -6,9 +6,9 @@ Context files live inside the directory they describe, named `{dirname}-context.
 
 You have five helper tools on PATH (in `~/tools/`):
 
-- **`ctx-index [dir] [--full]`** — Project map: one summary line per directory from all `*-context.md` files. Use `--full` to include file count and date metadata.
+- **`ctx-index [dir] [--full] [--depth N]`** — Project map: one summary line per directory from all `*-context.md` files. Use `--full` to include file count and date metadata. Use `--depth N` to limit search depth (e.g., `--depth 1` for top-level only).
 - **`ctx-tree [dir] [depth]`** — Shows directory tree using eza (respects gitignore, filters noise). Default depth: 3.
-- **`ctx-peek [dir] [lines]`** — Shows first N lines of all `*-context.md` files under a directory. Default: 12 lines. Use this to scan existing context files without loading them fully.
+- **`ctx-peek [dir] [lines] [--depth N]`** — Shows first N lines of all `*-context.md` files under a directory. Default: 12 lines. Use `--depth N` to limit search depth. Use this to scan existing context files without loading them fully.
 - **`ctx-stale [dir] [--max-depth N] [--min-files N]`** — Lists directories with missing or stale context files. Skips dirs with fewer than N files (default: 2) and limits scan depth (default: 4).
 - **`ctx-skip [dir] [reason]`** — Mark a directory as skipped for context generation. Creates a stub `*-context.md` file with a SKIP marker. Optional reason parameter for documentation.
 
