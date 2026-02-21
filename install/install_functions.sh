@@ -62,6 +62,7 @@ install_dotfiles() {
     mkdir -p "$HOME/.local/bin"
     mkdir -p "$HOME/.claude"
     mkdir -p "$HOME/.codex"
+    mkdir -p "$HOME/Library/Application Support/iTerm2/DynamicProfiles"
     # chmod bash files
     find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
     touch $HOME/dotfiles/local/.local_env.sh
@@ -166,6 +167,9 @@ install_dotfiles() {
         "$dotfiles/preview/npy-preview.py:$bin/npy-preview"
         "$dotfiles/preview/feather-preview.py:$bin/feather-preview"
         "$dotfiles/preview/pkl-preview.py:$bin/pkl-preview"
+
+        # iTerm2 SSH theme switcher
+        "$dotfiles/iterm2/ssh-themes/switch-ssh-theme:$bin/switch-ssh-theme"
 
         # editor dotfiles
         "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"

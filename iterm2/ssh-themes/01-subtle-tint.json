@@ -1,0 +1,32 @@
+{
+  "Profiles": [
+    {
+      "Name": "SSH-Server",
+      "Guid": "A1B2C3D4-0001-4000-8000-000000000001",
+      "Dynamic Profile Parent Name": "Hotkey Window",
+      "Badge Text": "SSH",
+      "Badge Color": {
+        "Red Component": 1.0,
+        "Green Component": 0.8,
+        "Blue Component": 0.3,
+        "Alpha Component": 0.15,
+        "Color Space": "sRGB"
+      },
+      "Background Color": {
+        "Red Component": 0.19,
+        "Green Component": 0.17,
+        "Blue Component": 0.22,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Use Tab Color": true,
+      "Tab Color": {
+        "Red Component": 0.6,
+        "Green Component": 0.45,
+        "Blue Component": 0.2,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      }
+    }
+  ]
+}

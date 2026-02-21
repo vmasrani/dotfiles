@@ -1,0 +1,80 @@
+{
+  "Profiles": [
+    {
+      "Name": "SSH-Server",
+      "Guid": "A1B2C3D4-0009-4000-8000-000000000009",
+      "Dynamic Profile Parent Name": "Hotkey Window",
+      "Badge Text": "SSH",
+      "Badge Color": {
+        "Red Component": 0.0,
+        "Green Component": 1.0,
+        "Blue Component": 0.4,
+        "Alpha Component": 0.15,
+        "Color Space": "sRGB"
+      },
+      "Transparency": 0.30,
+      "Blur": true,
+      "Blur Radius": 50,
+      "Background Color": {
+        "Red Component": 0.02,
+        "Green Component": 0.05,
+        "Blue Component": 0.02,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Foreground Color": {
+        "Red Component": 0.2,
+        "Green Component": 0.9,
+        "Blue Component": 0.4,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Bold Color": {
+        "Red Component": 0.3,
+        "Green Component": 1.0,
+        "Blue Component": 0.5,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Cursor Color": {
+        "Red Component": 0.2,
+        "Green Component": 1.0,
+        "Blue Component": 0.4,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Selection Color": {
+        "Red Component": 0.05,
+        "Green Component": 0.25,
+        "Blue Component": 0.10,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Ansi 0 Color":  { "Red Component": 0.04, "Green Component": 0.08, "Blue Component": 0.04, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 1 Color":  { "Red Component": 0.85, "Green Component": 0.25, "Blue Component": 0.25, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 2 Color":  { "Red Component": 0.20, "Green Component": 0.90, "Blue Component": 0.40, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 3 Color":  { "Red Component": 0.70, "Green Component": 0.90, "Blue Component": 0.30, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 4 Color":  { "Red Component": 0.20, "Green Component": 0.60, "Blue Component": 0.80, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 5 Color":  { "Red Component": 0.50, "Green Component": 0.40, "Blue Component": 0.80, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 6 Color":  { "Red Component": 0.20, "Green Component": 0.80, "Blue Component": 0.70, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 7 Color":  { "Red Component": 0.75, "Green Component": 0.90, "Blue Component": 0.75, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 8 Color":  { "Red Component": 0.15, "Green Component": 0.30, "Blue Component": 0.15, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 9 Color":  { "Red Component": 1.0,  "Green Component": 0.35, "Blue Component": 0.35, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 10 Color": { "Red Component": 0.30, "Green Component": 1.0,  "Blue Component": 0.50, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 11 Color": { "Red Component": 0.80, "Green Component": 1.0,  "Blue Component": 0.40, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 12 Color": { "Red Component": 0.30, "Green Component": 0.70, "Blue Component": 0.95, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 13 Color": { "Red Component": 0.60, "Green Component": 0.50, "Blue Component": 0.95, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 14 Color": { "Red Component": 0.30, "Green Component": 0.90, "Blue Component": 0.80, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 15 Color": { "Red Component": 0.85, "Green Component": 1.0,  "Blue Component": 0.85, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Minimum Contrast": 0.08,
+      "Use Tab Color": true,
+      "Tab Color": {
+        "Red Component": 0.1,
+        "Green Component": 0.65,
+        "Blue Component": 0.3,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      }
+    }
+  ]
+}

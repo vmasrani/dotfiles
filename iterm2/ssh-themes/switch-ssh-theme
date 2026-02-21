@@ -1,0 +1,50 @@
+#!/usr/bin/env zsh
+set -e
+
+source "$HOME/dotfiles/shell/gum_utils.sh"
+
+THEMES_DIR="$HOME/dotfiles/iterm2/ssh-themes"
+DYNAMIC_PROFILES_DIR="$HOME/Library/Application Support/iTerm2/DynamicProfiles"
+TARGET="$DYNAMIC_PROFILES_DIR/ssh-server.json"
+
+theme_files=("$THEMES_DIR"/*.json(N))
+
+if [[ ${#theme_files[@]} -eq 0 ]]; then
+    gum_error "No theme files found in $THEMES_DIR"
+    exit 1
+fi
+
+descriptions=(
+    "01 Subtle Tint        — barely-there warm shift, hint of amber"
+    "02 Frosted Glass      — translucent blur, desktop bleeds through"
+    "03 Catppuccin Mocha   — beloved pastel dark, warm and cozy"
+    "04 Cyberpunk Neon     — electric pink/cyan on deep purple"
+    "05 Ocean Depth        — deep navy to teal, calm and professional"
+    "06 Amber Terminal     — retro CRT phosphor, monochrome amber"
+    "07 Tokyo Night        — purple-blue elegance, muted pastels"
+    "08 Solar Flare        — warm dark with bold orange accents"
+    "09 Ghostly Matrix     — translucent green, HUD overlay feel"
+    "10 Red Alert          — dark charcoal + red, unmistakable danger"
+)
+
+current=""
+if [[ -L "$TARGET" ]]; then
+    current=$(basename "$(readlink "$TARGET")" .json)
+fi
+
+choice=$(gum choose --header "Select SSH theme (current: ${current:-none})" "${descriptions[@]}")
+
+# Extract number from choice
+num="${choice%% *}"
+selected_file="$THEMES_DIR/${num}-"*.json(N[1])
+
+if [[ -z "$selected_file" || ! -f "$selected_file" ]]; then
+    gum_error "Theme file not found for selection: $num"
+    exit 1
+fi
+
+mkdir -p "$DYNAMIC_PROFILES_DIR"
+ln -sf "$selected_file" "$TARGET"
+
+gum_success "Activated: $(basename "$selected_file" .json)"
+gum_info "iTerm2 picks up changes live — SSH to test it"

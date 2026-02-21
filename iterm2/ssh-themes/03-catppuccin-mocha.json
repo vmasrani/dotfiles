@@ -1,0 +1,90 @@
+{
+  "Profiles": [
+    {
+      "Name": "SSH-Server",
+      "Guid": "A1B2C3D4-0003-4000-8000-000000000003",
+      "Dynamic Profile Parent Name": "Hotkey Window",
+      "Badge Text": "SSH",
+      "Badge Color": {
+        "Red Component": 0.96,
+        "Green Component": 0.88,
+        "Blue Component": 0.69,
+        "Alpha Component": 0.18,
+        "Color Space": "sRGB"
+      },
+      "Background Color": {
+        "Red Component": 0.118,
+        "Green Component": 0.118,
+        "Blue Component": 0.180,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Foreground Color": {
+        "Red Component": 0.804,
+        "Green Component": 0.839,
+        "Blue Component": 0.957,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Bold Color": {
+        "Red Component": 0.706,
+        "Green Component": 0.745,
+        "Blue Component": 0.996,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Cursor Color": {
+        "Red Component": 0.961,
+        "Green Component": 0.878,
+        "Blue Component": 0.863,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Cursor Text Color": {
+        "Red Component": 0.118,
+        "Green Component": 0.118,
+        "Blue Component": 0.180,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Selection Color": {
+        "Red Component": 0.271,
+        "Green Component": 0.278,
+        "Blue Component": 0.353,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Selected Text Color": {
+        "Red Component": 0.804,
+        "Green Component": 0.839,
+        "Blue Component": 0.957,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      },
+      "Ansi 0 Color":  { "Red Component": 0.271, "Green Component": 0.278, "Blue Component": 0.353, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 1 Color":  { "Red Component": 0.953, "Green Component": 0.545, "Blue Component": 0.659, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 2 Color":  { "Red Component": 0.651, "Green Component": 0.890, "Blue Component": 0.631, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 3 Color":  { "Red Component": 0.976, "Green Component": 0.886, "Blue Component": 0.686, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 4 Color":  { "Red Component": 0.537, "Green Component": 0.706, "Blue Component": 0.980, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 5 Color":  { "Red Component": 0.796, "Green Component": 0.651, "Blue Component": 0.969, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 6 Color":  { "Red Component": 0.537, "Green Component": 0.863, "Blue Component": 0.922, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 7 Color":  { "Red Component": 0.710, "Green Component": 0.745, "Blue Component": 0.831, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 8 Color":  { "Red Component": 0.345, "Green Component": 0.357, "Blue Component": 0.439, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 9 Color":  { "Red Component": 0.953, "Green Component": 0.545, "Blue Component": 0.659, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 10 Color": { "Red Component": 0.651, "Green Component": 0.890, "Blue Component": 0.631, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 11 Color": { "Red Component": 0.976, "Green Component": 0.886, "Blue Component": 0.686, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 12 Color": { "Red Component": 0.537, "Green Component": 0.706, "Blue Component": 0.980, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 13 Color": { "Red Component": 0.796, "Green Component": 0.651, "Blue Component": 0.969, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 14 Color": { "Red Component": 0.537, "Green Component": 0.863, "Blue Component": 0.922, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Ansi 15 Color": { "Red Component": 0.804, "Green Component": 0.839, "Blue Component": 0.957, "Alpha Component": 1, "Color Space": "sRGB" },
+      "Use Tab Color": true,
+      "Tab Color": {
+        "Red Component": 0.796,
+        "Green Component": 0.651,
+        "Blue Component": 0.969,
+        "Alpha Component": 1,
+        "Color Space": "sRGB"
+      }
+    }
+  ]
+}
