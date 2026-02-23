@@ -1,4 +1,4 @@
-theme = "material_palenight"
+theme = "material_palenight_transparent"
 
 [editor]
 bufferline = "always"

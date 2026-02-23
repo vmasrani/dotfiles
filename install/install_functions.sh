@@ -212,6 +212,7 @@ install_dotfiles() {
         # helix
         "$dotfiles/editors/hx_languages.toml:$home/.config/helix/languages.toml"
         "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
+        "$dotfiles/editors/hx_themes:$home/.config/helix/themes"
 
         # claude directories and files (symlink contents to ~/.claude)
         # NOTE: plugins/ is NOT symlinked - it contains machine-specific paths
