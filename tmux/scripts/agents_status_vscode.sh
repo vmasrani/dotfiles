@@ -28,8 +28,8 @@ pill() {
 "$SCRIPT_DIR/agents_cache_refresh.sh" &>/dev/null &
 
 # Parse all values with single jq call
-eval "$(jq -r '"five_hour=\(.five_hour//0) seven_day=\(.seven_day//0) credits=\(.credits//0) reset_utc=\(.five_hour_resets//"")"' "$CACHE_FILE" 2>/dev/null)"
-five_hour="${five_hour:-0}" seven_day="${seven_day:-0}" credits="${credits:-0}"
+eval "$(jq -r '"five_hour=\(.five_hour//0) seven_day=\(.seven_day//0) credits=\(.credits//0) opus=\(.opus//0) sonnet=\(.sonnet//0) reset_utc=\(.five_hour_resets//"")"' "$CACHE_FILE" 2>/dev/null)"
+five_hour="${five_hour:-0}" seven_day="${seven_day:-0}" credits="${credits:-0}" opus="${opus:-0}" sonnet="${sonnet:-0}"
 
 # Calculate countdown to reset
 reset_countdown="" reset_secs=0
@@ -46,6 +46,8 @@ fi
 output=""
 output+="$(pill "$(lerp "$green" "$red" $((five_hour/10*10)))" " 5h ${five_hour}% ")"
 output+="$(pill "$(lerp "$green" "$red" $((seven_day/10*10)))" " 7d ${seven_day}% ")"
+output+="$(pill "$(lerp "$green" "$red" $((opus/10*10)))" " opus ${opus}% ")"
+output+="$(pill "$(lerp "$green" "$red" $((sonnet/10*10)))" " sonnet ${sonnet}% ")"
 output+="$(pill "$(lerp "$green" "$red" $((credits/10*10)))" " 󰠠 ${credits}% ")"
 [[ -n "$reset_countdown" ]] && output+="$(pill "$(lerp "$overlay" "$green" $((100 - reset_secs * 100 / 18000)))" " 󰦖 $reset_countdown ")"
 output+="$(pill "$overlay" " 󰥔 $(date "+%-I:%M%p" | tr '[:upper:]' '[:lower:]') ")"

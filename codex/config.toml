@@ -15,6 +15,12 @@ trust_level = "trusted"
 [projects."/Users/vmasrani/dev/workpace"]
 trust_level = "trusted"
 
+[projects."/Users/vmasrani/dev/projects/greyhaven/zulip_search"]
+trust_level = "trusted"
+
+[projects."/Users/vmasrani/dev/projects/greyhaven/proxyclaude"]
+trust_level = "trusted"
+
 [mcp_servers.context7]
 args = ["-y", "@upstash/context7-mcp", "--api-key", "ctx7sk-e92132e7-a04e-437a-9867-ddeca394f98c"]
 command = "npx"

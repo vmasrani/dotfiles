@@ -42,7 +42,7 @@ echo "$response" | jq '{
     five_hour: ((.five_hour.utilization // 0) | floor),
     seven_day: ((.seven_day.utilization // 0) | floor),
     five_hour_resets: (.five_hour.resets_at // null),
-    credits: (if (.extra_usage.limit // 0) > 0
-              then (((.extra_usage.used // 0) * 100 / .extra_usage.limit) | floor)
-              else 0 end)
+    credits: ((.extra_usage.utilization // 0) | floor),
+    opus: ((.seven_day_opus.utilization // 0) | floor),
+    sonnet: ((.seven_day_sonnet.utilization // 0) | floor)
 }' 2>/dev/null > "$CACHE_FILE" || echo '{"five_hour":0,"seven_day":0,"credits":0}' > "$CACHE_FILE"
