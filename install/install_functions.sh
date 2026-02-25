@@ -8,6 +8,7 @@ source "$HOME/dotfiles/shell/gum_utils.sh"
 # Detect operating system
 if [[ "$OSTYPE" == "darwin"* ]]; then
     OS_TYPE="mac"
+    OS_CLIPBOARD="pbcopy"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS_TYPE="linux"
 else
@@ -271,11 +272,6 @@ install_dotfiles() {
         fi
     done
 
-if [ -d "$HOME/.cursor" ]; then
-    ln -sf "$HOME/.cursor" "$HOME/.cursor-server"
-    gum_dim "Symlink created from ~/.cursor to ~/.cursor-server"
-fi
-
 }
 
 
@@ -407,6 +403,11 @@ install_helix() {
 }
 
 update_helix_grammars() {
+    local grammar_dir="$HOME/.config/helix/runtime/grammars"
+    if [[ -d "$grammar_dir" ]] && (ls "$grammar_dir"/*.so) &>/dev/null; then
+        gum_dim "Helix grammars already built."
+        return 0
+    fi
     gum_info "Fetching and building Helix grammars..."
     hx --grammar fetch || gum_warning "Some grammars failed to fetch (this is usually ok)"
     hx --grammar build || gum_warning "Some grammars failed to build (this is usually ok)"
@@ -508,22 +509,15 @@ install_csvcut() {
 
 
 install_xclip() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y xclip
-        gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
-        gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        gum_info "pbcopy and pbpaste are built into macOS - no additional xclip installation needed"
-    fi
+    [[ "$OS_TYPE" == "mac" ]] && return 0
+    sudo apt install -y xclip
+    gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
+    gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
 }
 
 install_xsel() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y xsel
-        gum_success "xsel installed successfully."
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        gum_info "pbcopy and pbpaste are built into macOS - no additional xsel installation needed"
-    fi
+    [[ "$OS_TYPE" == "mac" ]] && return 0
+    sudo apt install -y xsel
 }
 
 
@@ -659,11 +653,6 @@ install_diff_so_fancy() {
     gum_success "diff-so-fancy setup completed."
 }
 
-install_finditfaster() {
-    cp ~/dotfiles/tools/find_files.sh "$(find ~/.cursor_server/extensions -type d -name 'tomrijndorp*' 2>/dev/null)" || :
-    gum_success "find_files.sh copied to cursor extension directory successfully."
-}
-
 install_zprezto() {
     git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
     gum_success "zprezto installed successfully."
@@ -671,12 +660,11 @@ install_zprezto() {
 
 install_meslo_font() {
     local font_installed=false
-    if command_exists fc-list; then
+    if [[ "$OS_TYPE" == "mac" ]]; then
+        (ls ~/Library/Fonts/MesloLG*NerdFont*) &>/dev/null && font_installed=true
+        (ls /Library/Fonts/MesloLG*NerdFont*) &>/dev/null && font_installed=true
+    elif command_exists fc-list; then
         fc-list -q "MesloLGS NF" && font_installed=true
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        # On macOS without fc-list, check the font directory directly
-        ls ~/Library/Fonts/*MesloLGS*NF* &>/dev/null && font_installed=true
-        ls /Library/Fonts/*MesloLGS*NF* &>/dev/null && font_installed=true
     fi
 
     if [[ "$font_installed" == "false" ]]; then

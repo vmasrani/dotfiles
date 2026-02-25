@@ -38,7 +38,6 @@ install_if_dir_missing ~/.tmux/plugins/tpm install_tpm                          
 install_catppuccin_tmux                                                          # Catppuccin tmux theme (explicit install, not via TPM)
 install_if_dir_missing ~/bin/_git-fuzzy install_git_fuzzy                        # Fuzzy finder for git commands and operations
 install_if_dir_missing ~/bin/_diff-so-fancy install_diff_so_fancy                # Git diff output formatter with improved readability
-install_if_dir_missing ~/.cursor-server/extensions install_finditfaster          # Fast file finder extension for Cursor editor
 
 # install binaries
 install_if_missing unzip install_unzip # Unzip utility required for various installations
@@ -77,8 +76,8 @@ install_if_missing csvcut install_csvcut # CSV column extractor from csvkit
 install_if_missing parquet-tools install_parquet_tools # Parquet file viewer and processor
 install_if_missing claude install_claude_code_cli # Claude code CLI
 install_if_missing chafa install_chafa # ASCII art image renderer
-install_if_missing xclip install_xclip # Clipboard utility for tmux integration
-install_if_missing xsel install_xsel # Alternative clipboard utility for tmux
+install_if_missing "${OS_CLIPBOARD:-xclip}" install_xclip # Clipboard for tmux (xclip on Linux, pbcopy on macOS)
+install_if_missing "${OS_CLIPBOARD:-xsel}" install_xsel   # Clipboard for tmux (xsel on Linux, pbcopy on macOS)
 install_if_missing uwu-cli install_uwu # uwu-cli for terminal UI
 install_if_missing codex install_codex # OpenAI Codex CLI
 # install_if_missing watchexec install_cargo_tools # Watchexec CLI for file watching

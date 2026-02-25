@@ -1,0 +1,212 @@
+#!/usr/bin/env zsh
+# Media stack health collector — outputs JSON with container status, VPN, NAS, API keys, health, and queues.
+# Usage: media-stack-status [--pretty]
+
+set -uo pipefail
+
+PRETTY="false"
+[[ "${1:-}" == "--pretty" ]] && PRETTY="true"
+
+TMPDIR_DATA=$(mktemp -d)
+trap "rm -rf $TMPDIR_DATA" EXIT
+
+# --- Helpers ---
+
+extract_xml_key() {
+  docker exec "$1" sed -n 's/.*<ApiKey>\(.*\)<\/ApiKey>.*/\1/p' /config/config.xml 2>/dev/null || echo ""
+}
+
+extract_bazarr_key() {
+  docker exec bazarr sed -n '/^auth:/,/^[a-z]/{s/^  apikey: *//p}' /config/config/config.yaml 2>/dev/null || echo ""
+}
+
+extract_tautulli_key() {
+  docker exec tautulli sed -n 's/^api_key *= *\(.*\)/\1/p' /config/config.ini 2>/dev/null || echo ""
+}
+
+arr_queue() {
+  local port="$1" key="$2" outfile="$3"
+  curl -sf -H "X-Api-Key: $key" "http://localhost:${port}/api/v3/queue?pageSize=100" 2>/dev/null \
+    | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    records = data.get('records', [])
+    ok = sum(1 for r in records if not r.get('trackedDownloadStatus') or r['trackedDownloadStatus'] == 'ok')
+    warnings = sum(1 for r in records if r.get('trackedDownloadStatus') == 'warning')
+    errors = sum(1 for r in records if r.get('trackedDownloadStatus') == 'error')
+    items = [{
+        'id': r.get('id'), 'title': r.get('title', 'Unknown'),
+        'status': r.get('trackedDownloadStatus', 'ok'),
+        'state': r.get('trackedDownloadState', 'unknown'),
+        'sizeleft': r.get('sizeleft', 0), 'size': r.get('size', 0),
+        'errorMessage': r.get('errorMessage', '')
+    } for r in records]
+    print(json.dumps({'total': len(records), 'ok': ok, 'warnings': warnings, 'errors': errors, 'items': items}))
+except:
+    print(json.dumps({'total': 0, 'ok': 0, 'warnings': 0, 'errors': 0, 'items': []}))
+" > "$outfile" 2>/dev/null \
+    || echo '{"total":0,"ok":0,"warnings":0,"errors":0,"items":[]}' > "$outfile"
+}
+
+# --- Collect data into temp files ---
+
+# 1. Containers
+docker ps -a --format '{{.Names}}\t{{.State}}\t{{.Status}}' 2>/dev/null \
+  | python3 -c "
+import json, sys
+containers = {}
+for line in sys.stdin:
+    parts = line.strip().split('\t')
+    if len(parts) >= 2:
+        name, state = parts[0], parts[1]
+        status = parts[2] if len(parts) > 2 else ''
+        containers[name] = {'state': state, 'status': status, 'running': state == 'running'}
+print(json.dumps(containers))
+" > "$TMPDIR_DATA/containers.json" 2>/dev/null \
+  || echo '{}' > "$TMPDIR_DATA/containers.json"
+
+# 2. VPN
+docker exec gluetun wget -qO- https://ipinfo.io \
+  > "$TMPDIR_DATA/vpn_raw.json" 2>/dev/null \
+  || echo '{}' > "$TMPDIR_DATA/vpn_raw.json"
+
+python3 -c "
+import json
+try:
+    d = json.load(open('$TMPDIR_DATA/vpn_raw.json'))
+    org = d.get('org', '')
+    org_lower = org.lower()
+    is_vpn = 'proton' in org_lower or 'm247' in org_lower
+    print(json.dumps({'ok': is_vpn, 'ip': d.get('ip',''), 'org': org, 'city': d.get('city',''), 'region': d.get('region',''), 'country': d.get('country','')}))
+except:
+    print(json.dumps({'ok': False, 'ip': '', 'org': '', 'city': '', 'region': '', 'country': ''}))
+" > "$TMPDIR_DATA/vpn.json" 2>/dev/null
+
+# 3. NAS
+NAS_MOUNTED=False
+NAS_FREE=""
+if mount | grep -q '/Volumes/media'; then
+  NAS_MOUNTED=True
+  NAS_FREE=$(df -h /Volumes/media 2>/dev/null | awk 'NR==2{print $4}' || echo "unknown")
+fi
+python3 -c "import json; print(json.dumps({'mounted': $NAS_MOUNTED, 'path': '/Volumes/media', 'free_space': '$NAS_FREE'}))" \
+  > "$TMPDIR_DATA/nas.json" 2>/dev/null
+
+# 4. API keys
+SONARR_KEY=$(extract_xml_key sonarr)
+RADARR_KEY=$(extract_xml_key radarr)
+PROWLARR_KEY=$(extract_xml_key prowlarr)
+BAZARR_KEY=$(extract_bazarr_key)
+TAUTULLI_KEY=$(extract_tautulli_key)
+
+python3 -c "import json; print(json.dumps({'sonarr': '$SONARR_KEY', 'radarr': '$RADARR_KEY', 'prowlarr': '$PROWLARR_KEY', 'bazarr': '$BAZARR_KEY', 'tautulli': '$TAUTULLI_KEY'}))" \
+  > "$TMPDIR_DATA/api_keys.json" 2>/dev/null
+
+# 5. Health
+if [[ -n "$SONARR_KEY" ]]; then
+  curl -sf -H "X-Api-Key: $SONARR_KEY" "http://localhost:8989/api/v3/system/health" \
+    > "$TMPDIR_DATA/sonarr_health.json" 2>/dev/null || echo '[]' > "$TMPDIR_DATA/sonarr_health.json"
+else
+  echo '[]' > "$TMPDIR_DATA/sonarr_health.json"
+fi
+
+if [[ -n "$RADARR_KEY" ]]; then
+  curl -sf -H "X-Api-Key: $RADARR_KEY" "http://localhost:7878/api/v3/system/health" \
+    > "$TMPDIR_DATA/radarr_health.json" 2>/dev/null || echo '[]' > "$TMPDIR_DATA/radarr_health.json"
+else
+  echo '[]' > "$TMPDIR_DATA/radarr_health.json"
+fi
+
+# 6. Queues
+if [[ -n "$SONARR_KEY" ]]; then
+  arr_queue 8989 "$SONARR_KEY" "$TMPDIR_DATA/sonarr_queue.json"
+else
+  echo '{"total":0,"ok":0,"warnings":0,"errors":0,"items":[]}' > "$TMPDIR_DATA/sonarr_queue.json"
+fi
+
+if [[ -n "$RADARR_KEY" ]]; then
+  arr_queue 7878 "$RADARR_KEY" "$TMPDIR_DATA/radarr_queue.json"
+else
+  echo '{"total":0,"ok":0,"warnings":0,"errors":0,"items":[]}' > "$TMPDIR_DATA/radarr_queue.json"
+fi
+
+# 7. qBittorrent
+SID=$(curl -sf -c - http://localhost:8080/api/v2/auth/login -d 'username=admin&password=mediastack' 2>/dev/null \
+  | grep SID | awk '{print $NF}' || echo "")
+if [[ -n "$SID" ]]; then
+  curl -sf -b "SID=$SID" "http://localhost:8080/api/v2/torrents/info" 2>/dev/null \
+    | python3 -c "
+import json, sys
+try:
+    torrents = json.load(sys.stdin)
+    summary = [{
+        'name': t.get('name',''), 'hash': t.get('hash',''),
+        'state': t.get('state',''), 'progress': round(t.get('progress',0)*100, 1),
+        'dlspeed': t.get('dlspeed',0), 'num_seeds': t.get('num_seeds',0),
+        'size': t.get('size',0), 'category': t.get('category','')
+    } for t in torrents]
+    print(json.dumps({'connected': True, 'total': len(torrents), 'torrents': summary}))
+except:
+    print(json.dumps({'connected': True, 'total': 0, 'torrents': []}))
+" > "$TMPDIR_DATA/qbit.json" 2>/dev/null \
+    || echo '{"connected":true,"total":0,"torrents":[]}' > "$TMPDIR_DATA/qbit.json"
+else
+  echo '{"connected":false,"torrents":[]}' > "$TMPDIR_DATA/qbit.json"
+fi
+
+# --- Assemble output ---
+
+PRETTY_ENV="$PRETTY"
+TMPDIR_DATA="$TMPDIR_DATA" PRETTY="$PRETTY_ENV" python3 << 'PYEOF'
+import json, os
+
+tmpdir = os.environ["TMPDIR_DATA"]
+pretty = os.environ.get("PRETTY", "false") == "true"
+
+def load(name, default="{}"):
+    try:
+        with open(os.path.join(tmpdir, name)) as f:
+            return json.load(f)
+    except:
+        return json.loads(default)
+
+containers = load("containers.json")
+vpn = load("vpn.json")
+nas = load("nas.json")
+api_keys = load("api_keys.json")
+sonarr_health = load("sonarr_health.json", "[]")
+radarr_health = load("radarr_health.json", "[]")
+sonarr_queue = load("sonarr_queue.json")
+radarr_queue = load("radarr_queue.json")
+qbit = load("qbit.json")
+
+errors = []
+expected = ["gluetun","qbittorrent","sonarr","radarr","prowlarr","bazarr",
+            "tautulli","seerr","unpackerr","recyclarr","flaresolverr"]
+for svc in expected:
+    if svc not in containers or not containers[svc].get("running"):
+        errors.append(f"container '{svc}' is not running")
+if not vpn.get("ok"):
+    errors.append("VPN may be down or leaking (unrecognized provider)")
+if not nas.get("mounted"):
+    errors.append("NAS not mounted at /Volumes/media")
+if not qbit.get("connected"):
+    errors.append("qBittorrent auth failed (admin/mediastack)")
+for item in (sonarr_health if isinstance(sonarr_health, list) else []):
+    errors.append(f"sonarr: {item.get('message','unknown')}")
+for item in (radarr_health if isinstance(radarr_health, list) else []):
+    errors.append(f"radarr: {item.get('message','unknown')}")
+
+result = {
+    "containers": containers,
+    "vpn": vpn,
+    "nas": nas,
+    "api_keys": api_keys,
+    "health": {"sonarr": sonarr_health, "radarr": radarr_health},
+    "queues": {"sonarr": sonarr_queue, "radarr": radarr_queue},
+    "qbittorrent": qbit,
+    "errors": errors,
+}
+print(json.dumps(result, indent=2) if pretty else json.dumps(result))
+PYEOF

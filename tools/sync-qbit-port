@@ -1,0 +1,36 @@
+#!/usr/bin/env zsh
+# Syncs gluetun's forwarded port to qBittorrent's listening port.
+# Run after gluetun restarts, or as a periodic cron job.
+
+set -euo pipefail
+
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+
+QBIT_URL="http://localhost:8080"
+QBIT_USER="admin"
+QBIT_PASS="mediastack"
+
+# Get forwarded port from gluetun
+FORWARDED_PORT=$(docker exec gluetun cat /tmp/gluetun/forwarded_port 2>/dev/null)
+if [[ -z "$FORWARDED_PORT" ]]; then
+  echo "No forwarded port found in gluetun" >&2
+  exit 1
+fi
+
+# Get current qBit listening port
+SID=$(curl -s -c - "$QBIT_URL/api/v2/auth/login" -d "username=$QBIT_USER&password=$QBIT_PASS" | grep SID | awk '{print $NF}')
+if [[ -z "$SID" ]]; then
+  echo "Failed to authenticate with qBittorrent" >&2
+  exit 1
+fi
+
+CURRENT_PORT=$(curl -s -b "SID=$SID" "$QBIT_URL/api/v2/app/preferences" | python3 -c "import sys,json; print(json.load(sys.stdin)['listen_port'])")
+
+if [[ "$CURRENT_PORT" == "$FORWARDED_PORT" ]]; then
+  echo "Port already synced: $FORWARDED_PORT"
+  exit 0
+fi
+
+# Update qBit listening port
+curl -s -b "SID=$SID" "$QBIT_URL/api/v2/app/setPreferences" -d "json={\"listen_port\":$FORWARDED_PORT}"
+echo "Updated qBittorrent listen port: $CURRENT_PORT → $FORWARDED_PORT"

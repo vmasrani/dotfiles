@@ -46,10 +46,5 @@ export PATH=$(echo -n $PATH | awk -v RS=: -v ORS=: '!seen[$0]++' | sed 's/:$//')
 export BAT_THEME="Solarized (light)"
 export WANDB_ENTITY='vadenmasrani'
 
-# Cursor Extension Path
-if [ -d "$HOME/.cursor-server/extensions/*tomrijndorp*" ]; then
-    export EXTENSION_PATH=$(find ~/.cursor-server/extensions  -type d -name 'tomrijndorp*')
-fi
-
 # Htop filter
 export HTOP_FILTER='sshd|jupyter/runtime/kernel|.cursor-server|/usr/bin/dockerd|/usr/lib/snapd/snapd|amazon|containerd|ssh-agent|gitstatus|zsh|sleep'

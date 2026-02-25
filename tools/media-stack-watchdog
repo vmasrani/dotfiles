@@ -1,0 +1,92 @@
+#!/usr/bin/env zsh
+# Media stack watchdog — checks container health every 5 min via LaunchAgent.
+# Restarts unhealthy/stopped containers and detects SQLite lock errors.
+set -euo pipefail
+
+LOG="$HOME/logs/media-stack-watchdog.log"
+COMPOSE_DIR="$HOME/dev/plex"
+NAS_MOUNT="/Volumes/media"
+CONTAINERS=(gluetun qbittorrent flaresolverr prowlarr sonarr radarr seerr bazarr tautulli unpackerr recyclarr)
+
+is_interactive() { [[ -t 1 ]] }
+
+log() {
+  local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+  echo "$msg" >> "$LOG"
+  is_interactive && gum style --foreground 244 "$msg" || true
+}
+
+log_warn() {
+  local msg="[$(date '+%Y-%m-%d %H:%M:%S')] ⚠ $1"
+  echo "$msg" >> "$LOG"
+  is_interactive && gum style --foreground 3 "$msg" || true
+}
+
+log_ok() {
+  local msg="[$(date '+%Y-%m-%d %H:%M:%S')] ✓ $1"
+  echo "$msg" >> "$LOG"
+  is_interactive && gum style --foreground 2 "$msg" || true
+}
+
+restart_container() {
+  local name="$1" reason="$2"
+  log_warn "$name: $reason — restarting"
+  docker restart "$name" >> "$LOG" 2>&1
+}
+
+# Bail if NAS not mounted (downloads/media won't work anyway)
+if [[ ! -d "$NAS_MOUNT/movies" ]]; then
+  log_warn "NAS not mounted at $NAS_MOUNT — skipping"
+  exit 0
+fi
+
+# Bail if Docker not running
+if ! docker info &>/dev/null; then
+  log_warn "Docker not running — skipping"
+  exit 0
+fi
+
+is_interactive && gum style --bold "Media Stack Watchdog" || true
+
+issues=0
+
+for c in "${CONTAINERS[@]}"; do
+  # Check if container exists and is running
+  state=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo "missing")
+
+  if [[ "$state" == "missing" ]]; then
+    log_warn "$c: container missing — running compose up"
+    docker compose -f "$COMPOSE_DIR/docker-compose.yml" up -d "$c" >> "$LOG" 2>&1
+    ((issues++))
+    continue
+  fi
+
+  if [[ "$state" != "running" ]]; then
+    restart_container "$c" "state=$state"
+    ((issues++))
+    continue
+  fi
+
+  # Check Docker health status (if healthcheck defined)
+  health=$(docker inspect -f '{{.State.Health.Status}}' "$c" 2>/dev/null || echo "none")
+  if [[ "$health" == "unhealthy" ]]; then
+    restart_container "$c" "unhealthy"
+    ((issues++))
+    continue
+  fi
+
+  # Scan last 5 min of logs for SQLite lock errors
+  if docker logs --since 5m "$c" 2>&1 | rg -qi "database is locked"; then
+    restart_container "$c" "database is locked detected in logs"
+    ((issues++))
+    continue
+  fi
+done
+
+if [[ "$issues" -eq 0 ]]; then
+  log_ok "All ${#CONTAINERS} containers healthy"
+else
+  log_warn "$issues issue(s) detected and handled"
+fi
+
+exit 0
