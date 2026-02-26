@@ -15,8 +15,10 @@ source "./install/install_functions.sh"
 source "./shell/.aliases-and-envs.zsh"
 source "./shell/gum_utils.sh"
 
-# install zsh
-install_if_missing brew install_homebrew
+# install zsh (homebrew is macOS-only)
+if [[ "$OS_TYPE" == "mac" ]]; then
+    install_if_missing brew install_homebrew
+fi
 install_if_missing zsh install_zsh
 
 # install dotfiles
