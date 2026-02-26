@@ -386,6 +386,7 @@ install_go() {
 }
 
 install_fzf() {
+    rm -rf "$HOME/.fzf"
     git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
     "$HOME/.fzf/install" --all --no-update-rc
 }
@@ -701,12 +702,6 @@ install_iterm2() {
             gum_dim "iTerm2 is already installed."
         fi
 
-        # Map Cmd+Shift+L to F11 escape sequence (ESC[23~)
-        # Used by tmux F11 binding to toggle agents session
-        defaults write com.googlecode.iterm2 GlobalKeyMap -dict-add \
-            "0x4c-0x120000-0x25" \
-            '{"Action"=10;"Apply Mode"=1;"Escaping"=2;"Text"="[23~";"Version"=2;}'
-        gum_dim "iTerm2 Cmd+Shift+L → F11 key mapping configured."
     else
         gum_warning "iTerm2 is only available on macOS."
     fi

@@ -15,8 +15,10 @@ source "./install/install_functions.sh"
 source "./shell/.aliases-and-envs.zsh"
 source "./shell/gum_utils.sh"
 
-# install zsh
-install_if_missing brew install_homebrew
+# install zsh (homebrew is macOS-only)
+if [[ "$OS_TYPE" == "mac" ]]; then
+    install_if_missing brew install_homebrew
+fi
 install_if_missing zsh install_zsh
 
 # install dotfiles
@@ -102,5 +104,15 @@ update_helix_grammars
 
 # install email client
 install_if_missing neomutt install_neomutt # NeoMutt email client with isync, msmtp, notmuch
+
+if [[ "$OS_TYPE" == "mac" ]]; then
+    gum_info "iTerm2 manual setup needed:"
+    gum_info "  Map Cmd+Shift+L → F11 (used by tmux to toggle agents session):"
+    gum_info "  1. Open iTerm2 → Settings → Keys → Key Bindings"
+    gum_info "  2. Click '+' to add a new binding"
+    gum_info "  3. Set shortcut to Cmd+Shift+L"
+    gum_info "  4. Action: 'Send Escape Sequence'"
+    gum_info "  5. Enter: [23~"
+fi
 
 gum_box_success "Setup completed successfully. All necessary tools and configurations have been installed and set up."
