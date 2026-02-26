@@ -23,6 +23,7 @@ fi
 #   Sorin Ionescu <sorin.ionescu@gmail.com>
 #
 # Source Prezto.
+export ZSH_DISABLE_COMPFIX="true"
 
 if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
   source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
@@ -34,7 +35,6 @@ export VISUAL=hx
 export PAGER='less -r'
 export DIRSTACKSIZE=20
 export KEYTIMEOUT=1
-export ZSH_DISABLE_COMPFIX="true"
 
 # Source Core Configuration Files
 source ~/helper_functions.sh
