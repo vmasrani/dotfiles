@@ -106,3 +106,6 @@ alias claude-mem='bun "/Users/vmasrani/.claude/plugins/marketplaces/thedotmack/p
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
 
+
+# opencode
+export PATH=/Users/vmasrani/.opencode/bin:$PATH
