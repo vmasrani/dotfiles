@@ -75,9 +75,8 @@ install_dotfiles() {
     local bin="$HOME/bin"
     local home="$HOME"
 
-    # Ensure TPM and tmux plugins are installed
+    # Ensure TPM is installed
     local tpm_dir="$HOME/.tmux/plugins/tpm"
-    local catppuccin_plugin="$HOME/.tmux/plugins/tmux"
 
     # Targets we always want to match the repo source (delete existing non-matching
     # file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
@@ -95,11 +94,6 @@ install_dotfiles() {
     if [ ! -d "$tpm_dir" ]; then
         gum_info "Installing tmux plugin manager (tpm)..."
         install_tpm
-    fi
-
-    if [ ! -d "$catppuccin_plugin" ]; then
-        gum_info "Installing Catppuccin tmux theme..."
-        install_catppuccin_tmux
     fi
 
     array_contains() {
@@ -174,6 +168,7 @@ install_dotfiles() {
 
         # editor dotfiles
         "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
+        "$dotfiles/tmux/catppuccin-mocha-vibrant.sh:$home/.config/tmux/catppuccin-mocha-vibrant.sh"
         "$dotfiles/editors/.vimrc:$home/.vimrc"
 
         # linters dotfiles
@@ -623,22 +618,6 @@ install_tpm() {
     gum_success "tmux plugin manager installed successfully."
 }
 
-install_catppuccin_tmux() {
-    local catppuccin_dir="$HOME/.tmux/plugins/tmux"
-    
-    # Remove existing plugin if it's not catppuccin (e.g., dracula)
-    if [ -d "$catppuccin_dir" ] && [ ! -f "$catppuccin_dir/catppuccin.tmux" ]; then
-        gum_warning "Removing existing non-Catppuccin tmux theme..."
-        rm -rf "$catppuccin_dir"
-    fi
-    
-    if [ ! -d "$catppuccin_dir" ]; then
-        git clone -b v2.1.3 https://github.com/catppuccin/tmux.git "$catppuccin_dir"
-        gum_success "Catppuccin tmux theme installed successfully."
-    else
-        gum_dim "Catppuccin tmux theme is already installed."
-    fi
-}
 
 install_git_fuzzy() {
     git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
