@@ -5,7 +5,7 @@
 get_gpu() {
     # Check if nvidia-smi exists
     if ! command -v nvidia-smi &>/dev/null; then
-        echo "N/A"
+        echo ""
         return
     fi
 
@@ -16,7 +16,7 @@ get_gpu() {
         --format=csv,noheader,nounits 2>/dev/null)
 
     if [[ -z "$gpu_data" ]]; then
-        echo "N/A"
+        echo ""
         return
     fi
 
@@ -34,7 +34,7 @@ get_gpu() {
     done <<< "$gpu_data"
 
     if [[ $gpu_count -eq 0 ]]; then
-        echo "N/A"
+        echo ""
         return
     fi
 

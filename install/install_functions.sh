@@ -169,6 +169,7 @@ install_dotfiles() {
         # editor dotfiles
         "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
         "$dotfiles/tmux/catppuccin-mocha-vibrant.sh:$home/.config/tmux/catppuccin-mocha-vibrant.sh"
+        "$dotfiles/tmux/catppuccin-macchiato-vibrant.sh:$home/.config/tmux/catppuccin-macchiato-vibrant.sh"
         "$dotfiles/editors/.vimrc:$home/.vimrc"
 
         # linters dotfiles
@@ -827,6 +828,12 @@ install_codex() {
     gum_info "Installing OpenAI Codex CLI..."
     npm install -g @openai/codex
     gum_success "Codex installed successfully."
+}
+
+install_opencode() {
+    gum_info "Installing OpenCode AI coding TUI..."
+    curl -fsSL https://opencode.ai/install | bash
+    gum_success "OpenCode installed successfully."
 }
 
 install_neomutt() {

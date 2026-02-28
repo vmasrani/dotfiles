@@ -108,4 +108,7 @@ test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell
 
 
 # opencode
-export PATH=/Users/vmasrani/.opencode/bin:$PATH
+export PATH=$HOME/.opencode/bin:$PATH
+
+# opencode
+export PATH=/home/vaden/.opencode/bin:$PATH

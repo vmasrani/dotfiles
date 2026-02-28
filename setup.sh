@@ -12,7 +12,6 @@ set -e
 
 # Source the installation functions
 source "./install/install_functions.sh"
-source "./shell/.aliases-and-envs.zsh"
 source "./shell/gum_utils.sh"
 
 # install zsh (homebrew is macOS-only)
@@ -67,6 +66,7 @@ install_if_missing tmux install_tmux # Terminal multiplexer for multiple session
 # Install tmux plugins now that tmux is available
 if [ -d "$HOME/.tmux/plugins/tpm" ]; then
     "$HOME/.tmux/plugins/tpm/bin/install_plugins" || gum_warning "Some tmux plugins failed to install"
+    "$HOME/.tmux/plugins/tpm/bin/clean_plugins" || gum_warning "Some stale tmux plugins failed to clean"
 fi
 install_if_missing rg install_rg # Fast recursive grep alternative
 install_if_missing fd install_fd # Fast find alternative
