@@ -13,10 +13,11 @@ Tmux configuration with vi-keybindings, dynamic status bar with system metrics, 
 | `battery_status.sh` | Battery indicator | Dynamic color gradient (green→red), charging icons, dual-platform support |
 | `gpu_status.sh` | GPU metrics | nvidia-smi query mode, multi-GPU aggregation, memory + utilization |
 | `load_status.sh` | System load average | 1m/5m/15m format, cross-platform parsing |
-| `agents_status_vscode.sh` | Claude usage metrics | 5h/7d/credits display with color gradients, countdown to reset |
+| `agents_status_bar.sh` | Agents status bar renderer | Builds full status-right replacement with Claude usage pills for agents session |
+| `pk_claude_metric.sh` | Claude metric pill | Renders individual usage metric (5h, 7d, opus, sonnet, credits, reset) with color gradients |
 | `agents_cache_refresh.sh` | Centralized API cache | Atomic mkdir locking, 60s TTL, single jq parse |
 | `agents_count.sh` | Agent session pane count | Detects running agent processes in tmux |
-| `update_session_status.sh` | Session-specific toolbar | Agents session gets special statusline (crab icon, usage pills) |
+| `update_session_status.sh` | Session-specific toolbar | Injects `status-format[0]` override for agents session (crab icon, usage pills via `agents_status_bar.sh`); reverts via `tmux set-option -u` on session switch |
 
 ## Patterns
 - **Status bar composability**: Pills built with repeating `#[fg=X,bg=Y]` format + Powerline separators (hex-escaped U+E0B6/U+E0B4)

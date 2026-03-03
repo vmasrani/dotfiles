@@ -2,7 +2,7 @@
 # notmuch configuration for email indexing and search
 
 [database]
-path=/Users/vmasrani/.local/share/mail
+path=~/.local/share/mail
 
 [user]
 name=Vaden Masrani

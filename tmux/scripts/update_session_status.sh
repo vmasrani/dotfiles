@@ -1,46 +1,37 @@
 #!/usr/bin/env bash
-# Per-session status bar customization for agents session
+# Per-session status-format override for agents session
+#
+# Agents session: replaces powerkit-render center with agents_status_bar.sh
+# and patches session pill to orange with crab icon.
+# Other sessions: unsets override → falls back to powerkit's global rendering.
 
 session_name=$(tmux display-message -p '#S')
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [[ "$session_name" == "agents" ]]; then
-    dir="$HOME/dotfiles/tmux/scripts"
+    base_format=$(tmux show-option -gqv 'status-format[0]')
 
-    # Theme-aware colors
-    if [[ -n "$SSH_CLIENT" || -n "$SSH_TTY" ]]; then
-        base="#282828"
-        crust="#1d2021"
-        peach="#fe8019"
-        yellow="#fabd2f"
-        status_fg="#ebdbb2"
+    # 1. Swap powerkit-render center → agents_status_bar.sh
+    pk_cmd=$(printf '%s' "$base_format" | sed -n 's|.*#(\([^)]*powerkit-render center\)).*|\1|p')
+    if [[ -n "$pk_cmd" ]]; then
+        agents_format="${base_format//$pk_cmd/${SCRIPT_DIR}/agents_status_bar.sh}"
     else
-        base="#24273a"
-        crust="#181926"
-        peach="#f5a97f"
-        yellow="#eed49f"
-        status_fg="#cad3f5"
+        agents_format="$base_format"
     fi
-    left_cap=""
-    right_cap=""
 
-    # Enable pane borders with titles for agents session
+    # 2. Make session pill solid orange — replace color ternaries with #fab387
+    #    Mocha: #{?client_prefix,#fab387,#{?pane_in_mode,#74c7ec,#cba6f7}}
+    #    Macchiato: #{?client_prefix,#f5a97f,#{?pane_in_mode,#7dc4e4,#c6a0f6}}
+    agents_format=$(printf '%s' "$agents_format" | sed 's/#{?client_prefix,#[a-f0-9]*,#{?pane_in_mode,#[a-f0-9]*,#[a-f0-9]*}}/#fab387/g')
+
+    # 3. Replace icon ternary with crab emoji
+    #    After color ternaries are gone, the remaining #{?client_prefix,...}} is the icon
+    agents_format=$(printf '%s' "$agents_format" | sed 's/#{?client_prefix,[^}]*}}/🦀/g')
+
+    tmux set-option 'status-format[0]' "$agents_format"
     tmux set-option pane-border-status top
-
-    tmux set-option status-style "bg=$base,fg=$status_fg"
-    tmux set-option status-justify centre
-    tmux set-option status-left-length 30
-    tmux set-option status-right-length 200
-
-    # Left: Crab pill (peach, yellow on prefix)
-    tmux set-option status-left "\
-#[fg=$peach,bg=$base]#{?client_prefix,#[fg=$yellow],}$left_cap\
-#[fg=$crust,bg=$peach]#{?client_prefix,#[bg=$yellow],} 🦀 \
-#[fg=$peach,bg=$base]#{?client_prefix,#[fg=$yellow],}$right_cap"
-
-    # Right: Usage metrics only
-    tmux set-option status-right "#($dir/agents_status_vscode.sh)"
-
 else
-    # Disable pane borders for non-agents sessions
+    # Unset session-level overrides → fall back to powerkit's global
+    tmux set-option -u 'status-format[0]' 2>/dev/null
     tmux set-option pane-border-status off
 fi

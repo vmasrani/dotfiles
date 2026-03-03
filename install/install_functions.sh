@@ -701,8 +701,8 @@ install_zprezto() {
 install_meslo_font() {
     local font_installed=false
     if [[ "$OS_TYPE" == "mac" ]]; then
-        (ls ~/Library/Fonts/MesloLG*NerdFont*) &>/dev/null && font_installed=true
-        (ls /Library/Fonts/MesloLG*NerdFont*) &>/dev/null && font_installed=true
+        (ls ~/Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
+        (ls /Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
     elif command_exists fc-list; then
         fc-list -q "MesloLGS NF" && font_installed=true
     fi

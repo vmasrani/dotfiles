@@ -43,7 +43,7 @@ install_if_dir_missing ~/bin/_diff-so-fancy install_diff_so_fancy               
 # install binaries
 install_if_missing unzip install_unzip # Unzip utility required for various installations
 install_if_missing bun install_bun # Bun JavaScript runtime and package manager
-install_if_missing nvm install_nvm # Node Version Manager with LTS Node.js
+install_if_dir_missing ~/.nvm install_nvm # Node Version Manager with LTS Node.js
 install_if_missing npm install_npm # Node.js package manager
 install_if_missing yarn install_yarn # Yarn package manager
 install_if_missing pm2 install_pm2 # Process manager for Node.js applications
@@ -66,8 +66,8 @@ install_if_missing tmux install_tmux # Terminal multiplexer for multiple session
 
 # Install tmux plugins now that tmux is available
 if [ -d "$HOME/.tmux/plugins/tpm" ]; then
-    "$HOME/.tmux/plugins/tpm/bin/install_plugins" || gum_warning "Some tmux plugins failed to install"
-    "$HOME/.tmux/plugins/tpm/bin/clean_plugins" || gum_warning "Some stale tmux plugins failed to clean"
+    "$HOME/.tmux/plugins/tpm/bin/install_plugins" > /dev/null || gum_warning "Some tmux plugins failed to install"
+    "$HOME/.tmux/plugins/tpm/bin/clean_plugins" > /dev/null || gum_warning "Some stale tmux plugins failed to clean"
 fi
 install_if_missing rg install_rg # Fast recursive grep alternative
 install_if_missing fd install_fd # Fast find alternative
