@@ -19,14 +19,13 @@ if [[ "$session_name" == "agents" ]]; then
         agents_format="$base_format"
     fi
 
-    # 2. Make session pill solid orange — replace color ternaries with #fab387
-    #    Mocha: #{?client_prefix,#fab387,#{?pane_in_mode,#74c7ec,#cba6f7}}
-    #    Macchiato: #{?client_prefix,#f5a97f,#{?pane_in_mode,#7dc4e4,#c6a0f6}}
-    agents_format=$(printf '%s' "$agents_format" | sed 's/#{?client_prefix,#[a-f0-9]*,#{?pane_in_mode,#[a-f0-9]*,#[a-f0-9]*}}/#fab387/g')
+    # 2. Make session pill orange by default, green on prefix, blue in copy-mode
+    #    Replaces the standard color ternaries with agents-themed ones
+    agents_format=$(printf '%s' "$agents_format" | sed 's|#{?client_prefix,#[a-fA-F0-9]*,#{?pane_in_mode,#[a-fA-F0-9]*,#[a-fA-F0-9]*}}|#{?client_prefix,#a6e3a1,#{?pane_in_mode,#74c7ec,#fab387}}|g')
 
     # 3. Replace icon ternary with crab emoji
-    #    After color ternaries are gone, the remaining #{?client_prefix,...}} is the icon
-    agents_format=$(printf '%s' "$agents_format" | sed 's/#{?client_prefix,[^}]*}}/🦀/g')
+    #    [^#}] ensures we only match the icon ternary (non-hex values), not color ternaries
+    agents_format=$(printf '%s' "$agents_format" | sed 's/#{?client_prefix,[^#}][^}]*}}/🦀/g')
 
     tmux set-option 'status-format[0]' "$agents_format"
     tmux set-option pane-border-status top
