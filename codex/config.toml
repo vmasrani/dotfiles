@@ -22,7 +22,7 @@ trust_level = "trusted"
 trust_level = "trusted"
 
 [mcp_servers.context7]
-args = ["-y", "@upstash/context7-mcp", "--api-key", "ctx7sk-e92132e7-a04e-437a-9867-ddeca394f98c"]
+args = ["-y", "@upstash/context7-mcp"]
 command = "npx"
 
 [notice.model_migrations]

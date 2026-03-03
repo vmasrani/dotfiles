@@ -20,7 +20,7 @@ PATH_ADDITIONS=(
     "$HOME/.local/bin"              # Local user binaries
     "$HOME/bin"                     # Personal scripts
     "$HOME/tools"                   # Custom tools from dotfiles
-    "/Users/vmasrani/.claude"       # Claude CLI
+    "$HOME/.claude"                 # Claude CLI
     "$HOME/.bun/bin"                # Bun runtime
     "$HOME/.npm-global/bin"         # Global npm packages
     "$NODE_BIN_PATH"                # Node.js binaries (dynamic version)
@@ -28,14 +28,15 @@ PATH_ADDITIONS=(
     "/usr/local/go/bin"             # Go installation
     "$HOME/.cargo/bin"              # Rust/Cargo binaries
     "$HOME/.nvm"                    # nvm installation
-    "/opt/homebrew/bin"             # Homebrew binaries
+    "/opt/homebrew/sbin"            # Homebrew sbin
+    "/opt/homebrew/bin"             # Homebrew binaries (before /usr/bin)
 )
 
 
 # Add paths to PATH if they exist and aren't already present
 for path_dir in "${PATH_ADDITIONS[@]}"; do
-    if [[ -n "$path_dir" && -d "$path_dir" && ":$PATH:" != *":$path_dir:"* ]]; then
-        export PATH="$path_dir:$PATH"
+    if [[ -n "$path_dir" && -d "$path_dir" ]]; then
+        PATH="$path_dir:$PATH"
     fi
 done
 

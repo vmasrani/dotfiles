@@ -20,21 +20,16 @@ else
 fi
 
 # Download the tar file
-wget "$url" -O ~/$file_name
+curl -fSL -o "$HOME/$file_name" "$url"
 
-mkdir ~/bin/$dir_name
+mkdir -p "$HOME/bin/$dir_name"
 # Extract the tar file
-tar -xvf ~/$file_name -C ~/bin/$dir_name
+tar -xvf "$HOME/$file_name" -C "$HOME/bin/$dir_name"
 
 # Symlink the executables
-find ~/bin/$dir_name -maxdepth 2 -type f -executable -exec ln -s {} ~/bin \;
+find "$HOME/bin/$dir_name" -maxdepth 2 -type f -executable -exec ln -sf {} "$HOME/bin" \;
 
 # Remove the downloaded file
-rm ~/$file_name
+rm "$HOME/$file_name"
 
 echo "The tar file from $url has been successfully installed to ~/bin"
-
-
-
-
-

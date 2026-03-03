@@ -37,11 +37,11 @@ export DIRSTACKSIZE=20
 export KEYTIMEOUT=1
 
 # Source Core Configuration Files
-source ~/helper_functions.sh
-source ~/gum_utils.sh
-source ~/lscolors.sh
-source ~/.aliases-and-envs.zsh
-source ~/.local_env.sh  # Should contain API keys and local-specific settings
+[[ -f ~/helper_functions.sh ]] && source ~/helper_functions.sh
+[[ -f ~/gum_utils.sh ]] && source ~/gum_utils.sh
+[[ -f ~/lscolors.sh ]] && source ~/lscolors.sh
+[[ -f ~/.aliases-and-envs.zsh ]] && source ~/.aliases-and-envs.zsh
+[[ -f ~/.local_env.sh ]] && source ~/.local_env.sh  # Should contain API keys and local-specific settings
 
 # Theme: Gruvbox Dark for SSH sessions, Palenight locally
 if [[ -n "$SSH_CLIENT" || -n "$SSH_TTY" ]]; then
@@ -50,7 +50,7 @@ else
     export DOTFILES_THEME="palenight"
 fi
 
-source ~/.paths.zsh
+[[ -f ~/.paths.zsh ]] && source ~/.paths.zsh
 
 # export NVM_DIR="$HOME/.nvm"
 # [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -59,7 +59,7 @@ source ~/.paths.zsh
 
 # fzf
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-source ~/.fzf-config.zsh
+[[ -f ~/.fzf-config.zsh ]] && source ~/.fzf-config.zsh
 
 # Numeric sort
 setopt numeric_glob_sort
@@ -86,11 +86,11 @@ bindkey '^[[1;3C' forward-word
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
-. "$HOME/.cargo/env"
+[[ -f "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env"
 
 
 # bun completions
-[ -s "/Users/vmasrani/.bun/_bun" ] && source "/Users/vmasrani/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
@@ -101,14 +101,12 @@ export OLLAMA_CONTEXT_LENGTH=40000
 # HACK
 export OLLAMA_CONTEXT_LENGTH=40000
 
-alias claude-mem='bun "/Users/vmasrani/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
+alias claude-mem='bun "$HOME/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
 
+export ITERM_ENABLE_SHELL_INTEGRATION_WITH_TMUX=YES
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
 
 
 # opencode
-export PATH=$HOME/.opencode/bin:$PATH
-
-# opencode
-export PATH=/home/vaden/.opencode/bin:$PATH
+export PATH="$HOME/.opencode/bin:$PATH"

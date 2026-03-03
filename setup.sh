@@ -9,6 +9,7 @@
 # ===================================================================
 
 set -e
+cd "$(dirname "$0")"
 
 # Source the installation functions
 source "./install/install_functions.sh"

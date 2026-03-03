@@ -63,10 +63,12 @@ install_dotfiles() {
     mkdir -p "$HOME/.local/bin"
     mkdir -p "$HOME/.claude"
     mkdir -p "$HOME/.codex"
-    mkdir -p "$HOME/Library/Application Support/iTerm2/DynamicProfiles"
+    if [[ "$OS_TYPE" == "mac" ]]; then
+        mkdir -p "$HOME/Library/Application Support/iTerm2/DynamicProfiles"
+    fi
     # chmod bash files
-    find $HOME/dotfiles -name "*.sh" -type f -exec chmod +x {} \;
-    touch $HOME/dotfiles/local/.local_env.sh
+    find "$HOME/dotfiles" -name "*.sh" -type f -exec chmod +x {} \;
+    touch "$HOME/dotfiles/local/.local_env.sh"
 
     gum_dim "Creating symbolic links..."
 
@@ -308,10 +310,32 @@ generate_plugin_configs() {
 
 
 install_homebrew() {
+    # Ensure Xcode Command Line Tools are installed (Homebrew prerequisite)
+    if ! xcode-select -p &>/dev/null; then
+        gum_info "Installing Xcode Command Line Tools (required for Homebrew)..."
+        xcode-select --install
+        until xcode-select -p &>/dev/null; do
+            sleep 5
+        done
+        gum_success "Xcode Command Line Tools installed."
+    fi
+
+    # Accept Xcode license if xcodebuild is present
+    if command_exists xcodebuild; then
+        sudo xcodebuild -license accept 2>/dev/null || true
+    fi
+
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
     # Add to PATH for the current session (Apple Silicon Macs use /opt/homebrew)
     if [[ -d "/opt/homebrew/bin" ]]; then
         export PATH="/opt/homebrew/bin:$PATH"
+    fi
+
+    # Verify installation
+    if ! command_exists brew; then
+        gum_error "Homebrew installation failed. Try installing manually: https://brew.sh"
+        return 1
     fi
 }
 
@@ -323,16 +347,16 @@ install_zsh() {
                 if [ "$(id -u)" -eq 0 ]; then
                     apt update && apt upgrade -y
                     apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-                    chsh -s $(which zsh)
+                    chsh -s "$(which zsh)"
                 else
                     sudo apt update && sudo apt upgrade -y
                     sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-                    sudo chsh -s $(which zsh) $USER
+                    sudo chsh -s "$(which zsh)" "$USER"
                 fi
             elif [[ "$OS_TYPE" == "mac" ]]; then
                 brew update
                 brew install zsh vim
-                chsh -s $(which zsh)
+                chsh -s "$(which zsh)"
             fi
             gum_success "Installation complete. Please restart your shell to use zsh."
             ;;
@@ -354,7 +378,7 @@ install_cargo() {
 
 install_uv() {
     curl -LsSf https://astral.sh/uv/install.sh | sh
-
+    export PATH="$HOME/.local/bin:$PATH"
 }
 
 
@@ -368,11 +392,18 @@ install_tealdeer() {
 
 
 install_npm() {
-    bash install/install_npm.sh
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    if ! command_exists npm; then
+        gum_error "npm not found after loading nvm. Ensure install_nvm ran successfully."
+        return 1
+    fi
+    gum_dim "npm is available via nvm ($(npm --version))."
 }
 
 install_go() {
     if [[ "$OS_TYPE" == "linux" ]]; then
+        sudo apt install -y software-properties-common
         sudo add-apt-repository -y ppa:longsleep/golang-backports
         sudo apt update
         sudo apt install golang-go -y
@@ -389,7 +420,13 @@ install_fzf() {
 
 install_helix() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        snap install --classic helix
+        if command_exists snap; then
+            snap install --classic helix
+        else
+            sudo add-apt-repository -y ppa:maveonair/helix-editor
+            sudo apt update
+            sudo apt install -y helix
+        fi
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install helix
     fi
@@ -433,7 +470,11 @@ install_lazysql() {
 
 install_btop() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo snap install btop
+        if command_exists snap; then
+            sudo snap install btop
+        else
+            sudo apt install -y btop
+        fi
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install btop
     fi
@@ -442,10 +483,16 @@ install_btop() {
 
 install_ctop() {
     sudo mkdir -p /usr/local/bin
+    local arch
+    arch="$(uname -m)"
     if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-amd64
+        local ctop_arch="amd64"
+        [[ "$arch" == "aarch64" ]] && ctop_arch="arm64"
+        sudo curl -Lo /usr/local/bin/ctop "https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-${ctop_arch}"
     elif [[ "$OS_TYPE" == "mac" ]]; then
-        sudo curl -Lo /usr/local/bin/ctop https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-amd64
+        local ctop_arch="amd64"
+        [[ "$arch" == "arm64" ]] && ctop_arch="arm64"
+        sudo curl -Lo /usr/local/bin/ctop "https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-${ctop_arch}"
     fi
     sudo chmod +x /usr/local/bin/ctop
     gum_success "ctop installed successfully."
@@ -492,7 +539,16 @@ install_gum() {
 
 install_yq() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo snap install yq
+        if command_exists snap; then
+            sudo snap install yq
+        else
+            local arch
+            arch="$(uname -m)"
+            local yq_arch="amd64"
+            [[ "$arch" == "aarch64" ]] && yq_arch="arm64"
+            sudo curl -Lo /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}"
+            sudo chmod +x /usr/local/bin/yq
+        fi
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install yq
     fi
@@ -524,7 +580,7 @@ install_nbpreview() {
 
 install_tmux() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        wget -O "$HOME/bin/tmux" "n0p.me/bin/tmux" && chmod +x "$HOME/bin/tmux"
+        sudo apt install -y tmux
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install tmux
     fi
@@ -533,7 +589,7 @@ install_tmux() {
 
 install_rg() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        wget -O "$HOME/bin/rg" "n0p.me/bin/rg" && chmod +x "$HOME/bin/rg"
+        sudo apt install -y ripgrep
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install ripgrep
     fi
@@ -542,7 +598,9 @@ install_rg() {
 
 install_fd() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        wget -O "$HOME/bin/fd" "n0p.me/bin/fd" && chmod +x "$HOME/bin/fd"
+        sudo apt install -y fd-find
+        # fd-find installs as fdfind on Debian/Ubuntu; symlink to fd
+        ln -sf "$(command -v fdfind)" "$HOME/bin/fd"
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install fd
     fi
@@ -551,7 +609,7 @@ install_fd() {
 
 install_jq() {
     if [[ "$OS_TYPE" == "linux" ]]; then
-        wget -O "$HOME/bin/jq" "n0p.me/bin/jq" && chmod +x "$HOME/bin/jq"
+        sudo apt install -y jq
     elif [[ "$OS_TYPE" == "mac" ]]; then
         brew install jq
     fi
@@ -586,6 +644,7 @@ install_eza() {
 }
 
 install_parquet_tools() {
+    export PATH="$HOME/go/bin:$PATH"
     go install github.com/hangxie/parquet-tools@latest
     gum_success "parquet-tools installed successfully."
 }
@@ -715,6 +774,7 @@ install_bun() {
         brew install bun
     else
         curl -fsSL https://bun.sh/install | bash
+        export PATH="$HOME/.bun/bin:$PATH"
     fi
     gum_success "Bun installed successfully."
 }
@@ -792,33 +852,27 @@ install_uwu() {
     gum_info "Installing uwu..."
     local temp_dir="/tmp/uwu_build_$$"
 
-    # Clone and build in temp directory
+    # Clone and build in temp directory (subshell preserves working directory)
     git clone https://github.com/context-labs/uwu.git "$temp_dir"
-    cd "$temp_dir"
+    (
+        cd "$temp_dir"
 
-    # Check if bun is installed
-    if ! command_exists "bun"; then
-        gum_info "Bun is required for uwu. Installing bun first..."
-        install_bun
-    fi
+        # Check if bun is installed
+        if ! command_exists "bun"; then
+            gum_info "Bun is required for uwu. Installing bun first..."
+            install_bun
+        fi
 
-    # Install dependencies and build
-    bun install
-    bun run build
+        # Install dependencies and build
+        bun install
+        bun run build
 
-    # Make binary executable and move to PATH
-    chmod +x dist/uwu-cli
-
-    if [[ "$OS_TYPE" == "mac" ]]; then
-        # On macOS, use /usr/local/bin without sudo
+        # Make binary executable and move to PATH
+        chmod +x dist/uwu-cli
         sudo mv dist/uwu-cli /usr/local/bin/uwu-cli
-    else
-        # On Linux, need sudo for /usr/local/bin
-        sudo mv dist/uwu-cli /usr/local/bin/uwu-cli
-    fi
+    )
 
     # Clean up temp directory
-    cd /
     rm -rf "$temp_dir"
 
     gum_success "uwu installed successfully."
@@ -852,6 +906,7 @@ install_neomutt() {
     # Install html-to-markdown (Rust CLI for fast HTML->Markdown conversion)
     if ! command -v html-to-markdown &> /dev/null; then
         gum_info "Installing html-to-markdown-cli via cargo..."
+        source "$HOME/.cargo/env" 2>/dev/null || true
         cargo install html-to-markdown-cli
     fi
 
