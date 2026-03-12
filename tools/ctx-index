@@ -82,9 +82,18 @@ extract_meta() {
     echo ""
 }
 
-gum_dim "${#context_files[@]} directories indexed" 2>/dev/null || echo "${#context_files[@]} directories indexed"
-echo ""
+skip_parents=()
+pruned=0
 
+is_under_skip() {
+    local d="$1"
+    for p in "${skip_parents[@]}"; do
+        [[ "$d" == "$p/"* ]] && return 0
+    done
+    return 1
+}
+
+shown=0
 for f in "${context_files[@]}"; do
     [[ -z "$f" ]] && continue
     [[ ! -f "$f" ]] && continue
@@ -96,7 +105,20 @@ for f in "${context_files[@]}"; do
     relpath="${relpath#/}"
     [[ -z "$relpath" ]] && relpath="."
 
+    # Prune children of SKIP parents
+    if is_under_skip "$relpath"; then
+        pruned=$((pruned + 1))
+        continue
+    fi
+
     summary=$(extract_summary "$f")
+
+    # Track SKIP parents so their children get pruned
+    if [[ "$summary" == SKIP:* ]]; then
+        skip_parents+=("$relpath")
+    fi
+
+    shown=$((shown + 1))
 
     if $full; then
         meta=$(extract_meta "$f")
@@ -109,3 +131,11 @@ for f in "${context_files[@]}"; do
         printf "%-30s %s\n" "$relpath" "$summary"
     fi
 done
+
+# Header and footer
+if [[ $pruned -gt 0 ]]; then
+    gum_dim "$shown directories indexed ($pruned subdirectories under SKIP parents omitted)" 2>/dev/null \
+        || echo "$shown directories indexed ($pruned subdirectories under SKIP parents omitted)"
+else
+    gum_dim "$shown directories indexed" 2>/dev/null || echo "$shown directories indexed"
+fi

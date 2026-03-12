@@ -1,16 +1,17 @@
 Generate or refresh `*-context.md` files for the current project using progressive disclosure.
 
-Context files live inside the directory they describe, named `{dirname}-context.md` (e.g., `src/src-context.md`).
+Context files live inside the directory they describe, named `{dirname}-context.md` (e.g., `src/src-context.md`). They capture non-obvious conventions, gotchas, and key entry points — things an agent can't discover by reading code alone.
 
 ## Shell tools available
 
-You have five helper tools on PATH (in `~/tools/`):
+You have six helper tools on PATH (in `~/tools/`):
 
 - **`ctx-index [dir] [--full] [--depth N]`** — Project map: one summary line per directory from all `*-context.md` files. Use `--full` to include file count and date metadata. Use `--depth N` to limit search depth (e.g., `--depth 1` for top-level only).
 - **`ctx-tree [dir] [depth]`** — Shows directory tree using eza (respects gitignore, filters noise). Default depth: 3.
-- **`ctx-peek [dir] [lines] [--depth N]`** — Shows first N lines of all `*-context.md` files under a directory. Default: 12 lines. Use `--depth N` to limit search depth. Use this to scan existing context files without loading them fully.
+- **`ctx-peek [dir] [lines] [--depth N]`** — Shows first N lines of all `*-context.md` files under a directory. Default: 12 lines. Use `--depth N` to limit search depth.
 - **`ctx-stale [dir] [--max-depth N] [--min-files N]`** — Lists directories with missing or stale context files. Skips dirs with fewer than N files (default: 2) and limits scan depth (default: 4).
-- **`ctx-skip [dir] [reason]`** — Mark a directory as skipped for context generation. Creates a stub `*-context.md` file with a SKIP marker. Optional reason parameter for documentation.
+- **`ctx-skip [dir] [reason]`** — Mark a directory as skipped for context generation. Creates a stub with a SKIP marker.
+- **`ctx-reset [dir] [--dry-run]`** — Remove all `*-context.md` files from a directory tree. Use `--dry-run` to preview. Useful for starting fresh.
 
 ## Steps
 
@@ -27,13 +28,15 @@ Only directories listed as MISSING or STALE need processing.
 
 **Tip:** Use `ctx-skip {dir} "{reason}"` to permanently exclude directories that shouldn't have context files (e.g., auto-generated code, vendor directories, test fixtures). SKIP markers persist across runs and are committed to the repo.
 
+**Tip:** Use `ctx-reset {dir}` to clear all context files and start from scratch.
+
 ### 3. Generation
 For each directory needing a context file, launch a `context-researcher` agent via the Task tool with `model: haiku`.
 
 **Launch ALL agents in a single message** — multiple Task calls in one response. Do **NOT** use `run_in_background`. Do **NOT** use `TaskOutput`. Parallel Task calls in a single message already run concurrently.
 
 Use a **short** description (e.g., `"ctx: src/utils"`). The agent prompt should be:
-> Analyze the directory `{path}` and write the context file to `{path}/{dirname}-context.md`. Return ONLY "SUCCESS: wrote {path}" or "ERROR: {path} — {reason}". Nothing else.
+> Analyze the directory `{path}` and write the context file to `{path}/{dirname}-context.md`. Today's date is {YYYY-MM-DD}. Return ONLY "SUCCESS: wrote {path}" or "ERROR: {path} — {reason}". Nothing else.
 
 Each agent returns a single status line as its Task return value. That is all you need.
 

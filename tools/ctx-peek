@@ -27,20 +27,59 @@ fd_args=(--no-ignore --glob '*-context.md' "$dir" --type f)
 # --depth N = N levels of directories; fd needs N+1 because context files are inside dirs
 [[ -n "$depth" ]] && fd_args+=(--max-depth "$((depth + 1))")
 
-context_files=("${(@f)$(fd "${fd_args[@]}" 2>/dev/null)}")
+context_files=("${(@f)$(fd "${fd_args[@]}" 2>/dev/null | sort)}")
 
 if [[ ${#context_files[@]} -eq 0 || -z "${context_files[1]}" ]]; then
     gum_dim "No *-context.md files found under $dir" 2>/dev/null || echo "No *-context.md files found under $dir"
     exit 0
 fi
 
-gum_dim "Found ${#context_files[@]} context file(s) under $dir" 2>/dev/null || echo "Found ${#context_files[@]} context file(s) under $dir"
-echo ""
+skip_parents=()
+pruned=0
 
+is_under_skip() {
+    local d="$1"
+    for p in "${skip_parents[@]}"; do
+        [[ "$d" == "$p/"* ]] && return 0
+    done
+    return 1
+}
+
+shown=0
 for f in "${context_files[@]}"; do
     [[ -z "$f" ]] && continue
-    gum_info "${f#$dir/}" 2>/dev/null || echo "=== ${f#$dir/} ==="
+
+    # Get relative path for pruning
+    relpath="${f#$dir/}"
+    reldir="${relpath%/*}"
+
+    # Prune children of SKIP parents
+    if is_under_skip "$reldir"; then
+        pruned=$((pruned + 1))
+        continue
+    fi
+
+    # Check if this is a SKIP file — show only summary line
+    line2=$(sed -n '2p' "$f")
+    if [[ "$line2" == "> SKIP:"* ]]; then
+        skip_parents+=("$reldir")
+        shown=$((shown + 1))
+        gum_info "$relpath" 2>/dev/null || echo "=== $relpath ==="
+        echo "${line2#> }"
+        echo ""
+        continue
+    fi
+
+    shown=$((shown + 1))
+    gum_info "$relpath" 2>/dev/null || echo "=== $relpath ==="
     head -n "$lines" "$f"
     echo "..."
     echo ""
 done
+
+if [[ $pruned -gt 0 ]]; then
+    gum_dim "$shown entries shown ($pruned subdirectories under SKIP parents omitted)" 2>/dev/null \
+        || echo "$shown entries shown ($pruned subdirectories under SKIP parents omitted)"
+else
+    gum_dim "Found $shown context file(s) under $dir" 2>/dev/null || echo "Found $shown context file(s) under $dir"
+fi

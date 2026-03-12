@@ -1,0 +1,49 @@
+#!/usr/bin/env zsh
+# Remove all *-context.md files from a directory tree.
+# Usage: ctx-reset [directory] [--dry-run]
+#   directory: root to clean (default: .)
+#   --dry-run:  show what would be deleted without deleting
+
+set -e
+
+source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
+
+dir="."
+dry_run=false
+
+for arg in "$@"; do
+    if [[ "$arg" == "--dry-run" ]]; then
+        dry_run=true
+    else
+        dir="$arg"
+    fi
+done
+
+dir="${dir:A}"
+
+files=("${(@f)$(fd --no-ignore --glob '*-context.md' "$dir" --type f 2>/dev/null)}")
+
+if [[ ${#files[@]} -eq 0 || -z "${files[1]}" ]]; then
+    gum_dim "No *-context.md files found under $dir" 2>/dev/null || echo "No *-context.md files found under $dir"
+    exit 0
+fi
+
+if $dry_run; then
+    gum_info "Would delete ${#files[@]} context file(s):" 2>/dev/null || echo "Would delete ${#files[@]} context file(s):"
+    printf '  %s\n' "${files[@]}"
+    exit 0
+fi
+
+if ! gum_confirm "Delete ${#files[@]} context file(s) under $dir?" 2>/dev/null; then
+    echo "Aborted"
+    exit 1
+fi
+
+deleted=0
+for f in "${files[@]}"; do
+    [[ -z "$f" ]] && continue
+    rm "$f"
+    deleted=$((deleted + 1))
+done
+
+gum_success "Deleted $deleted context file(s)" 2>/dev/null || echo "Deleted $deleted context file(s)"

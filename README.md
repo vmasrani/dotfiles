@@ -456,7 +456,7 @@ Configuration lives in `maintained_global_claude/` and is symlinked into `~/.cla
 
 ### Hooks
 
-Hooks fire on session events: `notification.py` (desktop alerts), `pre_tool_use.py` (guardrails), `post_tool_use.py` (post-processing), `pre_compact.py` (context preservation), `session_start.py` (initialization), `stop.py` / `subagent_stop.py` (cleanup).
+Hooks fire on session events: `notification.py` (desktop alerts), `pre_tool_use.py` (guardrails), `post_tool_use.py` (post-processing), `pre_compact.py` (context preservation), `stop.py` / `subagent_stop.py` (cleanup).
 
 > The `agents` tmux session (F11) is purpose-built for AI work — status bar shows live Claude API usage, token counts, and credit balance.
 
