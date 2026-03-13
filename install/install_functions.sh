@@ -270,6 +270,16 @@ install_dotfiles() {
         fi
     done
 
+    # Symlink local (machine-specific, git-ignored) skills into maintained_global_claude/skills/
+    local local_skills_dir="$dotfiles/local/local_skills"
+    if [ -d "$local_skills_dir" ]; then
+        for skill_dir in "$local_skills_dir"/*/; do
+            [ -d "$skill_dir" ] || continue
+            skill_name="$(basename "$skill_dir")"
+            ensure_symlink "$skill_dir" "$dotfiles/maintained_global_claude/skills/$skill_name" "false"
+        done
+    fi
+
 }
 
 
