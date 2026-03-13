@@ -25,8 +25,10 @@
       "mcp__plugin_context7_context7__query-docs",
       "mcp__plugin_context7_context7__resolve-library-id"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "plan"
   },
+  "model": "opus",
   "hooks": {
     "PostToolUse": [
       {
@@ -91,8 +93,10 @@
     "ralph-wiggum@claude-plugins-official": false,
     "ralph-wiggum@claude-code-plugins": false,
     "commit-commands@claude-plugins-official": false,
-    "claude-mem@thedotmack": false
+    "claude-mem@thedotmack": false,
+    "skill-creator@claude-plugins-official": true
   },
+  "fastMode": true,
   "skipDangerousModePermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006
