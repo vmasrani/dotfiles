@@ -1,42 +1,28 @@
 # maintained_global_claude
-> Global Claude Code configuration and custom agents/commands/hooks maintained in dotfiles and symlinked to ~/.claude.
-`8 files | 2026-03-03`
+> Global Claude Code configuration (agents, commands, hooks, skills) maintained in dotfiles and symlinked to ~/.claude.
+`6 files | 2026-03-18`
 
 ## Key Files
-| File | Role |
-|------|------|
-| settings.json | Global Claude Code settings with hooks, permissions, plugins, and statusline configuration |
-| CLAUDE.md | Project guidelines for Claude Code development (Python, bash, Pydantic conventions) |
-| agents/context-researcher.md | Agent definition for analyzing directories and generating structured context markdown files |
-| commands/research.md | Custom /research slash command for discovering and generating/refreshing context files |
-| hooks/post_tool_use.py | Logs tool execution events to JSON audit trail |
+| File | Purpose |
+|------|---------|
+| `settings.json` | Claude Code global settings: permissions, hooks, plugins (context7 enabled), plan mode default, statusline config |
+| `statusline.sh` | Zsh status display showing directory, git branch, time, and context window usage percentage with color coding |
+| `CLAUDE.md` | Meta-documentation about context files, Python/shell guidelines, and Pydantic patterns (referenced only, not part of live config) |
 
-## Patterns
-**Configuration as Code**: Central versionable source of truth for Claude Code config (settings.json), symlinked to ~/.claude/ during dotfiles setup. Subdirectories (agents/, commands/, hooks/, skills/, plugins/) mirror Claude's internal structure.
+## Conventions
+- **Symlink hub**: Everything here is symlinked to `~/.claude/` during `setup.sh` execution. Changes here update the live config.
+- **Subdirectory structure**: Four main directories each with context files:
+  - `agents/` — Custom agent definitions (context-researcher, codebase-researcher, structural-completeness-reviewer, etc.)
+  - `commands/` — Custom slash commands (research, arewedone, generate-tests, process-parallel)
+  - `hooks/` — Python scripts triggered by Claude events (PostToolUse, Stop, SubagentStop, PreCompact)
+  - `skills/` — Reusable skill modules (explain, create-plan, design-principles, dotfiles-tweaker, log-to-daily, polish, data-visualization-techniques)
+- **Plan mode default**: `defaultMode: "plan"` in settings.json means Claude starts in plan mode by default.
+- **Hook execution**: All hooks use `uv run` with Python scripts; ensure uv is available at runtime.
+- **Permissions model**: settings.json explicitly whitelists allowed tools and skills rather than defaulting to allow-all.
 
-**Hook-based Automation**: PostToolUse, Stop, SubagentStop, PreCompact hooks implemented as uv-run Python scripts for extensibility and event logging.
-
-**Agent Definitions**: YAML frontmatter + markdown instructions for agent roles (context-researcher, spec-interviewer, plan-writer, etc.).
-
-## Dependencies
-- **External:** Claude Code application, uv (package manager), Python 3, Anthropic/OpenAI/ElevenLabs APIs (optional)
-- **Internal:** Symlinked from this repo to ~/.claude/ during setup.sh installation; used by all Claude Code sessions
-
-## Entry Points
-- `settings.json` — loaded on Claude Code startup; configures permissions, hooks, plugins, statusline
-- `agents/` — agent definitions for specialized workflows
-- `commands/` — custom slash commands like /research, /arewedone, /generate-tests
-- `hooks/` — system event handlers triggering on PostToolUse, Stop, SubagentStop, PreCompact
-
-## Subdirectories
-| Directory | Has Context |
-|-----------|-------------|
-| agents | yes |
-| commands | yes |
-| hooks | yes |
-| skills | yes |
-| plugins | no |
-| archive | no |
-| plans | no |
-| debug | no |
-| todos | no |
+## Gotchas
+- **Context file duplication**: Many subdirectories have their own `*-context.md` files (agents-context.md, commands-context.md, hooks-context.md, skills-context.md). These are independent docs and not generated/maintained by the parent context file.
+- **Statusline timing**: The statusline recalculates context window percentage on every call, using `current_usage` not cumulative totals. High percentages (80%+) turn bold red.
+- **Large file count**: ~2461 total files in this directory (mostly generated/cached data in history.jsonl, stats-cache.json). Only 6 tracked configuration files at root level.
+- **FastMode enabled**: `fastMode: true` skips permission prompts; dangerous operations assume approval without asking.
+- **Hook order dependency**: PostToolUse, PreCompact, and Stop hooks all run; if any fail, downstream behavior may be silent (check logs).
