@@ -1,5 +1,7 @@
 Generate or refresh `*-context.md` files for the current project using progressive disclosure.
 
+**IMPORTANT:** If you are currently in plan mode, call the `ExitPlanMode` tool immediately before doing anything else. This command requires full agent mode to write files and launch subagents.
+
 Context files live inside the directory they describe, named `{dirname}-context.md` (e.g., `src/src-context.md`). They capture non-obvious conventions, gotchas, and key entry points — things an agent can't discover by reading code alone.
 
 ## Shell tools available
