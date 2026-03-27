@@ -40,8 +40,11 @@ if [[ -f "$1" ]]; then
     *.pkl|*.pickle)
       preview pkl-preview "$1"
       ;;
-    *.pt)
+    *.pt|*.pth)
       preview torch-preview "$1"
+      ;;
+    *.onnx)
+      preview onnx-preview "$1"
       ;;
     *.npy)
       preview npy-preview "$1"

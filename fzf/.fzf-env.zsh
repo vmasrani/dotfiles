@@ -62,6 +62,8 @@ export FZF_DEFAULT_OPTS=" \
     --reverse --ansi \
     --border --padding 1,2 \
     --border-label ' Demo ' --input-label ' Input ' --header-label ' File Type ' \
+    --footer ' C-a select-all | C-/ preview | C-d/u scroll | C-s sort | Alt-w wrap ' \
+    --footer-border \
     --preview 'fzf-preview {}' \
     --preview-window=right:70%:nowrap \
     --bind 'result:transform-list-label: \
@@ -78,7 +80,7 @@ export FZF_DEFAULT_OPTS=" \
     --color 'preview-border:#9999cc,preview-label:#ccccff' \
     --color 'list-border:#669966,list-label:#99cc99' \
     --color 'input-border:#996666,input-label:#ffcccc' \
-    --color 'header-border:#6699cc,header-label:#99ccff'
+    --color 'header-border:#6699cc,header-label:#99ccff' \
     --bind 'ctrl-/:change-preview-window(down|hidden|)' \
     --bind 'ctrl-d:preview-half-page-down' \
     --bind 'ctrl-u:preview-half-page-up' \
@@ -86,7 +88,9 @@ export FZF_DEFAULT_OPTS=" \
     --bind 'ctrl-j:preview-down' \
     --bind 'ctrl-k:preview-up' \
     --bind 'ctrl-b:preview-bottom' \
-    --bind 'ctrl-n:preview-top'"
+    --bind 'ctrl-n:preview-top' \
+    --bind 'alt-w:toggle-wrap-word' \
+    --bind 'ctrl-a:toggle-all'"
 
 
 

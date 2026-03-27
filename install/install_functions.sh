@@ -160,10 +160,11 @@ install_dotfiles() {
 
         # Preview files
         "$dotfiles/preview/fzf-preview.sh:$bin/fzf-preview"
-        "$dotfiles/preview/torch-preview.sh:$bin/torch-preview"
+        "$dotfiles/preview/torch-preview.py:$bin/torch-preview"
         "$dotfiles/preview/npy-preview.py:$bin/npy-preview"
         "$dotfiles/preview/feather-preview.py:$bin/feather-preview"
         "$dotfiles/preview/pkl-preview.py:$bin/pkl-preview"
+        "$dotfiles/preview/onnx-preview.py:$bin/onnx-preview"
 
         # iTerm2 SSH theme switcher
         "$dotfiles/iterm2/ssh-themes/switch-ssh-theme:$bin/switch-ssh-theme"
