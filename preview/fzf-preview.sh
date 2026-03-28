@@ -3,7 +3,13 @@
 MAX_LINES=500
 TIMEOUT=5
 
-preview() { timeout "$TIMEOUT" "$@" 2>/dev/null; }
+# --- Helpers ---
+preview()          { timeout "$TIMEOUT" "$@" 2>/dev/null; }
+preview_bat()      { preview bat -n --color=always --line-range :$MAX_LINES "$1"; }
+preview_json()     { preview jq -C . "$1" 2>/dev/null | head -n $MAX_LINES || preview_bat "$1"; }
+preview_markdown() { preview markitdown "$1" | head -n $MAX_LINES | glow -p -w 80 -s dark; }
+is_binary()        { file --brief --mime-encoding "$1" | grep -q 'binary'; }
+is_json()          { file --brief "$1" | grep -qi 'json'; }
 
 # Resolve symlinks
 [[ -L "$1" ]] && set -- "$(readlink -f "$1")"
@@ -27,7 +33,7 @@ if [[ -f "$1" ]]; then
       preview parquet-tools cat --limit 1000 --format jsonl "$1" | jq -C
       ;;
     *.json)
-      preview jq -C . "$1" | head -n $MAX_LINES || preview bat -n --color=always --line-range :$MAX_LINES "$1"
+      preview_json "$1"
       ;;
     *.jsonl|*.ndjson)
       preview head -n $MAX_LINES "$1" | jq -C .
@@ -55,10 +61,10 @@ if [[ -f "$1" ]]; then
       preview glow -p -w 80 -s dark "$1"
       ;;
     *.docx|*.pptx|*.xlsx|*.epub)
-      preview markitdown "$1" | head -n $MAX_LINES | glow -p -w 80 -s dark
+      preview_markdown "$1"
       ;;
     *.html|*.htm)
-      preview markitdown "$1" | head -n $MAX_LINES | glow -p -w 80 -s dark
+      preview_markdown "$1"
       ;;
     *.ipynb)
       preview rich --ipynb "$1"
@@ -102,10 +108,14 @@ if [[ -f "$1" ]]; then
       preview tail -n $MAX_LINES "$1" | bat --color=always -l log
       ;;
 
-    # Catch-all with binary detection
+    # Catch-all with binary/JSON detection
     *)
-      if file --brief --mime-type "$1" | grep -q '^text/'; then
-        preview bat -n --color=always --line-range :$MAX_LINES "$1"
+      if ! is_binary "$1"; then
+        if is_json "$1"; then
+          preview_json "$1"
+        else
+          preview_bat "$1"
+        fi
       else
         file --brief "$1"
       fi
