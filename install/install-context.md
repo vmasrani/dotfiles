@@ -1,29 +1,21 @@
 # install
 > Installation helper functions and tool-specific install scripts orchestrated by setup.sh.
-`5 files | 2026-03-03`
+`5 files | 2026-03-18`
 
 ## Key Files
-| File | Role |
-|------|------|
-| `install_functions.sh` | Core install utilities: `install_if_missing`, `install_if_dir_missing`, `install_on_brew_or_mac`, `install_dotfiles` |
-| `install_helix_language_servers.sh` | Installs Helix language servers via npm and cargo |
-| `install-parquet-tools.sh` | Downloads and installs parquet-tools binary |
-| `install_htop.sh` | System monitor installation |
-| `install_tar.sh` | Tar utility installation |
+| File | Purpose |
+|------|---------|
+| `install_functions.sh` | Core helpers: `install_if_missing`, `install_if_dir_missing`, `install_on_brew_or_mac`, `install_dotfiles`. Provides idempotent install abstraction across OS |
+| `install_helix_language_servers.sh` | Installs Helix LSPs via npm, cargo, and builds grammar with `hx --grammar` |
+| `install-parquet-tools.sh` | Downloads parquet-tools binary release and places in ~/bin |
 
-## Patterns
-- **Idempotent install guards**: Each tool checked before installation to skip if already present
-- **OS abstraction**: `install_on_brew_or_mac` abstracts apt (Linux) vs brew (macOS)
-- **Shell sourcing**: Helper functions and gum utils sourced at entry point
-- **Symlink delegation**: `install_dotfiles` creates ~160 symlinks from repo to `$HOME`
+## Conventions
+- All scripts use `OS_TYPE` (set in `install_functions.sh`) to branch between Linux (apt) and macOS (brew)
+- Install function names follow pattern `install_<tool>` and are passed to `install_if_missing` by `setup.sh`
+- Scripts source `shell/helper_functions.sh` and `shell/gum_utils.sh` instead of raw `echo`
+- `install_dotfiles` handles ~160 symlinks with force-replace logic for Claude/Codex config directories
 
-## Dependencies
-- **External:** brew (macOS), apt (Linux), npm, cargo, wget, gunzip
-- **Internal:** `shell/helper_functions.sh`, `shell/gum_utils.sh`
-
-## Entry Points
-- `install_functions.sh` — sourced by `setup.sh`, provides all install functions
-- Individual install scripts — called via `install_if_missing` from `setup.sh`
-
-## Subdirectories
-None — this is a flat utilities directory.
+## Gotchas
+- `install_on_brew_or_mac` takes positional args: ($1 = Linux pkg, $2 = macOS pkg); second arg defaults to first if omitted
+- `install_helix_language_servers.sh` assumes npm, cargo, and hx already exist — fails if missing dependencies
+- `install_dotfiles` symlink definitions are hardcoded inline (line 100+), not data-driven; changes require manual editing

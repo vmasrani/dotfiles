@@ -1,38 +1,27 @@
 # tools
-> Collection of CLI utilities for AI, search, document processing, email, and system administration using modern patterns.
-`46 files | 2026-03-03`
+> Collection of CLI utilities for AI, search, document processing, email, and system administration.
+`66 files | 2026-03-18`
 
 ## Key Files
-| File | Role |
-|------|------|
-| oai | OpenAI/DSPy LLM wrapper with system prompts and context truncation |
-| mtui.py | Gmail TUI (lazygit-style) using Textual, composes shell email tools |
-| print_csv | Rich CSV/data inspector with type inference and statistics |
-| msearch, mget, mview, msend | Email CLI tools around notmuch backend with gum UI |
-| ctx-index | Build project map from *-context.md files with depth filtering |
+| File | Purpose |
+|------|---------|
+| `oai` | OpenAI DSPy wrapper supporting system prompts and context truncation for LLM interactions |
+| `ddgs` | DuckDuckGo web search with SQLite persistence and pandas DataFrame export |
+| `ctx-tree`, `ctx-index`, `ctx-peek`, `ctx-skip`, `ctx-reset` | Context file management tools for progressive disclosure of codebase conventions |
+| `mtui.py` | Gmail TUI (lazygit-style) using Textual, composes shell email tools (msearch, mget, mview) |
+| `ocr_agent.py` | Vision API OCR orchestrator that reads `.claude/commands/ocr.md` for prompts |
 
-## Patterns
-- **uv inline dependencies**: Python scripts declare deps in shebang comments, isolated per-tool
-- **Dual-mode CLI**: Tools support piped input + arguments
-- **Shell composition**: Python TUIs call shell tools (e.g., mtui → msearch/mget/mview)
-- **Rich/Textual UX**: Styled tables, panels, interactive data tables
-- **Gum UI fallbacks**: Shell scripts degrade to echo when gum unavailable (non-TTY)
-- **Parallel processing**: Agents use `mlh.parallel.pmap` for batch operations
+## Conventions
+- **Python shebang pattern**: All Python tools use `#!/usr/bin/env -S uv run --script` with inline uv dependencies in docstring block (lines 2-11)
+- **Python tool style**: Use `typer` for CLI, `rich` for output, `pathlib.Path` for file paths, prefer functional style over try/except
+- **Shell shebang**: Zsh tools use `#!/usr/bin/env zsh` with `set -e`; bash tools use `#!/bin/bash` with `# shellcheck shell=bash`
+- **Sourcing convention**: Bash tools source helpers from `~/dotfiles/` subdirectories (e.g., `update_checks/update_functions.sh`)
+- **Relative path assumptions**: Tools assume they're in `~/tools/` (symlinked from repo) and reference `~/.claude/`, `~/dotfiles/`, `~/.zshrc`
+- **Command naming**: Lowercase with hyphens (e.g., `ctx-tree`, `update-packages`), no file extensions visible to users
 
-## Dependencies
-- **External (Python)**: dspy, openai, ddgs, requests, pandas, pymupdf, pypdf, typer, rich, loguru, textual, pydantic
-- **External (CLI)**: gum, notmuch, jq, rg, fzf, bat, aws-cli, sshfs, git, curl, ssh, rsync
-- **Internal**: gum_utils.sh, helper_functions.sh, ~/dotfiles/shell/
-
-## Entry Points
-- **Python CLI**: oai, ddgs, google_search, print_csv, pdf_extract_pages, mtui.py, markdown_cleanup_agent.py
-- **Bash scripts**: update-packages, system_info, mount_remotes, start_aws, stop_aws
-- **Gmail tools**: msearch, mget, mview, msend
-- **Context tools**: ctx-index, ctx-peek, ctx-tree, ctx-skip, ctx-stale
-
-## Subdirectories
-| Directory | Has Context |
-|-----------|-------------|
-| .claude | no |
-| .cursor | no |
-| urls | no |
+## Gotchas
+- **Python uv dependencies**: Must be declared in docstring block with exact formatting; typo in `requires-python` or missing commas breaks inline execution
+- **Claude config paths hardcoded**: Tools like `ocr_agent.py` read from `~/.claude/commands/` — these paths are git-ignored and must exist locally
+- **Symlink dependency**: Tools rely on being in `~/tools/` directory (via `setup.sh` symlink pass); running directly from repo path breaks relative imports
+- **eza not tree**: Scripts use `eza --tree` with git-ignore flags; older `tree` command not guaranteed to exist
+- **Email tools require notmuch**: Tools msearch, mget, mview, msend are thin wrappers around notmuch backend; they won't work without notmuch installation

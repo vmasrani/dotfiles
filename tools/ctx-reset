@@ -34,7 +34,7 @@ if $dry_run; then
     exit 0
 fi
 
-if ! gum_confirm "Delete ${#files[@]} context file(s) under $dir?" 2>/dev/null; then
+if ! gum_confirm "Delete ${#files[@]} context file(s) under $dir?"; then
     echo "Aborted"
     exit 1
 fi

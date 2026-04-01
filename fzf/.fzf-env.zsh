@@ -2,59 +2,6 @@
 
 export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,80%|hidden|)'
 
-# https://erees.dev/terminal-tricks/
-# export FZF_DEFAULT_OPTS=" \
-# --reverse --ansi \
-# --color border:41 --border=sharp \
-# --inline-info \
-# --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
-# --cycle -m  \
-# --tmux 95%  \
-# --preview-window=right:70%:wrap \
-# --bind 'ctrl-/:change-preview-window(down|hidden|)' \
-# --bind 'ctrl-d:preview-half-page-down' \
-# --bind 'ctrl-u:preview-half-page-up' \
-# --bind 'ctrl-s:toggle-sort' \
-# --bind 'ctrl-j:preview-down' \
-# --bind 'ctrl-k:preview-up' \
-# --bind 'ctrl-b:preview-bottom' \
-# --bind 'ctrl-n:preview-top'
-# "
-
-# --prompt='➤  ' --pointer='➤ ' --marker='➤ ' \
-
-# export FZF_DEFAULT_OPTS=" \
-#     --style full --scheme path \
-#     --tmux 95%  \
-#     --cycle -m  \
-#     --reverse --ansi \
-#     --border --padding 1,2 \
-#     --ghost 'Type in your query' \
-#     --border-label ' Demo ' --input-label ' Input ' --header-label ' File Type ' \
-#     --footer-label ' MD5 Hash ' \
-#     --preview 'BAT_THEME=gruvbox-dark fzf-preview.sh {}' \
-#     --bind 'result:transform-list-label: \
-#         if [[ -z $FZF_QUERY ]]; then \
-#           echo \" $FZF_MATCH_COUNT items \" \
-#         else \
-#           echo \" $FZF_MATCH_COUNT matches for [$FZF_QUERY] \" \
-#         fi \
-#         ' \
-#     --bind 'focus:bg-transform-preview-label:[[ -n {} ]] && printf \" Previewing [%s] \" {}' \
-#     --bind 'focus:+bg-transform-header:[[ -n {} ]] && file --brief {}' \
-#     --bind 'focus:+bg-transform-footer:if [[ -n {} ]]; then
-#               echo \"MD5:    \$(md5sum < {})\"   \
-#               echo \"SHA1:   \$(sha1sum < {})\"   \
-#               echo \"SHA256: \$(sha256sum < {})\"   \
-#             fi' \
-#     --bind 'ctrl-r:change-list-label( Reloading the list )+reload(sleep 2; git ls-files)' \
-#     --color 'border:#aaaaaa,label:#cccccc' \
-#     --color 'preview-border:#9999cc,preview-label:#ccccff' \
-#     --color 'list-border:#669966,list-label:#99cc99' \
-#     --color 'input-border:#996666,input-label:#ffcccc' \
-#     --color 'header-border:#6699cc,header-label:#99ccff' \
-#     --color 'footer:#ccbbaa,footer-border:#cc9966,footer-label:#cc9966'"
-
 export FZF_DEFAULT_OPTS=" \
     --style full \
     --tmux 95%  \
@@ -62,6 +9,8 @@ export FZF_DEFAULT_OPTS=" \
     --reverse --ansi \
     --border --padding 1,2 \
     --border-label ' Demo ' --input-label ' Input ' --header-label ' File Type ' \
+    --footer ' C-a select-all | C-/ preview | C-d/u scroll | C-s sort | Alt-w wrap ' \
+    --footer-border \
     --preview 'fzf-preview {}' \
     --preview-window=right:70%:nowrap \
     --bind 'result:transform-list-label: \
@@ -78,7 +27,7 @@ export FZF_DEFAULT_OPTS=" \
     --color 'preview-border:#9999cc,preview-label:#ccccff' \
     --color 'list-border:#669966,list-label:#99cc99' \
     --color 'input-border:#996666,input-label:#ffcccc' \
-    --color 'header-border:#6699cc,header-label:#99ccff'
+    --color 'header-border:#6699cc,header-label:#99ccff' \
     --bind 'ctrl-/:change-preview-window(down|hidden|)' \
     --bind 'ctrl-d:preview-half-page-down' \
     --bind 'ctrl-u:preview-half-page-up' \
@@ -86,15 +35,13 @@ export FZF_DEFAULT_OPTS=" \
     --bind 'ctrl-j:preview-down' \
     --bind 'ctrl-k:preview-up' \
     --bind 'ctrl-b:preview-bottom' \
-    --bind 'ctrl-n:preview-top'"
-
-
-
-
+    --bind 'ctrl-n:preview-top' \
+    --bind 'alt-w:toggle-wrap-word' \
+    --bind 'ctrl-a:toggle-all'"
 
 
 export FD_EXCLUDE="-E __pycache__ -E .git" # ignore more
-export BFS_EXCLUDE='! \( -name .git -prune \) ! \( -name  __pycache__ -prune \) ! \( -name .venv -prune \) ! \( -name .mypy_cache -prune \)'
+export BFS_EXCLUDE='! \( -name .git -prune \) ! \( -name  __pycache__ -prune \) ! \( -name .venv -prune \) ! \( -name .mypy_cache -prune \) ! \( -name node_modules -prune \) ! \( -name target -prune \)'
 
 if type -p bfs >/dev/null; then
     export FZF_DEFAULT_FILES_COMMAND="bfs -x -color $BFS_EXCLUDE -type f"
@@ -141,6 +88,7 @@ export FZF_CTRL_T_OPTS="--preview 'fzf-preview {}' --prompt 'Files(.)> ' \
 
 export FZF_CTRL_R_OPTS="
   --style default \
+  --wrap=word \
   --preview 'echo {2..} | bat --color=always -pl sh' \
   --preview-window up:5:nowrap \
   --bind 'result:' \

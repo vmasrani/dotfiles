@@ -12,11 +12,13 @@ CACHE_FILE="/tmp/claude_usage_cache.json"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 metric="${1:-five_hour}"
 
-# Trigger background cache refresh (atomic lock prevents stampede)
-"$SCRIPT_DIR/agents_cache_refresh.sh" &>/dev/null &
-
-# Bail if no cache yet
-[[ ! -f "$CACHE_FILE" ]] && exit 0
+# Synchronous refresh on first run (no cache yet), background thereafter
+if [[ ! -f "$CACHE_FILE" ]]; then
+    "$SCRIPT_DIR/agents_cache_refresh.sh" &>/dev/null
+    [[ ! -f "$CACHE_FILE" ]] && exit 0
+else
+    "$SCRIPT_DIR/agents_cache_refresh.sh" &>/dev/null &
+fi
 
 if [[ "$metric" == "reset" ]]; then
     reset_utc=$(jq -r '.five_hour_resets // empty' "$CACHE_FILE" 2>/dev/null)

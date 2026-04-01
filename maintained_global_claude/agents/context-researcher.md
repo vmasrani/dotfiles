@@ -83,6 +83,7 @@ Failed to analyze directory: {error description}
 - `ERROR: {target_file_path} — {brief description}`
 
 **Rules:**
+- **Do NOT use the Agent tool. Do NOT spawn sub-agents. Do NOT recurse into or create context files for subdirectories.** You analyze ONE directory only — the one you were given.
 - Only include sections that have content. Skip empty sections entirely.
 - For Key Files, limit to the 3-5 most important. Prefer files with non-obvious roles.
 - Do NOT return the markdown content as output. The content goes into the file via Write, not into your response.

@@ -26,7 +26,7 @@ if [[ -f "$ctx_file" ]]; then
         gum_dim "Already skipped: $ctx_file" 2>/dev/null || echo "Already skipped: $ctx_file"
         exit 0
     fi
-    if ! gum_confirm "Context file exists. Overwrite with SKIP marker?" 2>/dev/null; then
+    if ! gum_confirm "Context file exists. Overwrite with SKIP marker?"; then
         echo "Aborted"
         exit 1
     fi
