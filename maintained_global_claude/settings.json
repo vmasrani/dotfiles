@@ -28,7 +28,7 @@
     "deny": [],
     "defaultMode": "plan"
   },
-  "model": "opus",
+  "model": "sonnet",
   "hooks": {
     "PostToolUse": [
       {
