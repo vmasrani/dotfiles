@@ -22,8 +22,11 @@ if [[ -f "$CACHE_FILE" ]]; then
     [[ $cache_age -lt $CACHE_TTL ]] && exit 0
 fi
 
-# Get OAuth token
+# Get OAuth token - try macOS keychain first, then Linux credentials file
 creds=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)
+if [[ -z "$creds" ]] && [[ -f "$HOME/.claude/.credentials.json" ]]; then
+    creds=$(cat "$HOME/.claude/.credentials.json")
+fi
 token=$(echo "$creds" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
 
 if [[ -z "$token" ]]; then
