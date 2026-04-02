@@ -46,7 +46,7 @@ else
         seven_day) printf '7d %s%%' "$val" ;;
         opus)      printf 'opus %s%%' "$val" ;;
         sonnet)    printf 'sonnet %s%%' "$val" ;;
-        credits)   printf '%s%%' "$val" ;;
+        credits)   printf 'credits %s%%' "$val" ;;
         *)         printf '%s%%' "$val" ;;
     esac
 fi
