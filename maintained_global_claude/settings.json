@@ -29,6 +29,7 @@
     "deny": [],
     "defaultMode": "plan"
   },
+  "model": "sonnet",
   "hooks": {
     "PostToolUse": [
       {
