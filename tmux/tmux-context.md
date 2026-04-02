@@ -27,4 +27,4 @@
 - **F12 nested session toggle** disables the prefix key entirely (sets `key-table off`) — the only way out is pressing F12 again. This is for SSH-within-tmux workflows to pass keys to the inner session.
 - **`@sidepanel-pane-id` / `@sidepanel-session`** are set as tmux options but the `L` key binding uses `display-popup` + `new-session -A -s sidepanel` rather than those variables — the variables appear unused/legacy.
 - **TPM auto-bootstraps**: if `~/.tmux/plugins/tpm` doesn't exist, the config clones it and runs `install_plugins` automatically on first launch.
-- **`agents_cache_refresh.sh`** reads OAuth tokens from macOS Keychain (`security find-generic-password -s "Claude Code-credentials"`) with fallback to `~/.claude/.credentials.json`. Fails silently (writes zeros) if neither is found.
+- **`agents_cache_refresh.sh`** reads OAuth tokens from macOS Keychain (`security find-generic-password -s "Claude Code-credentials"`) with fallback to `~/.claude/.credentials.json`. If no token is found, writes zeros. If the API returns an error (e.g. rate limit), preserves existing cache data rather than overwriting with zeros.
