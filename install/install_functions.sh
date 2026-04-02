@@ -464,6 +464,10 @@ install_glow() {
     go install github.com/charmbracelet/glow@latest
 }
 
+install_mdterm() {
+    cargo install mdterm
+}
+
 install_lazygit() {
     export PATH="$HOME/go/bin:$PATH"
     go install github.com/jesseduffield/lazygit@latest

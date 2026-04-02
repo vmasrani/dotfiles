@@ -117,7 +117,7 @@ export ESCDELAY=0  # Required for responsive neomutt keybindings
 export NOTMUCH_CONFIG="$HOME/.config/notmuch/notmuchrc"
 export NODE_OPTIONS="--dns-result-order=ipv4first"
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-
+export CLAUDE_CODE_NO_FLICKER=1
 # uwu shorcut
 alias ::='uwu-cli'
 alias :::='uwu'
@@ -128,7 +128,7 @@ alias gpt='oai'
 #   command codex --dangerously-bypass-approvals-and-sandbox --enable web_search_request -s workspace-write -c "sandbox_workspace_write.writable_roots=['/Users/my-user/.cache/uv']" "$@"
 # }
 
-alias g='glow'
+alias g='mdterm'
 unalias gws 2>/dev/null  # free gws for googleworkspace-cli
 
 autoload -Uz bracketed-paste-magic

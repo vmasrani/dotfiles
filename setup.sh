@@ -55,7 +55,8 @@ install_if_missing cargo install_cargo # Rust package manager and build system
 install_if_missing uv install_uv # Python package manager (must be before uvx_tools)
 install_if_missing tldr install_tealdeer # Simplified and community-driven man pages
 install_if_missing hx install_helix # Modern terminal-based text editor
-install_if_missing glow install_glow # Markdown terminal viewer with style
+install_if_missing glow install_glow # Markdown terminal viewer (used by mutt email rendering)
+install_if_missing mdterm install_mdterm # Markdown terminal viewer with style (fzf-preview, g alias)
 install_if_missing lazygit install_lazygit # Terminal UI for git commands
 install_if_missing lazydocker install_lazydocker # Terminal UI for managing Docker containers
 install_if_missing lazysql install_lazysql # Terminal UI for database management

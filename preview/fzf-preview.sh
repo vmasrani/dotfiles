@@ -7,7 +7,7 @@ TIMEOUT=5
 preview()          { timeout "$TIMEOUT" "$@" 2>/dev/null; }
 preview_bat()      { preview bat -n --color=always --line-range :$MAX_LINES "$1"; }
 preview_json()     { preview jq -C . "$1" 2>/dev/null | head -n $MAX_LINES || preview_bat "$1"; }
-preview_markdown() { preview markitdown "$1" | head -n $MAX_LINES | glow -p -w 80 -s dark; }
+preview_markdown() { preview markitdown "$1" | head -n $MAX_LINES | mdterm -w "${FZF_PREVIEW_COLUMNS:-120}"; }
 is_binary()        { file --brief --mime-encoding "$1" | grep -q 'binary'; }
 is_json()          { file --brief "$1" | grep -qi 'json'; }
 
@@ -61,7 +61,7 @@ if [[ -f "$1" ]]; then
       preview pdftotext "$1" - | head -n $MAX_LINES
       ;;
     *.md)
-      preview glow -p -w 80 -s dark "$1"
+      mdterm -w "${FZF_PREVIEW_COLUMNS:-120}" "$1" | head -n $MAX_LINES
       ;;
     *.docx|*.pptx|*.xlsx|*.epub)
       preview_markdown "$1"

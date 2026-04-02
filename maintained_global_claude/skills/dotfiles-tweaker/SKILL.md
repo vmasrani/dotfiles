@@ -90,7 +90,7 @@ Comprehensive reference for making quick, informed changes to the dotfiles repo 
 | `fd` | `fd -HI` (hidden + ignored) |
 | `rg` | `rg --no-ignore` |
 | `bat` | `bat -n --color=always` |
-| `g` | `glow` |
+| `g` | `mdterm` |
 | `mutt` | `neomutt -F ~/.config/mutt/muttrc` |
 | `::` | `uwu-cli` |
 | `:::` | `uwu` (interactive wrapper) |
