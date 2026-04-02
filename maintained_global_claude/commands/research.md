@@ -10,7 +10,7 @@ You have six helper tools on PATH (in `~/tools/`):
 
 - **`ctx-index [dir] [--full] [--depth N]`** — Project map: one summary line per directory from all `*-context.md` files. Use `--full` to include file count and date metadata. Use `--depth N` to limit search depth (e.g., `--depth 1` for top-level only).
 - **`ctx-tree [dir] [depth]`** — Shows directory tree using eza (respects gitignore, filters noise). Default depth: 3.
-- **`ctx-peek [dir] [lines] [--depth N]`** — Shows first N lines of all `*-context.md` files under a directory. Default: 12 lines. Use `--depth N` to limit search depth.
+- **`ctx-peek [dir] [lines] [--depth N]`** — Preview context files. No args = this dir only; with dir = dir + immediate children (depth 1). Default: 12 lines. Use `--depth N` to override.
 - **`ctx-stale [dir] [--max-depth N] [--min-files N]`** — Lists directories with missing or stale context files. Skips dirs with fewer than N files (default: 2) and limits scan depth (default: 4).
 - **`ctx-skip [dir] [reason]`** — Mark a directory as skipped for context generation. Creates a stub with a SKIP marker.
 - **`ctx-reset [dir] [--dry-run]`** — Remove all `*-context.md` files from a directory tree. Use `--dry-run` to preview. Useful for starting fresh.
@@ -32,20 +32,40 @@ Only directories listed as MISSING or STALE need processing.
 
 **Tip:** Use `ctx-reset {dir}` to clear all context files and start from scratch.
 
-### 3. Generation
-For each directory needing a context file, launch a `context-researcher` agent via the Task tool with `model: haiku`.
+### 3. Ordering (bottom-up)
 
-**Launch ALL agents in a single message** — multiple Task calls in one response. Do **NOT** use `run_in_background`. Do **NOT** use `TaskOutput`. Parallel Task calls in a single message already run concurrently.
+Split the directories needing processing into two groups:
+
+- **Leaves**: directories that have NO subdirectories in the processing list
+- **Parents**: directories that have at least one subdirectory in the processing list
+
+To determine this: for each directory in the MISSING/STALE list, check if any other directory in that list is a child path of it. If yes, it's a parent. If no, it's a leaf.
+
+Process leaves first (Step 4a), wait for all to complete, then process parents (Step 4b). This ensures parent context files can leverage child summaries via `ctx-index`.
+
+### 4. Generation
+
+For each directory needing a context file, launch a `context-researcher` agent via the Agent tool with `model: sonnet`.
 
 Use a **short** description (e.g., `"ctx: src/utils"`). The agent prompt should be:
 > Analyze the directory `{path}` and write the context file to `{path}/{dirname}-context.md`. Today's date is {YYYY-MM-DD}. Return ONLY "SUCCESS: wrote {path}" or "ERROR: {path} — {reason}". Nothing else.
 
-Each agent returns a single status line as its Task return value. That is all you need.
+Each agent returns a single status line. That is all you need.
 
-**CRITICAL:** Do NOT read the generated context files. Do NOT use TaskOutput or Read to check agent output files. The Task return values are your only input for the report.
+#### 4a. Generate leaf directories
 
-### 4. Report
-Read each Task return value (a single status line per agent). Summarize:
+Launch `context-researcher` agents for ALL leaf directories in a single message (parallel Agent calls). Wait for all to complete before proceeding.
+
+#### 4b. Generate parent directories
+
+Launch `context-researcher` agents for ALL parent directories in a single message (parallel Agent calls). These agents will use `ctx-index {dir} --depth 1` to pull summaries from the child context files generated in step 4a.
+
+**CRITICAL:** Do NOT read the generated context files. The agent return values are your only input for the report.
+
+### 5. Report
+Read each agent return value (a single status line per agent). Summarize:
+- **Phase 1 (leaves):** N directories processed
+- **Phase 2 (parents):** N directories processed
 - **Created:** N new context files
 - **Updated:** N refreshed context files
 - **Skipped (SKIP marker):** N directories with intentional SKIP markers

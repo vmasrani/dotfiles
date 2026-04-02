@@ -11,7 +11,7 @@ Some projects have `*-context.md` files for progressive disclosure. Each lives i
 
 **Available commands:**
 - `ctx-index [dir] --depth N` — one-line summary per directory from context files
-- `ctx-peek [dir] [lines]` — preview first N lines of each context file
+- `ctx-peek [dir] [lines]` — preview context files. No args = this dir only; with dir = dir + immediate children; `--depth N` for deeper
 - `ctx-tree [dir] [depth]` — directory tree via eza (use when no context files exist)
 - `ctx-stale [dir]` — find directories with missing or outdated context files
 - `ctx-reset [dir]` — remove all context files (to regenerate with `/research`)

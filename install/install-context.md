@@ -1,21 +1,31 @@
 # install
-> Installation helper functions and tool-specific install scripts orchestrated by setup.sh.
-`5 files | 2026-03-18`
+> Core installation helpers and one-off install scripts orchestrated by `setup.sh` at the repo root.
+`5 files | 2026-04-02`
 
-## Key Files
-| File | Purpose |
-|------|---------|
-| `install_functions.sh` | Core helpers: `install_if_missing`, `install_if_dir_missing`, `install_on_brew_or_mac`, `install_dotfiles`. Provides idempotent install abstraction across OS |
-| `install_helix_language_servers.sh` | Installs Helix LSPs via npm, cargo, and builds grammar with `hx --grammar` |
-| `install-parquet-tools.sh` | Downloads parquet-tools binary release and places in ~/bin |
+| Entry | Purpose |
+|-------|---------|
+| `install_functions.sh` | The heart of the install system — sourced by `setup.sh`. Defines `install_if_missing`, `install_if_dir_missing`, `install_on_brew_or_mac`, and the critical `install_dotfiles` function that manages all ~160 symlinks |
+| `install_helix_language_servers.sh` | One-shot script to install LSPs via npm/cargo and build Helix grammars — run manually, not via setup.sh |
+| `install_htop.sh` | Builds htop from source into `~/bin` — Linux-only, raw bash (no gum), pre-dates current conventions |
+| `install_tar.sh` | One-off tar installation helper |
+| `install-parquet-tools.sh` | One-off parquet tools installation helper |
+
+<!-- peek -->
 
 ## Conventions
-- All scripts use `OS_TYPE` (set in `install_functions.sh`) to branch between Linux (apt) and macOS (brew)
-- Install function names follow pattern `install_<tool>` and are passed to `install_if_missing` by `setup.sh`
-- Scripts source `shell/helper_functions.sh` and `shell/gum_utils.sh` instead of raw `echo`
-- `install_dotfiles` handles ~160 symlinks with force-replace logic for Claude/Codex config directories
+
+`install_functions.sh` sources `shell/helper_functions.sh` and `shell/gum_utils.sh` at the top — these must exist before this file is usable. It detects `$OS_TYPE` (mac/linux) at load time; all platform branching uses `install_on_brew_or_mac <linux-pkg> [mac-pkg]` where the mac package defaults to the linux package name if omitted.
+
+`install_dotfiles` uses `ensure_symlink source target force_link`. By default, symlinks are skipped if target already exists and is not broken — it does NOT overwrite. The `force_replace_targets` array is the exception: those targets (all `~/.claude/*` and `~/.codex/config.toml`) are always deleted and re-linked, making Claude/Codex config idempotent.
+
+One-off scripts (`install_htop.sh`, `install_helix_language_servers.sh`, etc.) are NOT called from `setup.sh` — they are standalone scripts invoked manually for specific situations.
 
 ## Gotchas
-- `install_on_brew_or_mac` takes positional args: ($1 = Linux pkg, $2 = macOS pkg); second arg defaults to first if omitted
-- `install_helix_language_servers.sh` assumes npm, cargo, and hx already exist — fails if missing dependencies
-- `install_dotfiles` symlink definitions are hardcoded inline (line 100+), not data-driven; changes require manual editing
+
+`install_dotfiles` skips symlinking `maintained_global_claude/plugins/` — that directory contains machine-specific paths and must not be symlinked globally.
+
+`install_htop.sh` uses raw `echo` and `apt` without gum wrappers and assumes Linux — running on macOS will fail silently partway through.
+
+Local (machine-specific) skills in `$dotfiles/local/local_skills/` are symlinked into `maintained_global_claude/skills/` by `install_dotfiles` at the end of the loop — they won't appear in `~/.claude/skills/` until `setup.sh` is re-run.
+
+`install_functions.sh` uses `find` (not `fd`) for `chmod +x` on `.sh` files — this is intentional legacy behavior inside the install system.

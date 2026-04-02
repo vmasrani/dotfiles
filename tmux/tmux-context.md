@@ -1,52 +1,30 @@
 # tmux
+> Tmux config with Catppuccin/powerkit status bar, vi-mode, popup sessions, and Claude API usage widgets.
+`29 files | 2026-04-02`
 
-## Purpose
-Tmux configuration with vi-keybindings, dynamic status bar with system metrics, session management, and specialized agent toolbar. Includes platform-specific clipboard integration (macOS/Linux) and plugin infrastructure via TPM.
+| Entry | Purpose |
+|-------|---------|
+| `.tmux.conf` | Main config — keybindings, plugin declarations, powerkit theme, session hooks |
+| `catppuccin-mocha-vibrant.sh` | Local theme override loaded by powerkit for non-SSH sessions |
+| `catppuccin-macchiato-vibrant.sh` | Local theme override loaded by powerkit for SSH sessions |
+| **scripts/** | Status bar scripts, session hooks, Claude usage cache |
 
-## Key Files
-| File | Role | Notable Features |
-|------|------|-----------------|
-| `.tmux.conf` | Core tmux configuration | Vi-mode navigation, Catppuccin v2.1.3 theme, statusline setup, hotkeys (F11 agents, L sidepanel) |
-| `cpu_status.sh` | CPU usage display | macOS (top) and Linux (/proc/stat) support, formatted percentage output |
-| `ram_status.sh` | RAM usage display | Used/total GB format, cross-platform memory calculation |
-| `network_status.sh` | Network monitoring | SSID detection, current/5m/1h max throughput tracking, history caching |
-| `battery_status.sh` | Battery indicator | Dynamic color gradient (green→red), charging icons, dual-platform support |
-| `gpu_status.sh` | GPU metrics | nvidia-smi query mode, multi-GPU aggregation, memory + utilization |
-| `load_status.sh` | System load average | 1m/5m/15m format, cross-platform parsing |
-| `agents_status_bar.sh` | Agents status bar renderer | Builds full status-right replacement with Claude usage pills for agents session |
-| `pk_claude_metric.sh` | Claude metric pill | Renders individual usage metric (5h, 7d, opus, sonnet, credits, reset) with color gradients |
-| `agents_cache_refresh.sh` | Centralized API cache | Atomic mkdir locking, 60s TTL, single jq parse |
-| `agents_count.sh` | Agent session pane count | Detects running agent processes in tmux |
-| `update_session_status.sh` | Session-specific toolbar | Injects `status-format[0]` override for agents session (crab icon, usage pills via `agents_status_bar.sh`); reverts via `tmux set-option -u` on session switch |
+<!-- peek -->
 
-## Patterns
-- **Status bar composability**: Pills built with repeating `#[fg=X,bg=Y]` format + Powerline separators (hex-escaped U+E0B6/U+E0B4)
-- **Atomic caching**: mkdir-based locking (macOS-compatible alternative to flock) with double-check after acquisition
-- **Background refresh**: Usage scripts trigger cache refresh asynchronously (`&>/dev/null &`) then read cache synchronously
-- **Cross-platform detection**: `uname -s` branching for macOS/Linux in every system metric script
-- **Session hooks**: `set-hook` triggers status bar updates when switching sessions (agents-specific styling)
-- **Plugin management**: TPM auto-install on first run, loads Catppuccin, resurrect/continuum, extrakto, fzf-pane-switch
+## Conventions
 
-## Dependencies
-- **External**: tmux plugins (tmux-sensible, tmux-resurrect, tmux-continuum, extrakto, fzf-pane-switch, catppuccin/tmux), nvidia-smi (optional GPU monitoring), jq (JSON parsing), gdate/date (countdown calc), pbcopy/xclip (clipboard)
-- **Internal**: References symlinked `~/.tmux/plugins/tpm/tpm`, `~/.tmux.conf.local` (optional local overrides)
+- **Powerkit plugins** use an `external(icon|value|bg|lighter|interval)` DSL — all status bar widgets are defined inline in `.tmux.conf` via `@powerkit_plugins`. Scripts in `scripts/` are referenced by absolute path (`$HOME/dotfiles/tmux/scripts/...`).
+- **SSH vs local branching**: `.tmux.conf` uses `if-shell '[ -n "$SSH_CLIENT" ]...'` twice — once for powerkit theme path, once for the plugins list. SSH sessions include `gpu_status.sh` and `ssh_status.sh` but omit battery; local sessions include battery and weather.
+- **Agents session** gets a fully custom status bar: `update_session_status.sh` is triggered by the `client-session-changed` hook and by `run-shell` at the end of `.tmux.conf` (post-TPM). It replaces powerkit's center render with `agents_status_bar.sh` and patches the session pill to orange with a 🦀 icon.
+- **Claude usage cache**: `agents_cache_refresh.sh` writes to `/tmp/claude_usage_cache.json` with a 60-second TTL and `mkdir`-based atomic locking. `pk_claude_metric.sh` reads this cache and triggers background refresh on subsequent calls.
+- **Transparency**: Popup and window backgrounds are forced to `bg=default` after TPM runs (post-TPM section) so iTerm2 transparency shows through. These overrides must stay after `run '~/.tmux/plugins/tpm/tpm'`.
+- **Homebrew PATH fix**: `run-shell` near the bottom of `.tmux.conf` prepends `/opt/homebrew/bin` and `~/.fzf/bin` to tmux's PATH — required because powerkit needs bash 5+ from Homebrew.
 
-## Entry Points
-- `.tmux.conf`: Main configuration sourced by tmux on startup; loads all plugins via TPM
-- Status bar integration: Scripts called every 2-5s via tmux status-interval, run non-blocking via command substitution `#(...)`
-- Session hooks: `client-session-changed` triggers `update_session_status.sh` to reapply agent toolbar on attach
+## Gotchas
 
-## Subdirectories
-| Directory | Purpose | Has Context File |
-|-----------|---------|-----------------|
-| `scripts/` | Executable status bar scripts, cache management, session hooks | No |
-| `scripts/.claude/` | Claude Code workspace logs (temporary, not part of config) | No |
-| `scripts/backup/` | Archived theme variants (dracula.sh, catppuccin.sh) | No |
-
-## Notable Implementation Details
-- **Catppuccin Macchiato colors**: Hardcoded hex values for base (#24273a), crust (#181926), semantic colors (peach, teal, sapphire, blue, green)
-- **Network script caching**: Maintains `/tmp/tmux_net_history` to track min/5m/1hr throughput peaks across status bar updates
-- **Battery interpolation**: Charts charging/discharging states with 15+ Nerd Font icons covering 0-100% ranges
-- **GPU aggregation**: Sums memory/utilization across multiple GPUs, outputs "2x" prefix for multi-GPU systems
-- **Claude usage gradients**: `lerp()` function blends green→red as usage % increases, countdown uses overlay→green gradient
-- **Agents toolbar**: Special status-left "crab" pill with prefix indicator (yellow on prefix), window shows agent count via tmux pane introspection
+- **`update_session_status.sh` runs twice at startup** — once via the `client-session-changed` hook and once via `run-shell` at the very end of `.tmux.conf`. This is intentional: powerkit overwrites `status-format[0]`, so the second call re-applies the agents override after TPM finishes.
+- **Pane border status** is session-specific: `off` globally, `top` only in the `agents` session. This is set by `update_session_status.sh`, not in `.tmux.conf` directly — editing `.tmux.conf` won't change agents behavior.
+- **F12 nested session toggle** disables the prefix key entirely (sets `key-table off`) — the only way out is pressing F12 again. This is for SSH-within-tmux workflows to pass keys to the inner session.
+- **`@sidepanel-pane-id` / `@sidepanel-session`** are set as tmux options but the `L` key binding uses `display-popup` + `new-session -A -s sidepanel` rather than those variables — the variables appear unused/legacy.
+- **TPM auto-bootstraps**: if `~/.tmux/plugins/tpm` doesn't exist, the config clones it and runs `install_plugins` automatically on first launch.
+- **`agents_cache_refresh.sh`** reads OAuth tokens from macOS Keychain (`security find-generic-password -s "Claude Code-credentials"`) with fallback to `~/.claude/.credentials.json`. Fails silently (writes zeros) if neither is found.

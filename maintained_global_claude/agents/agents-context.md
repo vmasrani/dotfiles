@@ -1,25 +1,29 @@
-# Claude Code Agents
-> Specialized agent definitions for structured product development workflows: discovery, specification, testing, planning, code review, and codebase analysis.
-`8 files | 2026-03-18`
+# agents
+> Claude Code subagent definitions symlinked to `~/.claude/agents/` — invoked automatically by the Claude harness based on their `description` trigger text.
+`8 files | 2026-04-02`
 
-## Key Files
-| File | Purpose |
-|------|---------|
-| context-researcher.md | Generates structured context markdown files by analyzing directories for non-obvious conventions, gotchas, and key entry points (YAML + algorithm-heavy instructions) |
-| spec-interviewer.md | Conducts structured interviews to extract requirements and produce declarative success criteria in `SC-N:` format (testable, verifiable, independent statements) |
-| test-generator.md | Generates exhaustive failing test suites across 5 categories (happy path, boundary, error, edge, integration) with phase-based workflow covering context discovery, framework detection, and justfile generation |
-| plan-writer.md | Breaks specifications into actionable subtasks with dependencies, delivery order, and implementation guidance |
-| structural-completeness-reviewer.md | Audits code for correctness, test coverage, edge cases, architectural alignment; identifies risks and missing requirements |
+| Entry | Purpose |
+|-------|---------|
+| `context-researcher.md` | Analyzes a single directory and writes a `*-context.md` file; called by the `/research` skill |
+| `structural-completeness-reviewer.md` | Post-change hygiene reviewer — checks dead code, incomplete integrations, dev artifacts; NOT a logic reviewer |
+| `plan-writer.md` | Converts research findings + success criteria into a step-by-step implementation plan with exact file paths; uses opus |
+| `spec-interviewer.md` | Interviews the user to extract requirements and produce a declarative spec; reads NO code |
+| `codebase-researcher.md` | Maps a codebase via `ctx-index`/`ctx-peek` to find integration points for a feature |
+| `test-generator.md` | Generates failing test suites across 5 categories and verifies the red phase |
+| `vault-analyst.md` | Read-only Dendron daily-notes pattern detector; never writes to vault files |
+| `modern-translation.md` | Rewrites archaic/old-fashioned English prose into plain modern English |
+
+<!-- peek -->
 
 ## Conventions
-- **YAML frontmatter:** Each agent file starts with `name`, `description`, and `model` (e.g., `model: haiku`, `model: sonnet`)
-- **Markdown instruction format:** All agents use markdown-based instructions (not JSON configs) following "Phase N --" structure for multi-step workflows
-- **Success criteria format:** `SC-N: {When X, Y should result}` — atomic, testable, verifiable statements extracted by spec-interviewer
-- **Tool usage:** Agents use AskUserQuestion for interactive discovery; other agents use Bash, Glob, and Read tools for context gathering
-- **SKIP marker pattern:** Context files (including agents-context.md itself) support `> SKIP` on line 2 to prevent overwriting during regeneration
+
+Each agent file uses YAML front matter with `name`, `description`, and `model` fields. The `description` field is what the Claude harness matches against to auto-invoke the agent — it doubles as the trigger condition and must be precise. Agents that should run on opus say so explicitly in front matter; the rest default to sonnet.
+
+These files are the source of truth — edits must be made here in `maintained_global_claude/agents/`, never directly in `~/.claude/agents/`, which is a symlink target managed by `setup.sh`.
 
 ## Gotchas
-- **Phase ordering:** test-generator requires completed spec files with `SC-N:` success criteria in `.claude/specs/` — passing vague requirements causes test generation to fail silently or produce weak tests
-- **Framework detection:** test-generator auto-detects Python/JS/Rust/Go; JS projects must have either `vitest.config.*` or `jest.config.*` present, or it defaults to pytest (Python)
-- **Justfile idempotency:** test-generator preserves existing recipes in justfile; new recipes are appended only if missing — re-running with a modified justfile risks creating duplicates if not careful
-- **Model assignments:** context-researcher uses haiku (small context), others use sonnet (larger); don't swap models without testing token budgets for large codebases
+
+- `spec-interviewer` explicitly does NOT read code — it only interviews the user. Do not ask it to analyze files.
+- `structural-completeness-reviewer` does NOT check functional correctness, test quality, or style — only structural hygiene (dead code, missing integrations, dev artifacts).
+- `vault-analyst` is read-only by design; it must never modify Dendron vault files even if asked.
+- Several agents (`plan-writer`, `spec-interviewer`, `codebase-researcher`, `test-generator`) are designed to be orchestrated together by the `create-plan` skill — they are not meant to be standalone entry points in most workflows.

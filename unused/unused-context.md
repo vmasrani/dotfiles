@@ -1,48 +1,20 @@
 # unused
+> Graveyard of retired scripts and configs kept for reference but not symlinked or sourced anywhere.
+`5 files | 2026-04-02`
 
-## Purpose
+| Entry | Purpose |
+|-------|---------|
+| `make-ml3.sh` | Creates a conda env named `ml3` with PyTorch 1.12 + CUDA 10.2 — pinned to old versions, not used in current uv-based workflow |
+| `remove_submodule.sh` | One-shot script that removed an `update-golang` git submodule; hardcoded to push to `mac` branch, not idempotent |
+| `setup_runpod.sh` | Bootstraps a RunPod cloud GPU instance: installs zsh, symlinks `/workspace/*` dirs to `$HOME`, sets up dotfiles — Linux-only |
+| `.curlrc` | curl defaults (e.g., silent flags); not symlinked by `install_dotfiles` |
+| `.wgetrc` | wget defaults; not symlinked by `install_dotfiles` |
 
-Archive directory containing deprecated configuration files and scripts that are no longer actively used but retained for reference or historical purposes.
+<!-- peek -->
 
-## Key Files
+## Conventions
+Nothing here is wired into `setup.sh` or `install_dotfiles` — files are retained purely as reference snippets, not active config.
 
-| File | Role | Details |
-|------|------|---------|
-| `.curlrc` | Configuration | Curl proxy settings (commented out, no longer used) |
-| `.wgetrc` | Configuration | Wget configuration file (empty) |
-| `make-ml3.sh` | Setup script | Legacy Miniconda3 + PyTorch ML environment installer for Python 3.10 |
-| `remove_submodule.sh` | Git utility | Helper script to remove a git submodule (`update-golang`) |
-| `setup_runpod.sh` | Setup script | Legacy RunPod environment setup script with symlink bridging |
-
-## Patterns
-
-- Bash shell scripts with `set -e` for error handling
-- Manual directory/file symlinking for environment setup
-- Legacy conda/pip package management approach (superceded by uv)
-- Git submodule management
-
-## Dependencies
-
-**External:**
-- bash
-- wget
-- conda/miniconda
-- git
-- apt (Linux package manager)
-- pip
-
-**Internal:**
-- None (standalone legacy scripts)
-
-## Entry Points
-
-- `setup_runpod.sh` — Historical RunPod environment setup (superseded by active `/setup_runpod.sh`)
-- `make-ml3.sh` — Historical ML environment setup (deprecated in favor of uv)
-
-## Notes
-
-All files in this directory are marked as unused and kept for historical reference:
-- `.curlrc` and `.wgetrc` contain proxy settings no longer needed
-- `make-ml3.sh` represents an older Python/PyTorch setup approach before migration to uv-based dependency management
-- `setup_runpod.sh` is an earlier version of RunPod bootstrap logic (active version exists in repository root)
-- `remove_submodule.sh` is a one-off utility from past git submodule cleanup
+## Gotchas
+`remove_submodule.sh` contains hardcoded branch name `mac` and submodule name `update-golang`; running it blindly on the current repo would corrupt git state.
+`make-ml3.sh` uses conda and pins very old CUDA/PyTorch versions — incompatible with the project's current `uv`-based Python toolchain.

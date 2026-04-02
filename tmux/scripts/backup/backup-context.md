@@ -1,35 +1,22 @@
 # backup
+> Archived tmux theme entry-point scripts (Dracula and Catppuccin) kept as reference before theme migration.
+`2 files | 2026-04-02`
 
-_Last updated: 2026-01-27_
+| Entry | Purpose |
+|-------|---------|
+| `dracula.sh` | Full Dracula theme entry point — sets all tmux status-bar colors, plugin dispatch loop, and window styling via `@dracula-*` tmux options |
+| `catppuccin.sh` | Catppuccin Macchiato variant of the same entry point — identical structure but uses Catppuccin palette; maps Dracula semantic names (`white`, `gray`, `cyan`, etc.) to Catppuccin equivalents for backward compat |
 
-## Purpose
-Legacy theme configuration scripts for tmux status bar rendering. Contains backup/archived theme implementations (Dracula and Catppuccin color palettes) that configure tmux status bar appearance, plugins, and styling via tmux options.
+<!-- peek -->
 
-## Key Files
-| File | Role | Notable Exports |
-|------|------|-----------------|
-| dracula.sh | Dracula theme configuration for tmux status bar | main() — applies color palette, status formatting, and plugin rendering |
-| catppuccin.sh | Catppuccin Macchiato theme configuration for tmux status bar | main() — applies Catppuccin color palette with semantic aliases for backward compatibility |
+## Conventions
 
-## Patterns
-**Theme Configuration Pattern**: Both files follow identical architecture: read tmux options using `get_tmux_option()` helper, define color palettes, apply conditional styling based on options, and render status bar with plugins via tmux set-option commands.
+These scripts are NOT the active theme scripts — they are backups of upstream theme entry points before local customization. The active scripts live in `../` (the parent `tmux/scripts/` directory).
 
-**Plugin System**: Modular plugin support via array iteration; each plugin branch reads its own color config, resolves the script path, and appends formatted output to status-right.
+Both scripts source a `utils.sh` from their `current_dir`, which does not exist in this backup directory. Running either script directly will fail because `utils.sh` is missing.
 
-**Configuration Abstraction**: Color palette defined as bash variables, then aliased to semantic names (e.g., `white="$text"`, `cyan="$sapphire"`) for cross-theme option compatibility.
+## Gotchas
 
-## Dependencies
-- **Internal**: `/Users/vmasrani/dotfiles/tmux/scripts/utils.sh` (get_tmux_option helper function)
-- **External**: tmux binary (set-option, set-window-option, set-status commands)
+`catppuccin.sh` defines Dracula-named semantic aliases (`white`, `gray`, `dark_purple`, etc.) that map to Catppuccin colors — color variable names do NOT match their visual appearance. For example, `cyan` resolves to Catppuccin `sapphire` (#7dc4e4).
 
-## Notable Features
-- 40+ configuration options via `@dracula-*` tmux variables (military time, timezone, powerline separators, plugin selection)
-- 30+ supported plugins (battery, network, weather, kubernetes, terraform, git, etc.)
-- Conditional styling for powerline edges, transparent backgrounds, and window dividers
-- Narrow mode support for compact status bar layouts
-- Custom plugin support with executable script injection
-- Dynamic color override system via `@dracula-colors` option
-- Semantic color aliasing for backward compatibility between themes
-
-## Subdirectories
-None
+Both scripts use `eval "$colors"` to apply user-overridden colors from the `@dracula-colors` tmux option, which allows arbitrary code execution via tmux config.

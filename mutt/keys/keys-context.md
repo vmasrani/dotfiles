@@ -1,87 +1,24 @@
-# mutt/keys
+# keys
+> Neomutt keybinding config: wipes ALL default bindings then applies a clean vim-style layer.
+`2 files | 2026-04-02`
 
-_Last updated: 2026-01-27_
+| Entry | Purpose |
+|-------|---------|
+| `unbinds.muttrc` | Nukes every default mutt binding across all contexts — must be sourced BEFORE binds.muttrc |
+| `binds.muttrc` | Full vim-style rebind: j/k navigation, gg/G top/bottom, Ctrl+j/k for sidebar, compose shortcuts |
 
-## Purpose
+<!-- peek -->
 
-Defines custom keybindings for NeoMutt email client. Uses a comprehensive unbind-first strategy to override all default bindings, then selectively rebinds keys with vim-style navigation. This creates a clean, predictable keymap centered on hjkl movement and mnemonic single-character commands.
+## Conventions
 
-## Key Files
+`unbinds.muttrc` must be sourced first in the parent muttrc — it blanket-noops every key across all contexts (generic, pager, editor, index, compose, browser, attach), so any bind defined before it will be silently overwritten.
 
-| File | Role | Notable Exports |
-|------|------|-----------------|
-| unbinds.muttrc | Clears all default mutt keybindings across all contexts (generic, index, pager, compose, attach, browser, query, alias) | Removes ~400+ default bindings by mapping to noop |
-| binds.muttrc | Defines custom vim-style keybindings for all mutt interface modes | Navigation (hjkl), mail ops (t/d/u), compose (y/a/p), sidebar (Ctrl+b/j/k) |
+The `D` (delete) and `A` (archive) macros in `binds.muttrc` use `:set resolve=no` guards to prevent mutt from auto-advancing to the next message after the action — this is intentional and must be preserved if those macros are edited.
 
-## Patterns
+## Gotchas
 
-**Unbind-first architecture**: Clears the entire default keymap in `unbinds.muttrc` by binding all alphanumerics, symbols, and special keys to `noop` across all contexts (generic, pager, editor, index, compose, browser, attach). This prevents accidental triggering of confusing mutt defaults.
+`\ci` (Ctrl+I) and `<Tab>` are the same key in terminals — `unbinds.muttrc` noops `<Tab>` globally, so `\ci` in binds.muttrc (limit by flagged on index) works because it's re-bound after the noop. Adding new `<Tab>` binds in other contexts requires a corresponding re-bind here.
 
-**Vim-style navigation**: Rebinds in `binds.muttrc` using hjkl for movement (pager: j/k for next/prev line, G/gg for bottom/top). Arrow keys still supported for discoverability.
+The `gg` binding is implemented differently across contexts: in pager it goes to `top` (a pager-specific function), but in index/attach/browser/query it maps to `first-entry` — these are not interchangeable.
 
-**Context-aware bindings**: Some keys differ by context (index vs pager vs compose) using `bind index,pager` syntax to apply across multiple modes efficiently.
-
-**Mnemonic commands**: Single-letter commands map to actions (f=change-folder, c=compose, r=reply, d=delete, t=tag, etc.).
-
-## Key Bindings
-
-### Navigation
-- `j/k` / Arrow keys: Previous/next line (pager), previous/next entry (index/browser)
-- `G/gg`: Bottom/top of list or message
-- `h/l`: Collapse/expand threads in index
-- `zz/zt/zb`: Center/top/bottom current line
-- `<Ctrl-u/d>`: Half-page up/down
-
-### Mail Operations
-- `t`: Tag message
-- `T`: Tag entire thread
-- `d`: Delete message
-- `u`: Undelete message
-- `<Space>`: Flag message
-- `\` (backslash): Limit/filter view
-- `D`: Delete with archive (macro)
-- `A`: Archive to All Mail (macro)
-
-### Compose & Replies
-- `c`: Compose new
-- `r`: Reply
-- `R`: Group reply
-- `F`: Forward
-- `<Ctrl-r>`: Recall from drafts
-
-### Compose Screen
-- `y`: Send
-- `a`: Attach file
-- `p`: Postpone
-- `e`: Edit message body
-- `t/f/s/c/b`: Edit To/From/Subject/Cc/Bcc
-- `<Ctrl-k/j>`: Move up/down in attachment list
-
-### Sidebar & Navigation
-- `<Ctrl-b>`: Toggle sidebar
-- `<Ctrl-j/k>`: Next/prev folder in sidebar
-- `<Ctrl-o>`: Open selected folder
-- `f`: Change folder
-- `$`: Sync/refresh mailbox
-
-### Misc
-- `n/N`: Search next/previous
-- `p`: Search opposite direction
-- `v`: View attachments
-- `L`: Edit labels
-- `H`: View raw message
-- `|`: Pipe message
-- `\Cl`: Open links with urlscan (macro)
-- `O`: Run mbsync to sync all mail (macro)
-- `<Ctrl-a>`: Mark all as read (macro)
-- `q`: Exit (all contexts)
-- `<Esc>`: Abort key
-
-## Dependencies
-
-- **External**: NeoMutt mail client
-- **Internal**: Sourced by main mutt configuration file
-
-## Entry Points
-
-These files are sourced from the main mutt config (typically `~/.muttrc` or `~/.config/neomutt/neomuttrc`) via `source` directives to apply keybindings at startup.
+Archive macro (`A`) hardcodes `=[Gmail].All\ Mail` as the destination — Gmail-specific, will break for non-Gmail IMAP accounts.

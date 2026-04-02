@@ -1,51 +1,22 @@
-# TTS Utils
+# tts
+> Three interchangeable TTS backends (ElevenLabs, OpenAI, pyttsx3) invoked by hooks to speak notifications aloud.
+`3 files | 2026-04-02`
 
-_Last updated: 2026-01-27_
+| Entry | Purpose |
+|-------|---------|
+| `pyttsx3_tts.py` | Offline fallback TTS — no API key needed; randomizes completion phrases when called with no args |
+| `elevenlabs_tts.py` | High-quality cloud TTS via ElevenLabs Turbo v2.5; hardcoded voice ID `cgSgspJ2msm6clMCkdW9` |
+| `openai_tts.py` | Streaming cloud TTS via `gpt-4o-mini-tts`; uses async `LocalAudioPlayer` for live playback |
 
-## Purpose
+<!-- peek -->
 
-Collection of text-to-speech utility scripts supporting multiple TTS backends (OpenAI, ElevenLabs, pyttsx3). Each script is standalone and configured via uv inline dependencies, accepting custom text via command-line arguments with sensible defaults.
+## Conventions
+- All three scripts share the same CLI interface: text is passed as positional args (`script.py "say this"`), or a default phrase is used when called with no args.
+- All use the `#!/usr/bin/env -S uv run --script` shebang with inline `# /// script` dependency blocks — no venv setup required.
+- API keys are read from env vars (`ELEVENLABS_API_KEY`, `OPENAI_API_KEY`) loaded via `python-dotenv`; secrets live in `local/.local_env.sh` (git-ignored).
 
-## Key Files
-
-| File | Role | Notable Exports |
-|------|------|-----------------|
-| `openai_tts.py` | OpenAI GPT-4o-mini TTS with streaming and async support | `main()` async function, uses LocalAudioPlayer |
-| `elevenlabs_tts.py` | ElevenLabs Turbo v2.5 high-speed TTS synthesis | `main()` with ElevenLabs API integration |
-| `pyttsx3_tts.py` | Offline cross-platform TTS (no API required) | `main()` with pyttsx3 engine configuration |
-
-## Patterns
-
-- **CLI argument handling**: Text input via command-line arguments or random/default fallback
-- **Environment-based configuration**: API keys loaded from `.env` via `python-dotenv`
-- **UV inline dependencies**: Each script declares its own dependencies in PEP 723 format
-- **Async support**: OpenAI implementation uses `asyncio` for streaming audio
-
-## Dependencies
-
-- **External:**
-  - openai (with voice_helpers)
-  - elevenlabs
-  - pyttsx3
-  - python-dotenv
-
-- **Internal:** None
-
-## Entry Points
-
-- `openai_tts.py` — AsyncOpenAI client with streaming TTS and LocalAudioPlayer playback
-- `elevenlabs_tts.py` — ElevenLabs Turbo v2.5 model with cgSgspJ2msm6clMCkdW9 voice
-- `pyttsx3_tts.py` — Offline pyttsx3 engine with 180 WPM speech rate
-
-## Features
-
-- **OpenAI**: Async streaming with custom instructions ("Speak in a cheerful, positive yet professional tone")
-- **ElevenLabs**: Fast Turbo v2.5 model optimized for real-time use
-- **pyttsx3**: Offline operation (no API), random completion messages when no text provided, configurable volume (0.8) and rate (180 WPM)
-
-## Notes
-
-- All scripts follow uv shebang pattern: `#!/usr/bin/env -S uv run --script`
-- Error handling includes graceful fallbacks for missing API keys and import errors
-- OpenAI and ElevenLabs require environment variables: `OPENAI_API_KEY` and `ELEVENLABS_API_KEY` respectively
-- pyttsx3 requires no external authentication
+## Gotchas
+- `openai_tts.py` is the only async script (`asyncio.run(main())`); the ElevenLabs and pyttsx3 variants are synchronous — mixing them in a hook requires knowing which is called.
+- The ElevenLabs voice ID is hardcoded — changing voice requires editing the script directly, not a config.
+- `pyttsx3` plays audio synchronously and blocks until done; the OpenAI script streams audio live. Hook callers that care about latency should choose accordingly.
+- `openai_tts.py` requires `openai[voice_helpers]` for `LocalAudioPlayer` — the extra bracket syntax matters for the inline dependency declaration.

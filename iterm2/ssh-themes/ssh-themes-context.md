@@ -1,32 +1,21 @@
 # ssh-themes
-> iTerm2 dynamic profiles for SSH sessions, with 10 pre-built theme configurations.
-`11 files | 2026-03-03`
+> iTerm2 Dynamic Profile themes that visually distinguish SSH sessions; activated via symlink into iTerm2's DynamicProfiles dir.
+`11 files | 2026-04-02`
 
-## Key Files
-| File | Role |
-|------|------|
-| switch-ssh-theme | CLI to select and activate SSH themes via gum selector |
-| 01-subtle-tint.json | Warm amber tint theme for iTerm2 SSH profiles |
-| 03-catppuccin-mocha.json | Popular pastel dark theme (Catppuccin Mocha) |
-| 04-cyberpunk-neon.json | Electric pink/cyan neon theme on deep purple |
-| 10-red-alert.json | High-contrast dark charcoal with red accents |
+| Entry | Purpose |
+|-------|---------|
+| `switch-ssh-theme` | Interactive gum-based selector; symlinks chosen theme JSON to `~/Library/Application Support/iTerm2/DynamicProfiles/ssh-server.json` |
+| `01-subtle-tint.json` – `10-red-alert.json` | iTerm2 DynamicProfile JSON snippets — each defines an "SSH-Server" profile that inherits from "Hotkey Window" parent profile |
 
-## Patterns
-iTerm2 Dynamic Profiles: Each JSON file defines a profile named "SSH-Server" with custom colors (background, tab, badge) applied when SSH sessions connect. Profiles inherit from "Hotkey Window" parent.
+<!-- peek -->
 
-## Dependencies
-- **External:** iTerm2 (Terminal app on macOS)
-- **Internal:** `shell/gum_utils.sh` (for interactive theme selection UI)
+## Conventions
+- Each JSON defines a profile named `"SSH-Server"` with a fixed Guid and `"Dynamic Profile Parent Name": "Hotkey Window"` — the parent profile must exist in iTerm2 or inheritance silently fails.
+- Theme activation works by symlinking a file (not copying) — iTerm2 watches DynamicProfiles and reloads live; no iTerm2 restart needed.
+- Only one theme is active at a time via a single symlink at `ssh-server.json`; switching replaces the symlink atomically with `ln -sf`.
+- Themes only set background/badge/tab color — all other terminal settings (font, cursor, keybindings) come from the parent "Hotkey Window" profile.
 
-## Entry Points
-- **switch-ssh-theme**: Zsh script that reads all theme files, displays them via gum selector, and symlinks selected theme to iTerm2 DynamicProfiles directory
-
-## How It Works
-1. Themes are JSON files stored in this directory
-2. `switch-ssh-theme` reads all JSON files and presents them as menu choices
-3. User selects a theme from the interactive prompt
-4. Script creates symlink: `~/.Library/Application Support/iTerm2/DynamicProfiles/ssh-server.json` → selected theme
-5. iTerm2 automatically applies the theme to SSH sessions (no restart needed)
-
-## Theme Files (10 total)
-01-subtle-tint, 02-frosted-glass, 03-catppuccin-mocha, 04-cyberpunk-neon, 05-ocean-depth, 06-amber-terminal, 07-tokyo-night, 08-solar-flare, 09-ghostly-matrix, 10-red-alert
+## Gotchas
+- The "Hotkey Window" parent profile must already exist in iTerm2; if it is missing, the SSH-Server profile loads with no visual styling applied and no error is shown.
+- `switch-ssh-theme` reads Guid numbering from filenames (`01-`, `02-`, etc.) — adding a new theme requires keeping zero-padded numeric prefix and updating the `descriptions` array in the script to match.
+- The script uses zsh glob qualifier `(N)` for null-glob safety and `(N[1])` for first-match selection — these are zsh-only and will break in bash.

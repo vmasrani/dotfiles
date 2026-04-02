@@ -1,31 +1,22 @@
 # iterm2
-> iTerm2 terminal configuration including hotkey window profile, keybindings, and SSH-specific color themes for macOS.
-`14 files | 2026-03-03`
+> iTerm2 profiles, keybindings, window arrangements, and SSH theme switcher for macOS terminal configuration.
+`4 files | 2026-04-02`
 
-## Key Files
-| File | Role |
-|------|------|
-| iTerm2-profile-Hotkey Window.json | Floating hotkey window profile with color scheme, keybindings, status bar setup |
-| iterm2-keybindings.itermkeymap | Key bindings mapping (navigation, editing, special functions) |
-| LOCAL-AGENTS-BRAIN.iterm2arrangement | Saved window arrangement for agent workspace sessions |
-| switch-ssh-theme | Script to dynamically apply SSH-specific color themes |
+| Entry | Purpose |
+|-------|---------|
+| `iTerm2-profile-Hotkey Window.json` | Master terminal profile — defines fonts (MesloLGS-NF-Regular 14), colors, hotkey (Tab), and all base settings inherited by SSH themes |
+| `iterm2-keybindings.itermkeymap` | Custom key bindings export — must be manually imported in iTerm2 Preferences → Keys |
+| `LOCAL-AGENTS-BRAIN.iterm2arrangement` | Saved window arrangement (binary plist) for restoring a specific tmux/agents session layout |
+| **ssh-themes/** | iTerm2 Dynamic Profile themes that visually distinguish SSH sessions; activated via symlink into iTerm2's DynamicProfiles dir. |
 
-## Patterns
-- **Profile-as-Code**: iTerm2 native JSON formats for reproducible terminal configuration
-- **Hotkey Window**: Floating terminal (Tab key trigger) for quick context switching
-- **SSH Color Themes**: 10 curated profiles for different SSH contexts (development, production, etc.)
-- **Status Bar**: CPU and network utilization components with custom styling
+<!-- peek -->
 
-## Dependencies
-- **External:** iTerm2 (macOS terminal emulator), MesloLGS-NF font
-- **Internal:** Symlinked to `~/.config/iTerm2/` during dotfiles setup via `setup.sh`
+## Conventions
+- These files are NOT auto-symlinked into iTerm2 by `setup.sh` (except `switch-ssh-theme` → `~/bin/`). Profile JSON and keybindings must be manually imported via iTerm2 Preferences.
+- The "Hotkey Window" profile is the parent for all SSH themes — it must exist in iTerm2 before SSH themes display correctly.
+- The `.iterm2arrangement` file is a binary plist, not human-editable. Save/restore via iTerm2 → Window → Save/Restore Window Arrangement.
 
-## Entry Points
-- Profile auto-loads when iTerm2 starts
-- Hotkey window triggered via Tab key
-- SSH themes applied via `switch-ssh-theme` script
-
-## Subdirectories
-| Directory | Has Context |
-|-----------|-------------|
-| ssh-themes | yes |
+## Gotchas
+- Importing a new `iTerm2-profile-Hotkey Window.json` overwrites the existing profile in iTerm2 — any manual edits made inside iTerm2 will be lost. Edit the JSON file here first, then re-import.
+- The hotkey trigger character is a Tab (`\t`) — check for conflicts if Tab-based shortcuts stop working.
+- `iterm2-keybindings.itermkeymap` is a separate import from the profile JSON; both must be imported independently.

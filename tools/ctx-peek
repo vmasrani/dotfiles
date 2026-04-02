@@ -2,30 +2,42 @@
 # Peek at context files without loading them fully.
 # Shows first N lines of each *-context.md file found under a directory.
 # Usage: ctx-peek [directory] [lines] [--depth N]
-#   directory: path to search (default: .)
-#   lines:     lines per file to show (default: 12)
-#   --depth N: directory levels to show (1=top-level dirs, 2=one nesting level, etc.)
+#   (no args)   — this directory's context file only
+#   ctx-peek .  — this dir + immediate children (depth 1)
+#   --depth N   — explicit depth override
 
 set -e
 
 source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
 
-dir="${1:-.}"
-lines="${2:-12}"
 depth=""
+explicit_dir=false
 
-# Parse --depth flag from remaining args
-shift 2 2>/dev/null || true
+# Parse all args: flags first, then positionals
+positionals=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --depth) depth="$2"; shift 2 ;;
-        *) shift ;;
+        *) positionals+=("$1"); shift ;;
     esac
 done
 
+dir="${positionals[1]:-.}"
+lines="${positionals[2]:-12}"
+[[ -n "${positionals[1]}" ]] && explicit_dir=true
+
+# Default depth: no args = 0 (this dir only), explicit dir = 1 (dir + children)
+if [[ -z "$depth" ]]; then
+    if $explicit_dir; then
+        depth=1
+    else
+        depth=0
+    fi
+fi
+
 fd_args=(--no-ignore --glob '*-context.md' "$dir" --type f)
-# --depth N = N levels of directories; fd needs N+1 because context files are inside dirs
-[[ -n "$depth" ]] && fd_args+=(--max-depth "$((depth + 1))")
+# fd max-depth: depth 0 = just this dir's file (max-depth 1), depth N = N+1
+fd_args+=(--max-depth "$((depth + 1))")
 
 context_files=("${(@f)$(fd "${fd_args[@]}" 2>/dev/null | sort)}")
 
@@ -72,8 +84,14 @@ for f in "${context_files[@]}"; do
 
     shown=$((shown + 1))
     gum_info "$relpath" 2>/dev/null || echo "=== $relpath ==="
-    head -n "$lines" "$f"
-    echo "..."
+    # Print up to <!-- peek --> marker, or fall back to head -n
+    peek_line=$(command grep -n '<!-- peek -->' "$f" 2>/dev/null | head -1 | cut -d: -f1)
+    if [[ -n "$peek_line" ]]; then
+        head -n "$((peek_line - 1))" "$f"
+    else
+        head -n "$lines" "$f"
+        echo "..."
+    fi
     echo ""
 done
 

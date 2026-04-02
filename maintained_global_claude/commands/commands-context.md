@@ -1,25 +1,28 @@
-# Commands
-> Custom Claude slash commands orchestrating agents and workflows for code review, testing, and research.
-`4 files | 2026-03-18`
+# commands
+> Custom Claude Code slash commands for context generation, testing, and parallel pipelines — symlinked to `~/.claude/commands/`.
+`4 files | 2026-04-02`
 
-## Key Files
-| File | Purpose |
-|------|---------|
-| arewedone.md | Trigger structural-completeness-reviewer agent to verify changes are fully integrated with no technical debt |
-| generate-tests.md | Exhaustive test generation from specs, diffs, or features via test-generator agent |
-| research.md | Generate or refresh `*-context.md` files across project; documents ctx-* shell tools (index, tree, peek, stale, skip, reset) |
-| process-parallel.md | Template for parallel processing pipelines (worker, runner, system_prompt pattern) |
+| Entry | Purpose |
+|-------|---------|
+| `research.md` | Generates/refreshes `*-context.md` files project-wide; orchestrates `context-researcher` agents in bottom-up order (leaves first, then parents) |
+| `arewedone.md` | Runs structural completeness review via `structural-completeness-reviewer` agent, then auto-commits with `committer` agent |
+| `generate-tests.md` | Generates exhaustive failing test suites via `test-generator` agent; discovers what to test from args, specs, git diff, or user interview |
+| `process-parallel.md` | Scaffolds a 3-file parallel pipeline (worker.py, run.py, system_prompt.md) using `pmap` + `uv run` scripts |
+
+<!-- peek -->
 
 ## Conventions
-- **Command style:** Each `.md` file defines a multi-stage workflow (discovery → execution → report)
-- **Agent orchestration:** Commands spawn specialized agents via Task tool (context-researcher, structural-completeness-reviewer, test-generator)
-- **Shell tool integration:** Commands use `ctx-*` utilities for discovery (ctx-stale finds stale dirs, ctx-index maps context files)
-- **Parallel pattern:** process-parallel uses `pmap(prefer="threads", n_jobs=50)` with worker scripts calling OpenAI API
-- **Return values:** research.md expects agents to return single status lines ("SUCCESS: ..." or "ERROR: ..."), not file contents
+
+Commands are plain markdown files — the first line (or frontmatter `description`) becomes the command description in `/help`. Files with a `---` YAML frontmatter block use `description:` for that.
+
+`research.md` uses `$ARGUMENTS` to scope `ctx-stale` to a subdirectory; omit args to scan the whole project.
+
+`process-parallel.md` hardcodes `gpt-5.2` as the model and `n_jobs=50, prefer="threads"` — edit these when scaffolding if different concurrency is needed.
 
 ## Gotchas
-- `/research` requires full agent mode, not plan mode — must call ExitPlanMode first if in plan mode
-- Context files must be committed to repo, not ignored — remove from .gitignore if present
-- research.md explicitly forbids using TaskOutput or Read to check generated context files — only use Task return values
-- process-parallel worker scripts must add jitter before API calls (`time.sleep(random.uniform(0.5, 5))`) to avoid rate limits
-- test-generator expects 5 test categories (happy path, boundary, error, edge, integration smoke) and updates justfile
+
+`research.md` must NOT run in plan mode — it begins with an explicit `ExitPlanMode` instruction. If invoked while plan mode is active, the command will stall unless that tool is called first.
+
+The `.claude/logs/` subdirectory inside this directory is runtime log state (post_tool_use, stop, chat, subagent_stop JSON files) — not command definitions. Do not confuse it with command source files.
+
+Commands are symlinked from this directory into `~/.claude/commands/`; edit files here, never in `~/.claude/commands/` directly.

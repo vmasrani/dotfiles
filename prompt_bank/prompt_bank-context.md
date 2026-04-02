@@ -1,20 +1,21 @@
 # prompt_bank
-> Repository of reusable specialized prompts for text processing and document extraction tasks.
-`3 files | 2026-03-03`
+> Collection of reusable LLM system prompts for specific tasks: file renaming, OCR transcription, and transcript cleanup.
+`3 files | 2026-04-02`
 
-## Key Files
-| File | Role |
-|------|------|
-| cleanup_transcript.md | Transcript editor prompt for diarized transcripts with strict structure preservation |
-| file-renamer.md | Filename standardization prompt using Author - Title format |
-| ocr.md | OCR-to-Markdown conversion prompt for technical manual pages with layout fidelity |
+| Entry | Purpose |
+|-------|---------|
+| `file-renamer.md` | Prompt enforcing "Author - Title - Subtitle" filename format; instructs model to return only the filename, no commentary |
+| `ocr.md` | Master prompt for converting technical manual images + OCR text into structured Markdown; visual layout overrides OCR reading order |
+| `cleanup_transcript.md` | Prompt for cleaning diarized transcripts while preserving timestamps, speaker labels, and segment count exactly |
 
-## Patterns
-Constraint-based prompts with explicit validation rules and forbidden output formats. Each enforces:
-- Immutable structural elements (timestamps, speaker labels, numbering)
-- Lossless content preservation with minimal transformation
-- No meta-commentary in output
-- Clear validation checklist before completion
+<!-- peek -->
 
-## Entry Points
-All three prompts are templates intended for direct use with Claude API or copy-paste into chat interfaces. No code or execution framework.
+## Conventions
+- Prompts are plain Markdown files containing only the system prompt text — no frontmatter, no metadata, no wrapper format.
+- Each prompt explicitly forbids model commentary/explanations in the output; the output format is always raw content only.
+- Prompts are intended to be copy-pasted or piped into LLM calls, not executed directly by any script in this repo.
+
+## Gotchas
+- `ocr.md` treats visual layout as ground truth over OCR text order — this is intentional and must not be changed; models default to OCR order and produce wrong column mappings without this constraint.
+- `cleanup_transcript.md` requires output to begin with `# [Speaker Name] - [Timestamp]` with zero preceding text — any model that adds a preamble violates the contract and breaks downstream parsers.
+- `file-renamer.md` ends with a bare `Original filename:` line with no trailing newline content — the caller appends the actual filename before sending; do not add a default value there.

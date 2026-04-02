@@ -1,24 +1,23 @@
 # editors
-> Helix editor configuration with keybindings, LSP settings, and custom themes for Vi-style development workflow.
-`4 files | 2026-03-03`
+> Helix editor config (theme, LSP, keybindings) and a legacy vim config, symlinked into `~/.config/helix/` by setup.sh.
+`5 files | 2026-04-02`
 
-## Key Files
-| File | Role |
-|------|------|
-| hx_config.toml | Main Helix editor config: keybindings, statusline, theme, LSP settings |
-| hx_languages.toml | Language server and syntax highlighting configuration |
-| hx_themes/material_palenight_transparent.toml | Custom theme inheriting material_palenight with transparent background |
-| find_files.sh | FZF-based file picker integration for Helix |
+| Entry | Purpose |
+|-------|---------|
+| `hx_config.toml` | Main Helix config — custom keybindings, theme, statusline. `C-t` triggers fzf file picker via `fzf-helix` shell command. `C-g` opens lazygit in a tmux popup. |
+| `hx_languages.toml` | Helix language overrides — Python uses `ruff` + `astral-ty` (not pyright), bash scope extended to cover `.tmux.conf` and zsh files. |
+| `hx_themes/` | Custom themes; `material_palenight_transparent.toml` is the active theme referenced in `hx_config.toml`. |
+| `find_files.sh` | fzf file-picker helper sourced by a Helix extension (`EXTENSION_PATH/shared.sh` must exist at runtime). |
+| `.vimrc` | Legacy vim config — not actively maintained, kept for fallback. |
 
-## Patterns
-Vi-mode navigation with Helix bindings; FZF integration for file picker; LSP-driven development workflow with inlay hints and diagnostics.
+<!-- peek -->
 
-## Dependencies
-- **External:** Helix editor, FZF, Bat (preview), Lazygit (via tmux popup)
-- **Internal:** Symlinked to `~/.config/helix/` during setup via `install_dotfiles`
+## Conventions
+- Both `hx_config.toml` and `hx_languages.toml` are symlinked to `~/.config/helix/` by `install_dotfiles` in `install/install_functions.sh` — edit here, not in `~/.config/helix/`.
+- The active theme name in `hx_config.toml` (`material_palenight_transparent`) must match a filename under `hx_themes/` — mismatches silently fall back to the default theme.
 
-## Entry Points
-`hx_config.toml` — Main configuration file loaded by Helix on startup
-
-## Notes
-Keybindings heavily favor modal editing with Ctrl-modifiers for common operations (save, buffer navigation, file picker). LSP enabled with display-messages and inlay-hints. Custom file picker invokes FZF with Bat preview pane.
+## Gotchas
+- Python LSP is `ruff` + `astral-ty` (`ty server`), NOT pyright or pylsp. If `ty` isn't installed, LSP silently fails for Python.
+- `C-t` in Helix runs `:insert-output fzf-helix` — this requires a `fzf-helix` binary/script on `$PATH` (defined elsewhere in the dotfiles, likely `preview/` or `tools/`). Missing it causes a silent no-op.
+- `find_files.sh` depends on `$EXTENSION_PATH/shared.sh` — it is part of an fzf Helix extension, not a standalone script. Running it directly without the extension context will fail.
+- `hx_languages.toml` sets `ruff-lsp` as the command for the ruff server — the newer `ruff server` subcommand replaces `ruff-lsp`; if `ruff-lsp` is removed from future ruff releases this will break.
