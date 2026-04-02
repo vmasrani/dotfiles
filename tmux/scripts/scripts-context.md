@@ -4,7 +4,7 @@
 
 | Entry | Purpose |
 |-------|---------|
-| `agents_cache_refresh.sh` | Fetches Claude OAuth usage from `api.anthropic.com` into `/tmp/claude_usage_cache.json`; uses atomic `mkdir` lock with 60s TTL to prevent concurrent calls |
+| `agents_cache_refresh.sh` | Fetches Claude OAuth usage from `api.anthropic.com` into `/tmp/claude_usage_cache.json`; uses atomic `mkdir` lock with 120s TTL to prevent concurrent calls |
 | `pk_claude_metric.sh` | Reads the shared cache and outputs a single metric (five_hour, seven_day, opus, sonnet, credits, reset) as a short label; called per-pill by `agents_status_bar.sh` |
 | `agents_status_bar.sh` | Renders all Claude usage metrics as powerline rounded pills with nerd font glyphs; detects SSH vs local to switch Catppuccin Macchiato vs Mocha palette |
 | `update_session_status.sh` | Per-session hook: when session is `agents`, replaces `powerkit-render center` in `status-format[0]` with `agents_status_bar.sh` and patches pill to orange with 🦀; other sessions unset the override |
@@ -28,5 +28,5 @@
 - `update_session_status.sh` depends on powerkit already having set `status-format[0]` before it runs. If powerkit hasn't rendered yet, the sed substitution finds nothing and falls back to the unmodified format (Claude pills won't appear).
 - OAuth token lookup tries macOS keychain (`security find-generic-password`) first, then `~/.claude/.credentials.json`. If neither is present the cache is written as zeros — no error is surfaced to the status bar.
 - `agents_count.sh` looks for the tmux session named exactly `agents`; renaming that session silently breaks the count.
-- `pk_claude_metric.sh` spawns `agents_cache_refresh.sh` in the background on every call (after first run) — tmux calls status bar scripts on every interval tick, so background refresh fires frequently but is gated by the 60s TTL and lock.
+- `pk_claude_metric.sh` spawns `agents_cache_refresh.sh` in the background on every call (after first run) — tmux calls status bar scripts on every interval tick, so background refresh fires frequently but is gated by the 120s TTL and lock.
 - SSH detection in `agents_status_bar.sh` checks `$SSH_CLIENT`/`$SSH_TTY` — these are not set if you SSH then open a new tmux session locally, leading to Macchiato colors instead of Mocha.

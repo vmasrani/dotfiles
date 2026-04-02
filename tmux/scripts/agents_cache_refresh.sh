@@ -4,7 +4,8 @@
 
 CACHE_FILE="/tmp/claude_usage_cache.json"
 LOCK_DIR="/tmp/claude_usage_cache.lock"
-CACHE_TTL=60
+CACHE_TTL=120
+EMPTY_CACHE='{"five_hour":0,"seven_day":0,"five_hour_resets":null,"credits":0,"opus":0,"sonnet":0}'
 
 # Quick exit if cache is fresh
 if [[ -f "$CACHE_FILE" ]]; then
@@ -30,15 +31,22 @@ fi
 token=$(echo "$creds" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
 
 if [[ -z "$token" ]]; then
-    echo '{"five_hour":0,"seven_day":0,"credits":0}' > "$CACHE_FILE"
+    echo "$EMPTY_CACHE" > "$CACHE_FILE"
     exit 0
 fi
 
-# Fetch and parse in one jq call
+# Fetch usage data
 response=$(curl -s --max-time 5 "https://api.anthropic.com/api/oauth/usage" \
     -H "Authorization: Bearer $token" \
     -H "anthropic-beta: oauth-2025-04-20" \
     -H "Accept: application/json")
+
+# If API returned an error, keep existing cache (don't overwrite good data with zeros)
+if echo "$response" | jq -e '.error' &>/dev/null; then
+    [[ -f "$CACHE_FILE" ]] && touch "$CACHE_FILE" && exit 0
+    echo "$EMPTY_CACHE" > "$CACHE_FILE"
+    exit 0
+fi
 
 # Parse all values in single jq invocation
 echo "$response" | jq '{
@@ -48,4 +56,4 @@ echo "$response" | jq '{
     credits: ((.extra_usage.utilization // 0) | floor),
     opus: ((.seven_day_opus.utilization // 0) | floor),
     sonnet: ((.seven_day_sonnet.utilization // 0) | floor)
-}' 2>/dev/null > "$CACHE_FILE" || echo '{"five_hour":0,"seven_day":0,"credits":0}' > "$CACHE_FILE"
+}' 2>/dev/null > "$CACHE_FILE" || echo "$EMPTY_CACHE" > "$CACHE_FILE"

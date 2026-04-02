@@ -16,7 +16,7 @@
 - **Powerkit plugins** use an `external(icon|value|bg|lighter|interval)` DSL — all status bar widgets are defined inline in `.tmux.conf` via `@powerkit_plugins`. Scripts in `scripts/` are referenced by absolute path (`$HOME/dotfiles/tmux/scripts/...`).
 - **SSH vs local branching**: `.tmux.conf` uses `if-shell '[ -n "$SSH_CLIENT" ]...'` twice — once for powerkit theme path, once for the plugins list. SSH sessions include `gpu_status.sh` and `ssh_status.sh` but omit battery; local sessions include battery and weather.
 - **Agents session** gets a fully custom status bar: `update_session_status.sh` is triggered by the `client-session-changed` hook and by `run-shell` at the end of `.tmux.conf` (post-TPM). It replaces powerkit's center render with `agents_status_bar.sh` and patches the session pill to orange with a 🦀 icon.
-- **Claude usage cache**: `agents_cache_refresh.sh` writes to `/tmp/claude_usage_cache.json` with a 60-second TTL and `mkdir`-based atomic locking. `pk_claude_metric.sh` reads this cache and triggers background refresh on subsequent calls.
+- **Claude usage cache**: `agents_cache_refresh.sh` writes to `/tmp/claude_usage_cache.json` with a 120-second TTL and `mkdir`-based atomic locking. `pk_claude_metric.sh` reads this cache and triggers background refresh on subsequent calls.
 - **Transparency**: Popup and window backgrounds are forced to `bg=default` after TPM runs (post-TPM section) so iTerm2 transparency shows through. These overrides must stay after `run '~/.tmux/plugins/tpm/tpm'`.
 - **Homebrew PATH fix**: `run-shell` near the bottom of `.tmux.conf` prepends `/opt/homebrew/bin` and `~/.fzf/bin` to tmux's PATH — required because powerkit needs bash 5+ from Homebrew.
 
