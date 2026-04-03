@@ -1,0 +1,147 @@
+#!/bin/zsh
+# lint - Universal linter dispatcher
+# Usage: lint [--fix] <file|directory>...
+set -uo pipefail
+
+DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+source "$DOTFILES_DIR/shell/gum_utils.sh"
+source "$DOTFILES_DIR/shell/helper_functions.sh"
+
+FIX_MODE=0
+EXIT_CODE=0
+FILES=()
+LINTER_PASSES=0
+LINTER_FAILURES=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --fix) FIX_MODE=1; shift ;;
+        --help|-h) echo "Usage: lint [--fix] <file|directory>..."; exit 0 ;;
+        *) FILES+=("$1"); shift ;;
+    esac
+done
+[[ ${#FILES[@]} -eq 0 ]] && { gum_error "Usage: lint [--fix] <file|directory>..."; exit 1; }
+
+run_linter() {
+    local name="$1"; shift
+    gum_info "Running $name..."
+    if "$@"; then
+        gum_success "$name passed"; ((LINTER_PASSES++))
+    else
+        gum_error "$name failed"; ((LINTER_FAILURES++)); EXIT_CODE=1
+    fi
+}
+
+ruff_config() {
+    local dir="${1:a}"
+    while [[ "$dir" != "/" ]]; do
+        [[ -f "$dir/ruff.toml" || -f "$dir/.ruff.toml" ]] && return
+        [[ -f "$dir/pyproject.toml" ]] && grep -q '\[tool\.ruff\]' "$dir/pyproject.toml" 2>/dev/null && return
+        dir="${dir:h}"
+    done
+    echo "--config" "$DOTFILES_DIR/linters/ruff.toml"
+}
+
+biome_config() {
+    local dir="${1:a}"
+    while [[ "$dir" != "/" ]]; do
+        [[ -f "$dir/biome.json" || -f "$dir/biome.jsonc" ]] && return
+        dir="${dir:h}"
+    done
+    echo "--config-path" "$DOTFILES_DIR/linters"
+}
+
+# fd wrapper that respects .gitignore (bypasses user's fd -HI alias)
+find_files() { command fd -t f "$@" "${FILES[@]}" }
+
+for target in "${FILES[@]}"; do
+    # Single file mode — dispatch directly
+    if [[ -f "$target" ]]; then
+        case "$target" in
+            *.py)
+                local -a rc=(${(z)$(ruff_config "$target")})
+                if [[ $FIX_MODE -eq 1 ]]; then
+                    command_exists ruff && run_linter "ruff check" ruff check "${rc[@]}" --fix "$target"
+                    command_exists ruff && run_linter "ruff format" ruff format "${rc[@]}" "$target"
+                else
+                    command_exists ruff && run_linter "ruff check" ruff check "${rc[@]}" "$target"
+                    command_exists ruff && run_linter "ruff format" ruff format --check "${rc[@]}" "$target"
+                fi
+                command_exists ty && run_linter "ty" ty check "$target"
+                command_exists sourcery && run_linter "sourcery" sourcery review "$target"
+                ;;
+            *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs)
+                local -a bc=(${(z)$(biome_config "$target")})
+                if [[ $FIX_MODE -eq 1 ]]; then
+                    command_exists biome && run_linter "biome" biome check "${bc[@]}" --write "$target"
+                else
+                    command_exists biome && run_linter "biome" biome check "${bc[@]}" "$target"
+                fi
+                ;;
+            *.sh|*.bash|*.zsh)
+                command_exists shellcheck && run_linter "shellcheck" shellcheck "$target"
+                [[ $FIX_MODE -eq 1 ]] && command_exists shfmt && run_linter "shfmt" shfmt -w "$target"
+                [[ $FIX_MODE -eq 0 ]] && command_exists shfmt && run_linter "shfmt" shfmt -d "$target"
+                ;;
+            *.rs)
+                [[ $FIX_MODE -eq 1 ]] && command_exists rustfmt && run_linter "rustfmt" rustfmt "$target"
+                [[ $FIX_MODE -eq 0 ]] && command_exists rustfmt && run_linter "rustfmt" rustfmt --check "$target"
+                ;;
+        esac
+        continue
+    fi
+done
+
+# Directory mode — batch by language
+has_dirs=0
+for target in "${FILES[@]}"; do [[ -d "$target" ]] && has_dirs=1; done
+if [[ $has_dirs -eq 1 ]]; then
+    py_files=($(find_files -e py))
+    js_files=($(find_files -e js -e jsx -e ts -e tsx -e mjs -e cjs))
+    sh_files=($(find_files -e sh -e bash -e zsh))
+    rs_files=($(find_files -e rs))
+
+    total=$(( ${#py_files[@]} + ${#js_files[@]} + ${#sh_files[@]} + ${#rs_files[@]} ))
+    gum_info "Found $total lintable files"
+
+    if [[ ${#py_files[@]} -gt 0 ]]; then
+        local -a rc=(${(z)$(ruff_config "${FILES[1]}")})
+        if [[ $FIX_MODE -eq 1 ]]; then
+            command_exists ruff && run_linter "ruff check (${#py_files[@]} files)" ruff check "${rc[@]}" --fix "${py_files[@]}"
+            command_exists ruff && run_linter "ruff format (${#py_files[@]} files)" ruff format "${rc[@]}" "${py_files[@]}"
+        else
+            command_exists ruff && run_linter "ruff check (${#py_files[@]} files)" ruff check "${rc[@]}" "${py_files[@]}"
+            command_exists ruff && run_linter "ruff format (${#py_files[@]} files)" ruff format --check "${rc[@]}" "${py_files[@]}"
+        fi
+        command_exists ty && run_linter "ty (${#py_files[@]} files)" ty check "${py_files[@]}"
+        command_exists sourcery && run_linter "sourcery (${#py_files[@]} files)" sourcery review "${py_files[@]}"
+    fi
+
+    if [[ ${#js_files[@]} -gt 0 ]]; then
+        local -a bc=(${(z)$(biome_config "${FILES[1]}")})
+        if [[ $FIX_MODE -eq 1 ]]; then
+            command_exists biome && run_linter "biome (${#js_files[@]} files)" biome check "${bc[@]}" --write "${js_files[@]}"
+        else
+            command_exists biome && run_linter "biome (${#js_files[@]} files)" biome check "${bc[@]}" "${js_files[@]}"
+        fi
+    fi
+
+    if [[ ${#sh_files[@]} -gt 0 ]]; then
+        command_exists shellcheck && run_linter "shellcheck (${#sh_files[@]} files)" shellcheck "${sh_files[@]}"
+        [[ $FIX_MODE -eq 1 ]] && command_exists shfmt && run_linter "shfmt (${#sh_files[@]} files)" shfmt -w "${sh_files[@]}"
+        [[ $FIX_MODE -eq 0 ]] && command_exists shfmt && run_linter "shfmt (${#sh_files[@]} files)" shfmt -d "${sh_files[@]}"
+    fi
+
+    if [[ ${#rs_files[@]} -gt 0 ]]; then
+        [[ $FIX_MODE -eq 1 ]] && command_exists rustfmt && run_linter "rustfmt (${#rs_files[@]} files)" rustfmt "${rs_files[@]}"
+        [[ $FIX_MODE -eq 0 ]] && command_exists rustfmt && run_linter "rustfmt (${#rs_files[@]} files)" rustfmt --check "${rs_files[@]}"
+    fi
+fi
+
+# Summary
+total=$((LINTER_PASSES + LINTER_FAILURES))
+if [[ $total -gt 0 ]]; then
+    echo ""
+    [[ $LINTER_FAILURES -eq 0 ]] && gum_success "All $total linter checks passed" || gum_error "$LINTER_FAILURES/$total linter checks failed"
+fi
+exit "$EXIT_CODE"
