@@ -26,5 +26,5 @@
 ## Gotchas
 
 - `todos/`, `statsig/`, `history.jsonl`, `logs/`, `telemetry/`, `projects/`, `session-env/`, `debug/`, `downloads/`, `stats-cache.json` are Claude Code runtime state — not tracked in git and not part of the config. They accumulate in `~/.claude/` and appear here because this dir IS `~/.claude/` (via symlinks).
-- Skills with subdirectories (e.g., `skills/create-plan/`) are symlinked as directories, not individual files. Adding a new skill subdir requires updating `install_dotfiles` in `install/install_functions.sh`.
+- The entire `skills/` directory is symlinked as a single directory-level symlink (`~/.claude/skills` → `maintained_global_claude/skills`). New skill subdirectories are automatically available without any changes to `install_dotfiles`.
 - `context7@claude-plugins-official` and `skill-creator@claude-plugins-official` are the only enabled plugins — all others are explicitly `false`.
