@@ -12,4 +12,3 @@ gunzip "$file_name"
 mv parquet-tools-v1.22.0-linux-amd64 ~/bin/parquet-tools
 
 chmod +x ~/bin/parquet-tools
-

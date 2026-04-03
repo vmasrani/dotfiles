@@ -4,959 +4,990 @@
 source "$HOME/dotfiles/shell/helper_functions.sh"
 source "$HOME/dotfiles/shell/gum_utils.sh"
 
-
 # Detect operating system
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    OS_TYPE="mac"
-    OS_CLIPBOARD="pbcopy"
+	OS_TYPE="mac"
+	OS_CLIPBOARD="pbcopy"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    OS_TYPE="linux"
+	OS_TYPE="linux"
 else
-    gum_error "Unsupported operating system: $OSTYPE"
-    exit 1
+	gum_error "Unsupported operating system: $OSTYPE"
+	exit 1
 fi
 
-
 install_on_brew_or_mac() {
-    local linux_package=$1
-    local mac_package=${2:-$1}  # Use first arg if second not provided
+	local linux_package=$1
+	local mac_package=${2:-$1} # Use first arg if second not provided
 
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt -y install "$linux_package"
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install "$mac_package"
-    fi
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		sudo apt -y install "$linux_package"
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install "$mac_package"
+	fi
 }
 
-
 install_if_missing() {
-    local command_name=$1
-    local install_function=$2
+	local command_name=$1
+	local install_function=$2
 
-    if ! command_exists "$command_name"; then
-        gum_dim "$command_name is not installed. Installing $command_name..."
-        $install_function
-        gum_success "$command_name installed successfully."
-    else
-        gum_dim "$command_name is already installed."
-    fi
+	if ! command_exists "$command_name"; then
+		gum_dim "$command_name is not installed. Installing $command_name..."
+		$install_function
+		gum_success "$command_name installed successfully."
+	else
+		gum_dim "$command_name is already installed."
+	fi
 }
 
 install_if_dir_missing() {
-    local dir_path=$1
-    local install_function=$2
+	local dir_path=$1
+	local install_function=$2
 
-    if [ ! -d "$dir_path" ]; then
-        gum_dim "Directory $dir_path does not exist. Installing..."
-        $install_function
-        gum_success "Installation completed successfully."
-    else
-        gum_dim "$dir_path is already installed."
-    fi
+	if [ ! -d "$dir_path" ]; then
+		gum_dim "Directory $dir_path does not exist. Installing..."
+		$install_function
+		gum_success "Installation completed successfully."
+	else
+		gum_dim "$dir_path is already installed."
+	fi
 }
 
 install_dotfiles() {
 
-    mkdir -p "$HOME"/bin
-    mkdir -p "$HOME/dev/projects"
-    mkdir -p "$HOME/.config/helix"
-    mkdir -p "$HOME/.local/bin"
-    mkdir -p "$HOME/.claude"
-    mkdir -p "$HOME/.codex"
-    if [[ "$OS_TYPE" == "mac" ]]; then
-        mkdir -p "$HOME/Library/Application Support/iTerm2/DynamicProfiles"
-    fi
-    # chmod bash files
-    find "$HOME/dotfiles" -name "*.sh" -type f -exec chmod +x {} \;
-    touch "$HOME/dotfiles/local/.local_env.sh"
+	mkdir -p "$HOME"/bin
+	mkdir -p "$HOME/dev/projects"
+	mkdir -p "$HOME/.config/helix"
+	mkdir -p "$HOME/.local/bin"
+	mkdir -p "$HOME/.claude"
+	mkdir -p "$HOME/.codex"
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		mkdir -p "$HOME/Library/Application Support/iTerm2/DynamicProfiles"
+	fi
+	# chmod bash files
+	find "$HOME/dotfiles" -name "*.sh" -type f -exec chmod +x {} \;
+	touch "$HOME/dotfiles/local/.local_env.sh"
 
-    gum_dim "Creating symbolic links..."
+	gum_dim "Creating symbolic links..."
 
-  # Define base paths
-    local dotfiles="$HOME/dotfiles"
-    local bin="$HOME/bin"
-    local home="$HOME"
+	# Define base paths
+	local dotfiles="$HOME/dotfiles"
+	local bin="$HOME/bin"
+	local home="$HOME"
 
-    # Ensure TPM is installed
-    local tpm_dir="$HOME/.tmux/plugins/tpm"
+	# Ensure TPM is installed
+	local tpm_dir="$HOME/.tmux/plugins/tpm"
 
-    # Targets we always want to match the repo source (delete existing non-matching
-    # file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
-    declare -a force_replace_targets=(
-        "$home/.claude/agents"
-        "$home/.claude/commands"
-        "$home/.claude/hooks"
-        "$home/.claude/skills"
-        "$home/.claude/CLAUDE.md"
-        "$home/.claude/settings.json"
-        "$home/.claude/statusline.sh"
-        "$home/.codex/config.toml"
-    )
+	# Targets we always want to match the repo source (delete existing non-matching
+	# file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
+	declare -a force_replace_targets=(
+		"$home/.claude/agents"
+		"$home/.claude/commands"
+		"$home/.claude/hooks"
+		"$home/.claude/skills"
+		"$home/.claude/CLAUDE.md"
+		"$home/.claude/settings.json"
+		"$home/.claude/statusline.sh"
+		"$home/.codex/config.toml"
+	)
 
-    if [ ! -d "$tpm_dir" ]; then
-        gum_info "Installing tmux plugin manager (tpm)..."
-        install_tpm
-    fi
+	if [ ! -d "$tpm_dir" ]; then
+		gum_info "Installing tmux plugin manager (tpm)..."
+		install_tpm
+	fi
 
-    array_contains() {
-        local needle="$1"
-        shift
-        for item in "$@"; do
-            if [[ "$item" == "$needle" ]]; then
-                return 0
-            fi
-        done
-        return 1
-    }
+	array_contains() {
+		local needle="$1"
+		shift
+		for item in "$@"; do
+			if [[ "$item" == "$needle" ]]; then
+				return 0
+			fi
+		done
+		return 1
+	}
 
-    should_force_link() {
-        local target="$1"
-        if array_contains "$target" "${force_replace_targets[@]}"; then
-            return 0
-        fi
-        return 1
-    }
+	should_force_link() {
+		local target="$1"
+		if array_contains "$target" "${force_replace_targets[@]}"; then
+			return 0
+		fi
+		return 1
+	}
 
-    ensure_symlink() {
-        local source="$1"
-        local target="$2"
-        local force_link="$3"
+	ensure_symlink() {
+		local source="$1"
+		local target="$2"
+		local force_link="$3"
 
-        # Check if target already exists and points to the correct source
-        if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
-            gum_dim "Symlink already exists: $(basename "$source") -> $target"
-            return 0
-        fi
+		# Check if target already exists and points to the correct source
+		if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$(readlink -f "$source")" ]; then
+			gum_dim "Symlink already exists: $(basename "$source") -> $target"
+			return 0
+		fi
 
-        gum_info "Linking $(basename "$source") to $target"
+		gum_info "Linking $(basename "$source") to $target"
 
-        if [[ "$force_link" == "true" ]]; then
-            if [ -e "$target" ] || [ -L "$target" ]; then
-                gum_warning "Replacing existing path at $target (will re-symlink to $source)"
-                rm -rf "$target"
-            fi
-            ln -sf "$source" "$target"
-            return 0
-        fi
+		if [[ "$force_link" == "true" ]]; then
+			if [ -e "$target" ] || [ -L "$target" ]; then
+				gum_warning "Replacing existing path at $target (will re-symlink to $source)"
+				rm -rf "$target"
+			fi
+			ln -sf "$source" "$target"
+			return 0
+		fi
 
-        # Only remove if it's a broken symlink
-        if [ -L "$target" ] && [ ! -e "$target" ]; then
-            rm -f "$target"
-        fi
+		# Only remove if it's a broken symlink
+		if [ -L "$target" ] && [ ! -e "$target" ]; then
+			rm -f "$target"
+		fi
 
-        # Create symlink only if target doesn't exist
-        if [ ! -e "$target" ]; then
-            ln -sf "$source" "$target"
-            return 0
-        fi
+		# Create symlink only if target doesn't exist
+		if [ ! -e "$target" ]; then
+			ln -sf "$source" "$target"
+			return 0
+		fi
 
-        gum_warning "Warning: $target already exists and is not a symlink to $source"
-    }
+		gum_warning "Warning: $target already exists and is not a symlink to $source"
+	}
 
-    # Create an array of source:target pairs
-    declare -a file_pairs=(
-        # Symlink entire tools directory to $HOME
-        "$dotfiles/tools:$home/tools"
+	# Create an array of source:target pairs
+	declare -a file_pairs=(
+		# Symlink entire tools directory to $HOME
+		"$dotfiles/tools:$home/tools"
 
-        # Preview files
-        "$dotfiles/preview/fzf-preview.sh:$bin/fzf-preview"
-        "$dotfiles/preview/torch-preview.py:$bin/torch-preview"
-        "$dotfiles/preview/npy-preview.py:$bin/npy-preview"
-        "$dotfiles/preview/feather-preview.py:$bin/feather-preview"
-        "$dotfiles/preview/pkl-preview.py:$bin/pkl-preview"
-        "$dotfiles/preview/onnx-preview.py:$bin/onnx-preview"
+		# Preview files
+		"$dotfiles/preview/fzf-preview.sh:$bin/fzf-preview"
+		"$dotfiles/preview/torch-preview.py:$bin/torch-preview"
+		"$dotfiles/preview/npy-preview.py:$bin/npy-preview"
+		"$dotfiles/preview/feather-preview.py:$bin/feather-preview"
+		"$dotfiles/preview/pkl-preview.py:$bin/pkl-preview"
+		"$dotfiles/preview/onnx-preview.py:$bin/onnx-preview"
 
-        # iTerm2 SSH theme switcher
-        "$dotfiles/iterm2/ssh-themes/switch-ssh-theme:$bin/switch-ssh-theme"
+		# iTerm2 SSH theme switcher
+		"$dotfiles/iterm2/ssh-themes/switch-ssh-theme:$bin/switch-ssh-theme"
 
-        # editor dotfiles
-        "$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
-        "$dotfiles/tmux/catppuccin-mocha-vibrant.sh:$home/.config/tmux/catppuccin-mocha-vibrant.sh"
-        "$dotfiles/tmux/catppuccin-macchiato-vibrant.sh:$home/.config/tmux/catppuccin-macchiato-vibrant.sh"
-        "$dotfiles/editors/.vimrc:$home/.vimrc"
+		# editor dotfiles
+		"$dotfiles/tmux/.tmux.conf:$home/.tmux.conf"
+		"$dotfiles/tmux/catppuccin-mocha-vibrant.sh:$home/.config/tmux/catppuccin-mocha-vibrant.sh"
+		"$dotfiles/tmux/catppuccin-macchiato-vibrant.sh:$home/.config/tmux/catppuccin-macchiato-vibrant.sh"
+		"$dotfiles/editors/.vimrc:$home/.vimrc"
 
-        # linters dotfiles
-        "$dotfiles/linters/.pylintrc:$home/.pylintrc"
-        "$dotfiles/linters/.sourcery.yaml:$home/.sourcery.yaml"
+		# linters dotfiles
+		"$dotfiles/linters/lint:$bin/lint"
+		"$dotfiles/linters/lefthook.yml:$dotfiles/lefthook.yml"
+		"$dotfiles/linters/.pylintrc:$home/.pylintrc"
+		"$dotfiles/linters/.sourcery.yaml:$home/.sourcery.yaml"
 
-        # Shell dotfiles
-        "$dotfiles/fzf/.fzf-config.zsh:$home/.fzf-config.zsh"
-        "$dotfiles/fzf/.fzf.bash:$home/.fzf.bash"
-        "$dotfiles/fzf/.fzf.zsh:$home/.fzf.zsh"
-        "$dotfiles/fzf/.fzf-env.zsh:$home/.fzf-env.zsh"
+		# Shell dotfiles
+		"$dotfiles/fzf/.fzf-config.zsh:$home/.fzf-config.zsh"
+		"$dotfiles/fzf/.fzf.bash:$home/.fzf.bash"
+		"$dotfiles/fzf/.fzf.zsh:$home/.fzf.zsh"
+		"$dotfiles/fzf/.fzf-env.zsh:$home/.fzf-env.zsh"
 
+		# Shell dotfiles
+		"$dotfiles/shell/.p10k.zsh:$home/.p10k.zsh"
+		"$dotfiles/shell/.aliases-and-envs.zsh:$home/.aliases-and-envs.zsh"
+		"$dotfiles/shell/.paths.zsh:$home/.paths.zsh"
+		"$dotfiles/shell/.bash_logout:$home/.bash_logout"
+		"$dotfiles/shell/.bash_profile:$home/.bash_profile"
+		"$dotfiles/shell/.bashrc:$home/.bashrc"
+		"$dotfiles/shell/.zlogin:$home/.zlogin"
+		"$dotfiles/shell/.zlogout:$home/.zlogout"
+		"$dotfiles/shell/.zpreztorc:$home/.zpreztorc"
+		"$dotfiles/shell/.zprofile:$home/.zprofile"
+		"$dotfiles/shell/.profile:$home/.profile"
+		"$dotfiles/shell/.zshenv:$home/.zshenv"
+		"$dotfiles/shell/.zshrc:$home/.zshrc"
+		"$dotfiles/shell/lscolors.sh:$home/lscolors.sh"
+		"$dotfiles/shell/helper_functions.sh:$home/helper_functions.sh"
+		"$dotfiles/shell/gum_utils.sh:$home/gum_utils.sh"
+		"$dotfiles/shell/update_startup.sh:$home/update_startup.sh"
 
-        # Shell dotfiles
-        "$dotfiles/shell/.p10k.zsh:$home/.p10k.zsh"
-        "$dotfiles/shell/.aliases-and-envs.zsh:$home/.aliases-and-envs.zsh"
-        "$dotfiles/shell/.paths.zsh:$home/.paths.zsh"
-        "$dotfiles/shell/.bash_logout:$home/.bash_logout"
-        "$dotfiles/shell/.bash_profile:$home/.bash_profile"
-        "$dotfiles/shell/.bashrc:$home/.bashrc"
-        "$dotfiles/shell/.zlogin:$home/.zlogin"
-        "$dotfiles/shell/.zlogout:$home/.zlogout"
-        "$dotfiles/shell/.zpreztorc:$home/.zpreztorc"
-        "$dotfiles/shell/.zprofile:$home/.zprofile"
-        "$dotfiles/shell/.profile:$home/.profile"
-        "$dotfiles/shell/.zshenv:$home/.zshenv"
-        "$dotfiles/shell/.zshrc:$home/.zshrc"
-        "$dotfiles/shell/lscolors.sh:$home/lscolors.sh"
-        "$dotfiles/shell/helper_functions.sh:$home/helper_functions.sh"
-        "$dotfiles/shell/gum_utils.sh:$home/gum_utils.sh"
-        "$dotfiles/shell/update_startup.sh:$home/update_startup.sh"
+		# local dotfiles
+		"$dotfiles/local/.local_env.sh:$home/.local_env.sh"
+		"$dotfiles/local/.secrets:$home/.secrets"
 
-        # local dotfiles
-        "$dotfiles/local/.local_env.sh:$home/.local_env.sh"
-        "$dotfiles/local/.secrets:$home/.secrets"
+		# helix
+		"$dotfiles/editors/hx_languages.toml:$home/.config/helix/languages.toml"
+		"$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
+		"$dotfiles/editors/hx_themes:$home/.config/helix/themes"
 
-        # helix
-        "$dotfiles/editors/hx_languages.toml:$home/.config/helix/languages.toml"
-        "$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
-        "$dotfiles/editors/hx_themes:$home/.config/helix/themes"
+		# claude directories and files (symlink contents to ~/.claude)
+		# NOTE: plugins/ is NOT symlinked - it contains machine-specific paths
+		"$dotfiles/maintained_global_claude/agents:$home/.claude/agents"
+		"$dotfiles/maintained_global_claude/commands:$home/.claude/commands"
+		"$dotfiles/maintained_global_claude/hooks:$home/.claude/hooks"
+		"$dotfiles/maintained_global_claude/skills:$home/.claude/skills"
+		"$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
+		"$dotfiles/maintained_global_claude/statusline.sh:$home/.claude/statusline.sh"
+		"$dotfiles/maintained_global_claude/CLAUDE.md:$home/.claude/CLAUDE.md"
 
-        # claude directories and files (symlink contents to ~/.claude)
-        # NOTE: plugins/ is NOT symlinked - it contains machine-specific paths
-        "$dotfiles/maintained_global_claude/agents:$home/.claude/agents"
-        "$dotfiles/maintained_global_claude/commands:$home/.claude/commands"
-        "$dotfiles/maintained_global_claude/hooks:$home/.claude/hooks"
-        "$dotfiles/maintained_global_claude/skills:$home/.claude/skills"
-        "$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
-        "$dotfiles/maintained_global_claude/statusline.sh:$home/.claude/statusline.sh"
-        "$dotfiles/maintained_global_claude/CLAUDE.md:$home/.claude/CLAUDE.md"
+		# codex config
+		"$dotfiles/codex/config.toml:$home/.codex/config.toml"
 
-        # codex config
-        "$dotfiles/codex/config.toml:$home/.codex/config.toml"
+		# mutt/neomutt configuration
+		"$dotfiles/mutt/muttrc:$home/.config/mutt/muttrc"
+		"$dotfiles/mutt/mailcap:$home/.config/mutt/mailcap"
+		"$dotfiles/mutt/styles.muttrc:$home/.config/mutt/styles.muttrc"
+		"$dotfiles/mutt/keys:$home/.config/mutt/keys"
+		"$dotfiles/mutt/accounts:$home/.config/mutt/accounts"
 
-        # mutt/neomutt configuration
-        "$dotfiles/mutt/muttrc:$home/.config/mutt/muttrc"
-        "$dotfiles/mutt/mailcap:$home/.config/mutt/mailcap"
-        "$dotfiles/mutt/styles.muttrc:$home/.config/mutt/styles.muttrc"
-        "$dotfiles/mutt/keys:$home/.config/mutt/keys"
-        "$dotfiles/mutt/accounts:$home/.config/mutt/accounts"
+		# mutt helper scripts
+		"$dotfiles/mutt/scripts/mailsync:$bin/mailsync"
+		"$dotfiles/mutt/scripts/mailsync-daemon:$bin/mailsync-daemon"
+		"$dotfiles/mutt/scripts/beautiful_html_render:$bin/beautiful_html_render"
+		"$dotfiles/mutt/scripts/mutt-trim:$bin/mutt-trim"
+		"$dotfiles/mutt/scripts/mutt-viewical:$bin/mutt-viewical"
+		"$dotfiles/mutt/scripts/render-calendar-attachment.py:$bin/render-calendar-attachment.py"
 
-        # mutt helper scripts
-        "$dotfiles/mutt/scripts/mailsync:$bin/mailsync"
-        "$dotfiles/mutt/scripts/mailsync-daemon:$bin/mailsync-daemon"
-        "$dotfiles/mutt/scripts/beautiful_html_render:$bin/beautiful_html_render"
-        "$dotfiles/mutt/scripts/mutt-trim:$bin/mutt-trim"
-        "$dotfiles/mutt/scripts/mutt-viewical:$bin/mutt-viewical"
-        "$dotfiles/mutt/scripts/render-calendar-attachment.py:$bin/render-calendar-attachment.py"
+		# mutt supporting configs (isyncrc at correct path for mbsync)
+		"$dotfiles/mutt/isync/mbsyncrc:$home/.config/isync/mbsyncrc"
+		"$dotfiles/mutt/msmtp/config:$home/.config/msmtp/config"
+		"$dotfiles/mutt/notmuch/notmuchrc:$home/.config/notmuch/notmuchrc"
 
-        # mutt supporting configs (isyncrc at correct path for mbsync)
-        "$dotfiles/mutt/isync/mbsyncrc:$home/.config/isync/mbsyncrc"
-        "$dotfiles/mutt/msmtp/config:$home/.config/msmtp/config"
-        "$dotfiles/mutt/notmuch/notmuchrc:$home/.config/notmuch/notmuchrc"
+		# mutt secrets (local file, git-ignored)
+		"$dotfiles/local/.mutt_secrets:$home/.mutt_secrets"
+	)
 
-        # mutt secrets (local file, git-ignored)
-        "$dotfiles/local/.mutt_secrets:$home/.mutt_secrets"
-    )
+	# Create all symlinks in a single loop
+	for pair in "${file_pairs[@]}"; do
+		source="${pair%%:*}"
+		target="${pair#*:}"
 
-    # Create all symlinks in a single loop
-    for pair in "${file_pairs[@]}"; do
-        source="${pair%%:*}"
-        target="${pair#*:}"
+		# Ensure the parent directory exists for any target we link.
+		mkdir -p "$(dirname "$target")"
 
-        # Ensure the parent directory exists for any target we link.
-        mkdir -p "$(dirname "$target")"
+		local force_link="false"
+		if should_force_link "$target"; then
+			force_link="true"
+		fi
+		ensure_symlink "$source" "$target" "$force_link"
 
-        local force_link="false"
-        if should_force_link "$target"; then
-            force_link="true"
-        fi
-        ensure_symlink "$source" "$target" "$force_link"
+		# Only chmod +x if it's a file, not a directory
+		if [ -f "$source" ]; then
+			chmod +x "$source"
+		fi
+	done
 
-        # Only chmod +x if it's a file, not a directory
-        if [ -f "$source" ]; then
-            chmod +x "$source"
-        fi
-    done
-
-    # Symlink local (machine-specific, git-ignored) skills into maintained_global_claude/skills/
-    local local_skills_dir="$dotfiles/local/local_skills"
-    if [ -d "$local_skills_dir" ]; then
-        for skill_dir in "$local_skills_dir"/*/; do
-            [ -d "$skill_dir" ] || continue
-            skill_name="$(basename "$skill_dir")"
-            ensure_symlink "$skill_dir" "$dotfiles/maintained_global_claude/skills/$skill_name" "false"
-        done
-    fi
+	# Symlink local (machine-specific, git-ignored) skills into maintained_global_claude/skills/
+	local local_skills_dir="$dotfiles/local/local_skills"
+	if [ -d "$local_skills_dir" ]; then
+		for skill_dir in "$local_skills_dir"/*/; do
+			[ -d "$skill_dir" ] || continue
+			skill_name="$(basename "$skill_dir")"
+			ensure_symlink "$skill_dir" "$dotfiles/maintained_global_claude/skills/$skill_name" "false"
+		done
+	fi
 
 }
 
-
-
 install_local_dotfiles() {
-    mkdir -p "$HOME/dotfiles/local"
-    touch "$HOME/dotfiles/local/.local_env.sh"
-    touch "$HOME/dotfiles/local/.secrets"
+	mkdir -p "$HOME/dotfiles/local"
+	touch "$HOME/dotfiles/local/.local_env.sh"
+	touch "$HOME/dotfiles/local/.secrets"
 }
 
 generate_plugin_configs() {
-    local plugins_dir="$HOME/dotfiles/maintained_global_claude/plugins"
-    local templates=(
-        "known_marketplaces.json"
-        "installed_plugins.json"
-    )
+	local plugins_dir="$HOME/dotfiles/maintained_global_claude/plugins"
+	local templates=(
+		"known_marketplaces.json"
+		"installed_plugins.json"
+	)
 
-    gum_dim "Generating plugin configuration files from templates..."
+	gum_dim "Generating plugin configuration files from templates..."
 
-    for template_name in "${templates[@]}"; do
-        local template_file="${plugins_dir}/${template_name}.template"
-        local output_file="${plugins_dir}/${template_name}"
+	for template_name in "${templates[@]}"; do
+		local template_file="${plugins_dir}/${template_name}.template"
+		local output_file="${plugins_dir}/${template_name}"
 
-        if [ -f "$template_file" ]; then
-            # Replace __HOME__ with actual home directory
-            # Use a temp file and then move to avoid noclobber issues
-            local temp_file="${output_file}.tmp"
-            sed "s|__HOME__|$HOME|g" "$template_file" > "$temp_file"
-            mv -f "$temp_file" "$output_file"
-            gum_dim "  ✓ Generated $template_name"
-        else
-            gum_warning "  ⚠ Template not found: $template_file"
-        fi
-    done
+		if [ -f "$template_file" ]; then
+			# Replace __HOME__ with actual home directory
+			# Use a temp file and then move to avoid noclobber issues
+			local temp_file="${output_file}.tmp"
+			sed "s|__HOME__|$HOME|g" "$template_file" >"$temp_file"
+			mv -f "$temp_file" "$output_file"
+			gum_dim "  ✓ Generated $template_name"
+		else
+			gum_warning "  ⚠ Template not found: $template_file"
+		fi
+	done
 
-    gum_success "Plugin configuration files generated successfully"
+	gum_success "Plugin configuration files generated successfully"
 }
 
-
 install_homebrew() {
-    # Ensure Xcode Command Line Tools are installed (Homebrew prerequisite)
-    if ! xcode-select -p &>/dev/null; then
-        gum_info "Installing Xcode Command Line Tools (required for Homebrew)..."
-        xcode-select --install
-        until xcode-select -p &>/dev/null; do
-            sleep 5
-        done
-        gum_success "Xcode Command Line Tools installed."
-    fi
+	# Ensure Xcode Command Line Tools are installed (Homebrew prerequisite)
+	if ! xcode-select -p &>/dev/null; then
+		gum_info "Installing Xcode Command Line Tools (required for Homebrew)..."
+		xcode-select --install
+		until xcode-select -p &>/dev/null; do
+			sleep 5
+		done
+		gum_success "Xcode Command Line Tools installed."
+	fi
 
-    # Accept Xcode license if xcodebuild is present
-    if command_exists xcodebuild; then
-        sudo xcodebuild -license accept 2>/dev/null || true
-    fi
+	# Accept Xcode license if xcodebuild is present
+	if command_exists xcodebuild; then
+		sudo xcodebuild -license accept 2>/dev/null || true
+	fi
 
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+	/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-    # Add to PATH for the current session (Apple Silicon Macs use /opt/homebrew)
-    if [[ -d "/opt/homebrew/bin" ]]; then
-        export PATH="/opt/homebrew/bin:$PATH"
-    fi
+	# Add to PATH for the current session (Apple Silicon Macs use /opt/homebrew)
+	if [[ -d "/opt/homebrew/bin" ]]; then
+		export PATH="/opt/homebrew/bin:$PATH"
+	fi
 
-    # Verify installation
-    if ! command_exists brew; then
-        gum_error "Homebrew installation failed. Try installing manually: https://brew.sh"
-        return 1
-    fi
+	# Verify installation
+	if ! command_exists brew; then
+		gum_error "Homebrew installation failed. Try installing manually: https://brew.sh"
+		return 1
+	fi
 }
 
 install_zsh() {
-    read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
-    case "$choice" in
-        y|Y )
-            if [[ "$OS_TYPE" == "linux" ]]; then
-                if [ "$(id -u)" -eq 0 ]; then
-                    apt update && apt upgrade -y
-                    apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-                    chsh -s "$(which zsh)"
-                else
-                    sudo apt update && sudo apt upgrade -y
-                    sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-                    sudo chsh -s "$(which zsh)" "$USER"
-                fi
-            elif [[ "$OS_TYPE" == "mac" ]]; then
-                brew update
-                brew install zsh vim
-                chsh -s "$(which zsh)"
-            fi
-            gum_success "Installation complete. Please restart your shell to use zsh."
-            ;;
-        * )
-            gum_info "Skipping installation."
-            return 1
-            ;;
-    esac
+	read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
+	case "$choice" in
+	y | Y)
+		if [[ "$OS_TYPE" == "linux" ]]; then
+			if [ "$(id -u)" -eq 0 ]; then
+				apt update && apt upgrade -y
+				apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+				chsh -s "$(which zsh)"
+			else
+				sudo apt update && sudo apt upgrade -y
+				sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+				sudo chsh -s "$(which zsh)" "$USER"
+			fi
+		elif [[ "$OS_TYPE" == "mac" ]]; then
+			brew update
+			brew install zsh vim
+			chsh -s "$(which zsh)"
+		fi
+		gum_success "Installation complete. Please restart your shell to use zsh."
+		;;
+	*)
+		gum_info "Skipping installation."
+		return 1
+		;;
+	esac
 }
-
-
-
 
 install_cargo() {
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    source "$HOME/.cargo/env"
+	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+	source "$HOME/.cargo/env"
 }
-
 
 install_uv() {
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
+	curl -LsSf https://astral.sh/uv/install.sh | sh
+	export PATH="$HOME/.local/bin:$PATH"
 }
-
 
 install_tealdeer() {
-    source "$HOME/.cargo/env"
-    export PATH="$HOME/.cargo/bin:$PATH"
-    cargo install tealdeer
-    tldr --update
+	source "$HOME/.cargo/env"
+	export PATH="$HOME/.cargo/bin:$PATH"
+	cargo install tealdeer
+	tldr --update
 }
 
-
-
 install_npm() {
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-    if ! command_exists npm; then
-        gum_error "npm not found after loading nvm. Ensure install_nvm ran successfully."
-        return 1
-    fi
-    gum_dim "npm is available via nvm ($(npm --version))."
+	export NVM_DIR="$HOME/.nvm"
+	[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+	if ! command_exists npm; then
+		gum_error "npm not found after loading nvm. Ensure install_nvm ran successfully."
+		return 1
+	fi
+	gum_dim "npm is available via nvm ($(npm --version))."
 }
 
 install_go() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y software-properties-common
-        sudo add-apt-repository -y ppa:longsleep/golang-backports
-        sudo apt update
-        sudo apt install golang-go -y
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install go
-    fi
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		sudo apt install -y software-properties-common
+		sudo add-apt-repository -y ppa:longsleep/golang-backports
+		sudo apt update
+		sudo apt install golang-go -y
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install go
+	fi
 }
 
 install_fzf() {
-    rm -rf "$HOME/.fzf"
-    git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
-    "$HOME/.fzf/install" --all --no-update-rc
+	rm -rf "$HOME/.fzf"
+	git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
+	"$HOME/.fzf/install" --all --no-update-rc
 }
 
 install_helix() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        if command_exists snap; then
-            snap install --classic helix
-        else
-            sudo add-apt-repository -y ppa:maveonair/helix-editor
-            sudo apt update
-            sudo apt install -y helix
-        fi
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install helix
-    fi
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		if command_exists snap; then
+			snap install --classic helix
+		else
+			sudo add-apt-repository -y ppa:maveonair/helix-editor
+			sudo apt update
+			sudo apt install -y helix
+		fi
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install helix
+	fi
 
-    hx --grammar fetch
-    hx --grammar build
-    gum_success "Helix grammars updated successfully."
+	hx --grammar fetch
+	hx --grammar build
+	gum_success "Helix grammars updated successfully."
 }
 
 update_helix_grammars() {
-    local grammar_dir="$HOME/.config/helix/runtime/grammars"
-    if [[ -d "$grammar_dir" ]] && (ls "$grammar_dir"/*.so) &>/dev/null; then
-        gum_dim "Helix grammars already built."
-        return 0
-    fi
-    gum_info "Fetching and building Helix grammars..."
-    hx --grammar fetch || gum_warning "Some grammars failed to fetch (this is usually ok)"
-    hx --grammar build || gum_warning "Some grammars failed to build (this is usually ok)"
-    gum_success "Helix grammars updated."
+	local grammar_dir="$HOME/.config/helix/runtime/grammars"
+	if [[ -d "$grammar_dir" ]] && (ls "$grammar_dir"/*.so) &>/dev/null; then
+		gum_dim "Helix grammars already built."
+		return 0
+	fi
+	gum_info "Fetching and building Helix grammars..."
+	hx --grammar fetch || gum_warning "Some grammars failed to fetch (this is usually ok)"
+	hx --grammar build || gum_warning "Some grammars failed to build (this is usually ok)"
+	gum_success "Helix grammars updated."
 }
 
 install_glow() {
-    export PATH="$HOME/go/bin:$PATH"
-    go install github.com/charmbracelet/glow@latest
+	export PATH="$HOME/go/bin:$PATH"
+	go install github.com/charmbracelet/glow@latest
 }
 
 install_mdterm() {
-    cargo install mdterm
+	cargo install mdterm
 }
 
 install_lazygit() {
-    export PATH="$HOME/go/bin:$PATH"
-    go install github.com/jesseduffield/lazygit@latest
+	export PATH="$HOME/go/bin:$PATH"
+	go install github.com/jesseduffield/lazygit@latest
 }
 
 install_lazydocker() {
-    export PATH="$HOME/go/bin:$PATH"
-    go install github.com/jesseduffield/lazydocker@latest
+	export PATH="$HOME/go/bin:$PATH"
+	go install github.com/jesseduffield/lazydocker@latest
 }
 
 install_lazysql() {
-    export PATH="$HOME/go/bin:$PATH"
-    go install github.com/jorgerojas26/lazysql@latest
+	export PATH="$HOME/go/bin:$PATH"
+	go install github.com/jorgerojas26/lazysql@latest
 }
 
 install_btop() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        if command_exists snap; then
-            sudo snap install btop
-        else
-            sudo apt install -y btop
-        fi
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install btop
-    fi
-    gum_success "btop installed successfully."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		if command_exists snap; then
+			sudo snap install btop
+		else
+			sudo apt install -y btop
+		fi
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install btop
+	fi
+	gum_success "btop installed successfully."
 }
 
 install_ctop() {
-    sudo mkdir -p /usr/local/bin
-    local arch
-    arch="$(uname -m)"
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        local ctop_arch="amd64"
-        [[ "$arch" == "aarch64" ]] && ctop_arch="arm64"
-        sudo curl -Lo /usr/local/bin/ctop "https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-${ctop_arch}"
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        local ctop_arch="amd64"
-        [[ "$arch" == "arm64" ]] && ctop_arch="arm64"
-        sudo curl -Lo /usr/local/bin/ctop "https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-${ctop_arch}"
-    fi
-    sudo chmod +x /usr/local/bin/ctop
-    gum_success "ctop installed successfully."
+	sudo mkdir -p /usr/local/bin
+	local arch
+	arch="$(uname -m)"
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		local ctop_arch="amd64"
+		[[ "$arch" == "aarch64" ]] && ctop_arch="arm64"
+		sudo curl -Lo /usr/local/bin/ctop "https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-linux-${ctop_arch}"
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		local ctop_arch="amd64"
+		[[ "$arch" == "arm64" ]] && ctop_arch="arm64"
+		sudo curl -Lo /usr/local/bin/ctop "https://github.com/bcicen/ctop/releases/download/v0.7.7/ctop-0.7.7-darwin-${ctop_arch}"
+	fi
+	sudo chmod +x /usr/local/bin/ctop
+	gum_success "ctop installed successfully."
 }
 
 install_bfs() {
-    install_on_brew_or_mac "bfs" "tavianator/tap/bfs"
+	install_on_brew_or_mac "bfs" "tavianator/tap/bfs"
 }
 
 install_shellcheck() {
-    install_on_brew_or_mac "shellcheck"
+	install_on_brew_or_mac "shellcheck"
 }
 
 install_claude_code_cli() {
-    # Install via npm
-    curl -fsSL https://claude.ai/install.sh | bash
+	# Install via npm
+	curl -fsSL https://claude.ai/install.sh | bash
 }
 
 install_chafa() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install chafa -y
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install chafa
-    fi
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		sudo apt install chafa -y
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install chafa
+	fi
 }
 
-
-
-
 _install_gum_charm_repo() {
-    sudo mkdir -p /etc/apt/keyrings
-    curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
-    sudo apt update && sudo apt install -y gum
+	sudo mkdir -p /etc/apt/keyrings
+	curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+	echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
+	sudo apt update && sudo apt install -y gum
 }
 
 install_gum() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        _install_gum_charm_repo
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install gum
-    fi
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		_install_gum_charm_repo
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install gum
+	fi
 }
 
 install_yq() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        if command_exists snap; then
-            sudo snap install yq
-        else
-            local arch
-            arch="$(uname -m)"
-            local yq_arch="amd64"
-            [[ "$arch" == "aarch64" ]] && yq_arch="arm64"
-            sudo curl -Lo /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}"
-            sudo chmod +x /usr/local/bin/yq
-        fi
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install yq
-    fi
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		if command_exists snap; then
+			sudo snap install yq
+		else
+			local arch
+			arch="$(uname -m)"
+			local yq_arch="amd64"
+			[[ "$arch" == "aarch64" ]] && yq_arch="arm64"
+			sudo curl -Lo /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${yq_arch}"
+			sudo chmod +x /usr/local/bin/yq
+		fi
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install yq
+	fi
 }
 
 install_csvcut() {
-    install_on_brew_or_mac "csvkit"
-    gum_success "csvkit installed successfully; csvcut is now available."
+	install_on_brew_or_mac "csvkit"
+	gum_success "csvkit installed successfully; csvcut is now available."
 }
 
-
-
 install_xclip() {
-    [[ "$OS_TYPE" == "mac" ]] && return 0
-    sudo apt install -y xclip
-    gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
-    gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
+	[[ "$OS_TYPE" == "mac" ]] && return 0
+	sudo apt install -y xclip
+	gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
+	gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
 }
 
 install_xsel() {
-    [[ "$OS_TYPE" == "mac" ]] && return 0
-    sudo apt install -y xsel
+	[[ "$OS_TYPE" == "mac" ]] && return 0
+	sudo apt install -y xsel
 }
 
-
 install_nbpreview() {
-    uv tool install nbcat
+	uv tool install nbcat
 }
 
 install_tmux() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y tmux
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install tmux
-    fi
-    gum_success "tmux installed successfully."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		sudo apt install -y tmux
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install tmux
+	fi
+	gum_success "tmux installed successfully."
 }
 
 install_rg() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y ripgrep
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install ripgrep
-    fi
-    gum_success "rg installed successfully."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		sudo apt install -y ripgrep
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install ripgrep
+	fi
+	gum_success "rg installed successfully."
 }
 
 install_fd() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y fd-find
-        # fd-find installs as fdfind on Debian/Ubuntu; symlink to fd
-        ln -sf "$(command -v fdfind)" "$HOME/bin/fd"
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install fd
-    fi
-    gum_success "fd installed successfully."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		sudo apt install -y fd-find
+		# fd-find installs as fdfind on Debian/Ubuntu; symlink to fd
+		ln -sf "$(command -v fdfind)" "$HOME/bin/fd"
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install fd
+	fi
+	gum_success "fd installed successfully."
 }
 
 install_jq() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        sudo apt install -y jq
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install jq
-    fi
-    gum_success "jq installed successfully."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		sudo apt install -y jq
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install jq
+	fi
+	gum_success "jq installed successfully."
 }
 
 install_pq() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
-    fi
-    gum_success "pq installed successfully."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
+	fi
+	gum_success "pq installed successfully."
 }
 
 install_bat() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        bash install/install_tar.sh "https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install bat
-    fi
-    gum_success "bat installed successfully."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		bash install/install_tar.sh "https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install bat
+	fi
+	gum_success "bat installed successfully."
 }
 
 install_eza() {
-    if [[ "$OS_TYPE" == "linux" ]]; then
-        bash install/install_tar.sh "https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
-    elif [[ "$OS_TYPE" == "mac" ]]; then
-        brew install eza
-    fi
-    gum_success "eza installed successfully."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		bash install/install_tar.sh "https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install eza
+	fi
+	gum_success "eza installed successfully."
 }
 
 install_parquet_tools() {
-    export PATH="$HOME/go/bin:$PATH"
-    go install github.com/hangxie/parquet-tools@latest
-    gum_success "parquet-tools installed successfully."
+	export PATH="$HOME/go/bin:$PATH"
+	go install github.com/hangxie/parquet-tools@latest
+	gum_success "parquet-tools installed successfully."
 }
 
 install_fzf_tab_completion() {
-    git clone https://github.com/lincheney/fzf-tab-completion "$HOME/.zprezto/contrib/fzf-tab-completion"
-    gum_success "fzf-tab-completion installed successfully."
+	git clone https://github.com/lincheney/fzf-tab-completion "$HOME/.zprezto/contrib/fzf-tab-completion"
+	gum_success "fzf-tab-completion installed successfully."
 
-    if [[ "$OS_TYPE" == "mac" ]]; then
-        brew install gawk grep gnu-sed coreutils
-    fi
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install gawk grep gnu-sed coreutils
+	fi
 }
 
 install_ml_helpers() {
-    gum_warning "WARNING!!!"
-    gum_warning "REPLACE THIS WITH UV"
-    git clone https://github.com/vmasrani/machine_learning_helpers.git "$HOME/.python"
-    gum_warning "machine_learning_helpers installed successfully."
+	gum_warning "WARNING!!!"
+	gum_warning "REPLACE THIS WITH UV"
+	git clone https://github.com/vmasrani/machine_learning_helpers.git "$HOME/.python"
+	gum_warning "machine_learning_helpers installed successfully."
 }
 
-
 install_hypers() {
-    gum_warning "WARNING!!!"
-    gum_warning "REPLACE THIS WITH UV"
-    git clone https://github.com/vmasrani/hypers.git "$HOME/hypers"
-    gum_warning "hypers installed successfully."
+	gum_warning "WARNING!!!"
+	gum_warning "REPLACE THIS WITH UV"
+	git clone https://github.com/vmasrani/hypers.git "$HOME/hypers"
+	gum_warning "hypers installed successfully."
 }
 
 install_tpm() {
-    git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
-    gum_success "tmux plugin manager installed successfully."
+	git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+	gum_success "tmux plugin manager installed successfully."
 }
 
-
 install_git_fuzzy() {
-    git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
-    ln -s "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
-    gum_success "git-fuzzy setup completed."
+	git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
+	ln -s "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
+	gum_success "git-fuzzy setup completed."
 }
 
 install_diff_so_fancy() {
-    git clone https://github.com/so-fancy/diff-so-fancy.git "$HOME/bin/_diff-so-fancy"
-    ln -s "$HOME/bin/_diff-so-fancy/diff-so-fancy" "$HOME/bin/diff-so-fancy"
-    git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
-    git config --global interactive.diffFilter "diff-so-fancy --patch"
-    gum_success "diff-so-fancy setup completed."
+	git clone https://github.com/so-fancy/diff-so-fancy.git "$HOME/bin/_diff-so-fancy"
+	ln -s "$HOME/bin/_diff-so-fancy/diff-so-fancy" "$HOME/bin/diff-so-fancy"
+	git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
+	git config --global interactive.diffFilter "diff-so-fancy --patch"
+	gum_success "diff-so-fancy setup completed."
 }
 
 install_zprezto() {
-    git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
-    gum_success "zprezto installed successfully."
+	git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
+	gum_success "zprezto installed successfully."
 }
 
 install_meslo_font() {
-    local font_installed=false
-    if [[ "$OS_TYPE" == "mac" ]]; then
-        (ls ~/Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
-        (ls /Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
-    elif command_exists fc-list; then
-        fc-list -q "MesloLGS NF" && font_installed=true
-    fi
+	local font_installed=false
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		(ls ~/Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
+		(ls /Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
+	elif command_exists fc-list; then
+		fc-list -q "MesloLGS NF" && font_installed=true
+	fi
 
-    if [[ "$font_installed" == "false" ]]; then
-        gum_info "Installing MesloLGS NF font..."
-        if [[ "$OS_TYPE" == "mac" ]]; then
-            brew install --cask font-meslo-lg-nerd-font
-        else
-            sudo apt install fontconfig
-            # Direct download method for Linux
-            mkdir -p "$HOME/.local/share/fonts"
-            curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
-                 --output "$HOME/.local/share/fonts/MesloLGS NF Regular.ttf"
-            curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold.ttf" \
-                 --output "$HOME/.local/share/fonts/MesloLGS NF Bold.ttf"
-            curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf" \
-                 --output "$HOME/.local/share/fonts/MesloLGS NF Italic.ttf"
-            curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf" \
-                 --output "$HOME/.local/share/fonts/MesloLGS NF Bold Italic.ttf"
-            fc-cache -f -v
-        fi
-        gum_success "MesloLGS NF font installed successfully."
-    else
-        gum_dim "MesloLGS NF font is already installed."
-    fi
+	if [[ "$font_installed" == "false" ]]; then
+		gum_info "Installing MesloLGS NF font..."
+		if [[ "$OS_TYPE" == "mac" ]]; then
+			brew install --cask font-meslo-lg-nerd-font
+		else
+			sudo apt install fontconfig
+			# Direct download method for Linux
+			mkdir -p "$HOME/.local/share/fonts"
+			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
+				--output "$HOME/.local/share/fonts/MesloLGS NF Regular.ttf"
+			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold.ttf" \
+				--output "$HOME/.local/share/fonts/MesloLGS NF Bold.ttf"
+			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf" \
+				--output "$HOME/.local/share/fonts/MesloLGS NF Italic.ttf"
+			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf" \
+				--output "$HOME/.local/share/fonts/MesloLGS NF Bold Italic.ttf"
+			fc-cache -f -v
+		fi
+		gum_success "MesloLGS NF font installed successfully."
+	else
+		gum_dim "MesloLGS NF font is already installed."
+	fi
 }
 
 install_iterm2() {
-    if [[ "$OS_TYPE" == "mac" ]]; then
-        if [ ! -d "/Applications/iTerm.app" ]; then
-            gum_info "Installing iTerm2..."
-            brew install --cask iterm2
-            gum_success "iTerm2 installed successfully."
-        else
-            gum_dim "iTerm2 is already installed."
-        fi
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		if [ ! -d "/Applications/iTerm.app" ]; then
+			gum_info "Installing iTerm2..."
+			brew install --cask iterm2
+			gum_success "iTerm2 installed successfully."
+		else
+			gum_dim "iTerm2 is already installed."
+		fi
 
-    else
-        gum_warning "iTerm2 is only available on macOS."
-    fi
+	else
+		gum_warning "iTerm2 is only available on macOS."
+	fi
 }
 
 install_nvm() {
-    if [ ! -d "$HOME/.nvm" ]; then
-        gum_info "Installing NVM..."
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-        export NVM_DIR="$HOME/.nvm"
-        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-        [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-        nvm install --lts
-        nvm use --lts
-        gum_success "NVM installed gum_success with latest LTS Node.js."
-    else
-        gum_dim "NVM is already installed."
-    fi
+	if [ ! -d "$HOME/.nvm" ]; then
+		gum_info "Installing NVM..."
+		curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+		export NVM_DIR="$HOME/.nvm"
+		[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+		[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+		nvm install --lts
+		nvm use --lts
+		gum_success "NVM installed gum_success with latest LTS Node.js."
+	else
+		gum_dim "NVM is already installed."
+	fi
 }
 
 install_unzip() {
-    gum_info "Installing unzip..."
-    install_on_brew_or_mac unzip unzip
-    gum_success "unzip installed successfully."
+	gum_info "Installing unzip..."
+	install_on_brew_or_mac unzip unzip
+	gum_success "unzip installed successfully."
 }
 
 install_bun() {
-    gum_info "Installing Bun..."
-    if [[ "$OS_TYPE" == "mac" ]]; then
-        brew tap oven-sh/bun
-        brew install bun
-    else
-        curl -fsSL https://bun.sh/install | bash
-        export PATH="$HOME/.bun/bin:$PATH"
-    fi
-    gum_success "Bun installed successfully."
+	gum_info "Installing Bun..."
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew tap oven-sh/bun
+		brew install bun
+	else
+		curl -fsSL https://bun.sh/install | bash
+		export PATH="$HOME/.bun/bin:$PATH"
+	fi
+	gum_success "Bun installed successfully."
 }
 
 install_pm2() {
-    gum_info "Installing PM2..."
-    npm install pm2 -g
-    gum_success "PM2 installed successfully."
+	gum_info "Installing PM2..."
+	npm install pm2 -g
+	gum_success "PM2 installed successfully."
 }
 
 install_yarn() {
-    gum_info "Installing Yarn..."
-    npm install --global yarn
-    gum_success "Yarn installed successfully."
+	gum_info "Installing Yarn..."
+	npm install --global yarn
+	gum_success "Yarn installed successfully."
 }
 
 install_bash_language_server() {
-    gum_info "Installing bash-language-server..."
-    npm i -g bash-language-server
+	gum_info "Installing bash-language-server..."
+	npm i -g bash-language-server
 }
 
 install_yaml_language_server() {
-    gum_info "Installing yaml-language-server..."
-    npm i -g yaml-language-server
+	gum_info "Installing yaml-language-server..."
+	npm i -g yaml-language-server
 }
 
 install_vscode_langservers_extracted() {
-    gum_info "Installing vscode-langservers-extracted..."
-    npm i -g vscode-langservers-extracted
+	gum_info "Installing vscode-langservers-extracted..."
+	npm i -g vscode-langservers-extracted
 }
 
 install_rich_cli() {
-    uv tool install rich-cli
-    gum_success "rich-cli installed successfully."
+	uv tool install rich-cli
+	gum_success "rich-cli installed successfully."
 }
 
 install_markitdown() {
-    uv tool install --python 3.13 "markitdown[all]"
-    gum_success "markitdown installed successfully."
+	uv tool install --python 3.13 "markitdown[all]"
+	gum_success "markitdown installed successfully."
 }
 
 install_visidata() {
-    uv tool install --python 3.13 --with lxml --with pdfminer.six visidata
-    gum_success "visidata installed successfully."
+	uv tool install --python 3.13 --with lxml --with pdfminer.six visidata
+	gum_success "visidata installed successfully."
 }
 
 install_ty() {
-    uv tool install ty@latest
+	uv tool install ty@latest
 }
 
 install_cargo_tools() {
-    cargo install --locked watchexec-cli
-    gum_success "watchexec-cli installed successfully."
+	cargo install --locked watchexec-cli
+	gum_success "watchexec-cli installed successfully."
 }
 
 install_markdown_oxide() {
-    source "$HOME/.cargo/env"
-    export PATH="$HOME/.cargo/bin:$PATH"
-    cargo install --locked --git https://github.com/Feel-ix-343/markdown-oxide.git markdown-oxide
+	source "$HOME/.cargo/env"
+	export PATH="$HOME/.cargo/bin:$PATH"
+	cargo install --locked --git https://github.com/Feel-ix-343/markdown-oxide.git markdown-oxide
 }
 
 install_simple_completion_language_server() {
-    source "$HOME/.cargo/env"
-    export PATH="$HOME/.cargo/bin:$PATH"
-    cargo install --git https://github.com/estin/simple-completion-language-server.git
+	source "$HOME/.cargo/env"
+	export PATH="$HOME/.cargo/bin:$PATH"
+	cargo install --git https://github.com/estin/simple-completion-language-server.git
 }
 
 install_taplo_cli() {
-    source "$HOME/.cargo/env"
-    export PATH="$HOME/.cargo/bin:$PATH"
-    cargo install taplo-cli --locked --features lsp
+	source "$HOME/.cargo/env"
+	export PATH="$HOME/.cargo/bin:$PATH"
+	cargo install taplo-cli --locked --features lsp
 }
 
 install_uwu() {
-    gum_info "Installing uwu..."
-    local temp_dir="/tmp/uwu_build_$$"
+	gum_info "Installing uwu..."
+	local temp_dir="/tmp/uwu_build_$$"
 
-    # Clone and build in temp directory (subshell preserves working directory)
-    git clone https://github.com/context-labs/uwu.git "$temp_dir"
-    (
-        cd "$temp_dir"
+	# Clone and build in temp directory (subshell preserves working directory)
+	git clone https://github.com/context-labs/uwu.git "$temp_dir"
+	(
+		cd "$temp_dir"
 
-        # Check if bun is installed
-        if ! command_exists "bun"; then
-            gum_info "Bun is required for uwu. Installing bun first..."
-            install_bun
-        fi
+		# Check if bun is installed
+		if ! command_exists "bun"; then
+			gum_info "Bun is required for uwu. Installing bun first..."
+			install_bun
+		fi
 
-        # Install dependencies and build
-        bun install
-        bun run build
+		# Install dependencies and build
+		bun install
+		bun run build
 
-        # Make binary executable and move to PATH
-        chmod +x dist/uwu-cli
-        sudo mv dist/uwu-cli /usr/local/bin/uwu-cli
-    )
+		# Make binary executable and move to PATH
+		chmod +x dist/uwu-cli
+		sudo mv dist/uwu-cli /usr/local/bin/uwu-cli
+	)
 
-    # Clean up temp directory
-    rm -rf "$temp_dir"
+	# Clean up temp directory
+	rm -rf "$temp_dir"
 
-    gum_success "uwu installed successfully."
+	gum_success "uwu installed successfully."
 }
 
 install_codex() {
-    gum_info "Installing OpenAI Codex CLI..."
-    npm install -g @openai/codex
-    gum_success "Codex installed successfully."
+	gum_info "Installing OpenAI Codex CLI..."
+	npm install -g @openai/codex
+	gum_success "Codex installed successfully."
 }
 
 install_opencode() {
-    gum_info "Installing OpenCode AI coding TUI..."
-    curl -fsSL https://opencode.ai/install | bash
-    gum_success "OpenCode installed successfully."
+	gum_info "Installing OpenCode AI coding TUI..."
+	curl -fsSL https://opencode.ai/install | bash
+	gum_success "OpenCode installed successfully."
 }
 
 install_neomutt() {
-    gum_info "Installing NeoMutt and email tools..."
+	gum_info "Installing NeoMutt and email tools..."
 
-    # Install core packages
-    install_on_brew_or_mac "neomutt"
-    install_on_brew_or_mac "isync"
-    install_on_brew_or_mac "msmtp"
-    install_on_brew_or_mac "notmuch"
-    install_on_brew_or_mac "urlscan"
+	# Install core packages
+	install_on_brew_or_mac "neomutt"
+	install_on_brew_or_mac "isync"
+	install_on_brew_or_mac "msmtp"
+	install_on_brew_or_mac "notmuch"
+	install_on_brew_or_mac "urlscan"
 
-    # Ensure glow is installed (used for rendering markdown in emails)
-    install_if_missing glow install_glow
+	# Ensure glow is installed (used for rendering markdown in emails)
+	install_if_missing glow install_glow
 
-    # Install html-to-markdown (Rust CLI for fast HTML->Markdown conversion)
-    if ! command -v html-to-markdown &> /dev/null; then
-        gum_info "Installing html-to-markdown-cli via cargo..."
-        source "$HOME/.cargo/env" 2>/dev/null || true
-        cargo install html-to-markdown-cli
-    fi
+	# Install html-to-markdown (Rust CLI for fast HTML->Markdown conversion)
+	if ! command -v html-to-markdown &>/dev/null; then
+		gum_info "Installing html-to-markdown-cli via cargo..."
+		source "$HOME/.cargo/env" 2>/dev/null || true
+		cargo install html-to-markdown-cli
+	fi
 
-    # Create mail directories
-    mkdir -p "$HOME/.local/share/mail/gmail/INBOX/cur"
-    mkdir -p "$HOME/.local/share/mail/gmail/INBOX/new"
-    mkdir -p "$HOME/.local/share/mail/gmail/INBOX/tmp"
-    mkdir -p "$HOME/.cache/mutt/tmp"
-    mkdir -p "$HOME/.cache/mutt/gmail/headers"
-    mkdir -p "$HOME/.cache/mutt/gmail/bodies"
-    mkdir -p "$HOME/.config/mutt"
-    mkdir -p "$HOME/.config/isync"
-    mkdir -p "$HOME/.config/msmtp"
-    mkdir -p "$HOME/.config/notmuch"
+	# Create mail directories
+	mkdir -p "$HOME/.local/share/mail/gmail/INBOX/cur"
+	mkdir -p "$HOME/.local/share/mail/gmail/INBOX/new"
+	mkdir -p "$HOME/.local/share/mail/gmail/INBOX/tmp"
+	mkdir -p "$HOME/.cache/mutt/tmp"
+	mkdir -p "$HOME/.cache/mutt/gmail/headers"
+	mkdir -p "$HOME/.cache/mutt/gmail/bodies"
+	mkdir -p "$HOME/.config/mutt"
+	mkdir -p "$HOME/.config/isync"
+	mkdir -p "$HOME/.config/msmtp"
+	mkdir -p "$HOME/.config/notmuch"
 
-    # Create mailsync timestamp file
-    touch "$HOME/.config/mutt/.mailsynclastrun"
+	# Create mailsync timestamp file
+	touch "$HOME/.config/mutt/.mailsynclastrun"
 
-    # Set up background mail sync with pm2 (if pm2 is available)
-    if command -v pm2 &> /dev/null; then
-        gum_info "Setting up background mail sync with pm2..."
-        # Stop existing mailsync process if running
-        pm2 delete mailsync 2>/dev/null || true
-        # Start mailsync daemon (must specify zsh interpreter)
-        pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh
-        pm2 save
-        gum_success "Background mail sync enabled (syncs every 5 minutes)"
-    else
-        gum_info "pm2 not found - skipping background sync setup"
-        gum_info "Install pm2 and run: pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh"
-    fi
+	# Set up background mail sync with pm2 (if pm2 is available)
+	if command -v pm2 &>/dev/null; then
+		gum_info "Setting up background mail sync with pm2..."
+		# Stop existing mailsync process if running
+		pm2 delete mailsync 2>/dev/null || true
+		# Start mailsync daemon (must specify zsh interpreter)
+		pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh
+		pm2 save
+		gum_success "Background mail sync enabled (syncs every 5 minutes)"
+	else
+		gum_info "pm2 not found - skipping background sync setup"
+		gum_info "Install pm2 and run: pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh"
+	fi
 
-    gum_success "NeoMutt and email tools installed successfully."
-    gum_info "Next steps:"
-    gum_info "  1. Ensure ~/.mutt_secrets has your Gmail app password"
-    gum_info "  2. Run: mailsync  (to sync and index mail)"
-    gum_info "  3. Launch: neomutt"
+	gum_success "NeoMutt and email tools installed successfully."
+	gum_info "Next steps:"
+	gum_info "  1. Ensure ~/.mutt_secrets has your Gmail app password"
+	gum_info "  2. Run: mailsync  (to sync and index mail)"
+	gum_info "  3. Launch: neomutt"
+}
+
+# ===================================================================
+# Linter installations (for universal lint tool)
+# ===================================================================
+
+install_ruff() {
+	uv tool install ruff
+}
+
+install_sourcery() {
+	uv tool install sourcery
+}
+
+install_biome() {
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install biome
+	else
+		npm install -g @biomejs/biome
+	fi
+}
+
+install_shfmt() {
+	install_on_brew_or_mac "shfmt"
+}
+
+install_lefthook() {
+	install_on_brew_or_mac "lefthook"
+}
+
+install_yamllint() {
+	uv tool install yamllint
+}
+
+install_hadolint() {
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install hadolint
+	else
+		# Download binary for Linux
+		local hadolint_url="https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64"
+		sudo curl -L "$hadolint_url" -o /usr/local/bin/hadolint
+		sudo chmod +x /usr/local/bin/hadolint
+	fi
+}
+
+install_golangci_lint() {
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install golangci-lint
+	else
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	fi
 }

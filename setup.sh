@@ -94,6 +94,14 @@ install_if_missing ty install_ty # Ty CLI tool via uv
 
 # install language servers (must be after npm and cargo installation)
 install_if_missing shellcheck install_shellcheck # Shell script linter
+install_if_missing ruff install_ruff # Python linter and formatter (Astral)
+install_if_missing sourcery install_sourcery # AI-powered Python code reviewer
+install_if_missing biome install_biome # JS/TS linter and formatter
+install_if_missing shfmt install_shfmt # Shell script formatter
+install_if_missing yamllint install_yamllint # YAML linter
+install_if_missing hadolint install_hadolint # Dockerfile linter
+install_if_missing golangci-lint install_golangci_lint # Go linter
+install_if_missing lefthook install_lefthook # Git hooks manager
 install_if_missing bash-language-server install_bash_language_server # Bash LSP for editor integration
 install_if_missing yaml-language-server install_yaml_language_server # YAML LSP for editor integration
 install_if_missing vscode-html-language-server install_vscode_langservers_extracted # HTML/CSS/JSON/ESLint language servers

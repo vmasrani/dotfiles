@@ -2,7 +2,6 @@
 
 source ~/dotfiles/shell/helper_functions.sh
 
-
 # Install npm packages
 echo "Installing npm packages..."
 npm install -g yaml-language-server vscode-langservers-extracted bash-language-server pyright

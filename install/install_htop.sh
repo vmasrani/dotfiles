@@ -13,13 +13,13 @@ sudo apt install -y build-essential autotools-dev autoconf libncursesw5-dev git
 
 # Clone or update the htop repository
 if [ -d "$HTOP_DIR/.git" ]; then
-  echo "Updating existing htop repository..."
-  cd "$HTOP_DIR"
-  git pull
+	echo "Updating existing htop repository..."
+	cd "$HTOP_DIR"
+	git pull
 else
-  echo "Cloning htop repository..."
-  git clone https://github.com/htop-dev/htop.git "$HTOP_DIR"
-  cd "$HTOP_DIR"
+	echo "Cloning htop repository..."
+	git clone https://github.com/htop-dev/htop.git "$HTOP_DIR"
+	cd "$HTOP_DIR"
 fi
 
 # Clean previous builds
@@ -39,10 +39,9 @@ make install prefix="$BIN_DIR"
 
 # Add $HOME/bin to PATH if not already included
 if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
-  echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
-  export PATH="$HOME/bin:$PATH"
+	echo 'export PATH="$HOME/bin:$PATH"' >>"$HOME/.bashrc"
+	export PATH="$HOME/bin:$PATH"
 fi
 
-
 # Verify the installation
-htop --version 
+htop --version
