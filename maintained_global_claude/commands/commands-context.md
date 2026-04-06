@@ -1,11 +1,11 @@
 # commands
 > Custom Claude Code slash commands for context generation, testing, and parallel pipelines — symlinked to `~/.claude/commands/`.
-`4 files | 2026-04-02`
+`4 files | 2026-04-05`
 
 | Entry | Purpose |
 |-------|---------|
 | `research.md` | Generates/refreshes `*-context.md` files project-wide; orchestrates `context-researcher` agents in bottom-up order (leaves first, then parents) |
-| `arewedone.md` | Runs structural completeness review via `structural-completeness-reviewer` agent, then auto-commits with `committer` agent |
+| `arewedone.md` | Post-task quality gate: structural completeness review, then `ty check` + `sourcery review --fix` loop until clean, then commits |
 | `generate-tests.md` | Generates exhaustive failing test suites via `test-generator` agent; discovers what to test from args, specs, git diff, or user interview |
 | `process-parallel.md` | Scaffolds a 3-file parallel pipeline (worker.py, run.py, system_prompt.md) using `pmap` + `uv run` scripts |
 
@@ -22,6 +22,10 @@ Commands are plain markdown files — the first line (or frontmatter `descriptio
 ## Gotchas
 
 `research.md` must NOT run in plan mode — it begins with an explicit `ExitPlanMode` instruction. If invoked while plan mode is active, the command will stall unless that tool is called first.
+
+`research.md` processes directories bottom-up: leaves in one parallel batch, parents in a second batch. Running parents before leaves means `ctx-index` inside parent agents returns stale/missing child summaries.
+
+`arewedone.md` iterates `ty check` + `sourcery review --fix` in a loop until both exit cleanly; fixing one tool can reintroduce errors for the other, so a single pass is insufficient.
 
 The `.claude/logs/` subdirectory inside this directory is runtime log state (post_tool_use, stop, chat, subagent_stop JSON files) — not command definitions. Do not confuse it with command source files.
 
