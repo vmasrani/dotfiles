@@ -962,7 +962,15 @@ install_biome() {
 }
 
 install_shfmt() {
-	install_on_brew_or_mac "shfmt"
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		local version
+		version=$(curl -s https://api.github.com/repos/mvdan/sh/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+		curl -sLo /tmp/shfmt "https://github.com/mvdan/sh/releases/download/${version}/shfmt_${version}_linux_amd64"
+		chmod +x /tmp/shfmt
+		sudo mv /tmp/shfmt /usr/local/bin/shfmt
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install shfmt
+	fi
 }
 
 install_lefthook() {

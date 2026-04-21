@@ -133,3 +133,4 @@ unalias gws 2>/dev/null  # free gws for googleworkspace-cli
 
 autoload -Uz bracketed-paste-magic
 zle -N bracketed-paste bracketed-paste-magic
+alias m='mdterm'

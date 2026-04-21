@@ -74,8 +74,8 @@
     "claude-mem@thedotmack": false,
     "skill-creator@claude-plugins-official": true
   },
-  "fastMode": true,
   "skipDangerousModePermissionPrompt": true,
+  "skipAutoPermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006
   }
