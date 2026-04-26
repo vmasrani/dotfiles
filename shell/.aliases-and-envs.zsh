@@ -128,7 +128,6 @@ alias gpt='oai'
 #   command codex --dangerously-bypass-approvals-and-sandbox --enable web_search_request -s workspace-write -c "sandbox_workspace_write.writable_roots=['/Users/my-user/.cache/uv']" "$@"
 # }
 
-alias g='mdterm'
 unalias gws 2>/dev/null  # free gws for googleworkspace-cli
 
 autoload -Uz bracketed-paste-magic

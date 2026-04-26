@@ -27,7 +27,7 @@
       "ExitPlanMode"
     ],
     "deny": [],
-    "defaultMode": "plan"
+    "defaultMode": "auto"
   },
   "hooks": {
     "PostToolUse": [
@@ -61,22 +61,27 @@
     "frontend-design@claude-code-plugins": false,
     "frontend@mag-claude-plugins": false,
     "code-analysis@mag-claude-plugins": false,
-    "bun@mag-claude-plugins": false,
     "orchestration@mag-claude-plugins": false,
-    "pyright-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": false,
     "rust-analyzer-lsp@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": false,
-    "context7@claude-plugins-official": true,
+    "context7@claude-plugins-official": false,
     "typescript-lsp@claude-plugins-official": true,
     "ralph-wiggum@claude-plugins-official": false,
     "ralph-wiggum@claude-code-plugins": false,
     "commit-commands@claude-plugins-official": false,
     "claude-mem@thedotmack": false,
-    "skill-creator@claude-plugins-official": true
+    "skill-creator@claude-plugins-official": true,
+    "telegram@claude-plugins-official": false
   },
+  "fastMode": true,
+  "showClearContextOnPlanAccept": true,
   "skipDangerousModePermissionPrompt": true,
   "skipAutoPermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006
-  }
+  },
+  "preferredNotifChannel": "iterm2",
+  "teammateMode": "tmux",
+  "remoteControlAtStartup": true
 }

@@ -9,13 +9,13 @@ get_gpu() {
         return
     fi
 
-    # Query GPU count, memory used/total, and utilization in one call
-    # Format: used_mb, total_mb, utilization_percent (one line per GPU)
     local gpu_data
     gpu_data=$(nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu \
         --format=csv,noheader,nounits 2>/dev/null)
 
-    if [[ -z "$gpu_data" ]]; then
+    # Bail if empty OR if nvidia-smi wrote an error to stdout instead of a CSV row
+    # (happens on hosts where the driver can't be reached — e.g. AWS instances without GPU)
+    if [[ -z "$gpu_data" ]] || ! [[ "$gpu_data" =~ ^[0-9]+,\ [0-9]+,\ [0-9]+ ]]; then
         echo ""
         return
     fi
