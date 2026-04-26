@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,80%|hidden|)'
+export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,50%|hidden|)'
 
 export FZF_DEFAULT_OPTS=" \
     --style full \
