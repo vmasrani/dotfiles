@@ -1,0 +1,67 @@
+#!/usr/bin/env zsh
+# Start, stop, or check OrbStack. Frees ~3GB of RAM when stopped.
+# Usage: orbstack [start|stop|restart|status|toggle]
+
+set -uo pipefail
+
+cmd="${1:-status}"
+
+mem_mb() {
+  # Sum RSS (KB) of all OrbStack-related processes, print MB.
+  ps -axo rss,command \
+    | awk '/[Oo]rb[Ss]tack/ {sum+=$1} END {printf "%.0f", sum/1024}'
+}
+
+show_status() {
+  local state
+  state=$(orbctl status 2>&1)
+
+  if [[ "$state" == "Running" ]]; then
+    gum style --foreground 82 "● OrbStack: running"
+    gum style --foreground 245 "  Memory:  $(mem_mb) MB"
+  else
+    gum style --foreground 245 "○ OrbStack: stopped"
+  fi
+}
+
+case "$cmd" in
+  status)
+    show_status
+    ;;
+  start)
+    gum spin --title "Starting OrbStack..." -- orbctl start
+    show_status
+    ;;
+  stop)
+    before=$(mem_mb)
+    gum spin --title "Stopping OrbStack..." -- orbctl stop
+    gum style --foreground 82 "✓ Stopped. Freed ~${before} MB"
+    ;;
+  restart)
+    gum spin --title "Restarting OrbStack..." -- orbctl restart
+    show_status
+    ;;
+  toggle)
+    if [[ "$(orbctl status 2>&1)" == "Running" ]]; then
+      exec "$0" stop
+    else
+      exec "$0" start
+    fi
+    ;;
+  -h|--help|help)
+    cat <<EOF
+orbstack — start/stop OrbStack (frees ~3GB RAM when stopped)
+
+Usage:
+  orbstack            show status + memory
+  orbstack start      start OrbStack
+  orbstack stop       stop OrbStack
+  orbstack restart    restart OrbStack
+  orbstack toggle     flip running state
+EOF
+    ;;
+  *)
+    gum style --foreground 196 "Unknown command: $cmd"
+    exec "$0" --help
+    ;;
+esac
