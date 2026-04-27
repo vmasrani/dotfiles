@@ -32,6 +32,7 @@ After every file edit, check LSP diagnostics for errors introduced by the change
 
 - always search for the latest modern 2025 libraries and use them when writing code
 - never write a function yourself when it can come from a library instead
+- NEVER include `Co-Authored-By` lines in git commit messages
 
 # python guidelines
 
@@ -112,6 +113,41 @@ After every file edit, check LSP diagnostics for errors introduced by the change
   - ALWAYS use pathlib over os
   - Use comments sparingly, only write comments to explain anything non-standard
   - whenever you need to hardcode large strings (for sql queries, say), relegate all that code into a helper script called static.py
+  - ALWAYS separate data analysis/computation from display/plotting code. Analysis functions must return a DataFrame. Display functions receive a DataFrame and handle all formatting (Rich tables, console.print, markdown, plots). Never interleave computation with presentation.
+
+    ### ❌ Avoid: mixed analysis + display
+
+    ```python
+    df = generate_dataframe(100_000)
+    table = Table(title="Results")
+    table.add_column("Patterns", style="cyan")
+    table.add_column("pandas (ms)", justify="right")
+    for n in [1, 5, 10]:
+        t_pd = bench(pandas_fn, 3)
+        table.add_row(str(n), f"{t_pd:.0f}")
+    console.print(table)
+    ```
+
+    ### ✅ Prefer: analysis returns df, display receives df
+
+    ```python
+    def benchmark_count(sizes: list[int]) -> pd.DataFrame:
+        rows = []
+        for n in sizes:
+            t_pd = bench(pandas_fn, 3)
+            rows.append({"patterns": n, "pandas_ms": t_pd})
+        return pd.DataFrame(rows)
+
+    def display_benchmark(df: pd.DataFrame):
+        table = Table(title="Results")
+        table.add_column("Patterns", style="cyan")
+        table.add_column("pandas (ms)", justify="right")
+        for _, row in df.iterrows():
+            table.add_row(str(row["patterns"]), f"{row['pandas_ms']:.0f}")
+        console.print(table)
+
+    display_benchmark(benchmark_count([1, 5, 10]))
+    ```
 
 # Pydantic Best Practices for Data Processing
 
