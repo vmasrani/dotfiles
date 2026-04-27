@@ -31,3 +31,4 @@ maintained_global_claude/plugins/marketplaces
 # /maintained_global_claude/skills/media-manager
 # /maintained_global_claude/skills/person-profiler
 # /maintained_global_claude/skills/request
+/maintained_global_claude/skills/host
