@@ -77,11 +77,12 @@
   "fastMode": true,
   "showClearContextOnPlanAccept": true,
   "skipDangerousModePermissionPrompt": true,
+  "preferredNotifChannel": "iterm2",
+  "teammateMode": "tmux",
+  "remoteControlAtStartup": true,
   "skipAutoPermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006
   },
-  "preferredNotifChannel": "iterm2",
-  "teammateMode": "tmux",
-  "remoteControlAtStartup": true
+  "agentPushNotifEnabled": true
 }

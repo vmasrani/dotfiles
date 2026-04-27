@@ -92,6 +92,12 @@ alias npp='uv init . && uv add ipython joblib matplotlib numpy pandas pandas_fla
 alias act='source .venv/bin/activate'
 
 
+fixmouse() {
+    printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1015l'
+    if [ -n "$TMUX" ]; then
+        tmux set -g mouse off \; set -g mouse on
+    fi
+}
 
 
 # bfs
@@ -133,4 +139,3 @@ unalias gws 2>/dev/null  # free gws for googleworkspace-cli
 autoload -Uz bracketed-paste-magic
 zle -N bracketed-paste bracketed-paste-magic
 alias m='mdterm'
-alias fixmouse="printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1015l'"
