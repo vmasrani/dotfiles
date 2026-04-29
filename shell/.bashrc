@@ -1,156 +1,79 @@
-# # ~/.bashrc: executed by bash(1) for non-login shells.
-# # see /usr/share/doc/bash/examples/startup-files (in the package bash-doc)
-# # for examples
+# ~/.bashrc — minimal, portable, snapshot-friendly.
+#
+# Most interactive work happens in zsh. This file exists so that:
+#   1. Non-interactive bash (Claude Code's snapshot, scripts) gets PATH + env fast
+#   2. Interactive bash is still usable as a fallback
+#
+# Keep this file SMALL. Anything heavy (nvm.sh, conda init, completions) goes
+# below the interactivity guard, lazy-loaded so non-interactive bash never pays
+# the cost. Sourcing nvm.sh in particular is what kills Claude's 10s snapshot
+# budget, hence the early return + lazy stub.
 
-echo "hello from bashrc"
+# ---------------------------------------------------------------------------
+# PATH (kept in sync with ~/.paths.zsh)
+# ---------------------------------------------------------------------------
+PATH_ADDITIONS=(
+    "$HOME/.local/bin"
+    "$HOME/bin"
+    "$HOME/tools"
+    "$HOME/.claude"
+    "$HOME/.bun/bin"
+    "$HOME/.npm-global/bin"
+    "$HOME/go/bin"
+    "/usr/local/go/bin"
+    "$HOME/.cargo/bin"
+    "/opt/homebrew/sbin"
+    "/opt/homebrew/bin"
+)
+for d in "${PATH_ADDITIONS[@]}"; do
+    [[ -d "$d" && ":$PATH:" != *":$d:"* ]] && PATH="$d:$PATH"
+done
 
-# # If not running interactively, don't do anything
-# case $- in
-#     *i*) ;;
-#       *) return;;
-# esac
+# Add latest nvm-installed Node bin without sourcing nvm.sh (which is slow).
+# Loops without forking; takes the last entry, which on a normal install is
+# the most recently created version directory.
+if [[ -d "$HOME/.nvm/versions/node" ]]; then
+    _node_bin=""
+    for d in "$HOME"/.nvm/versions/node/*/bin; do
+        [[ -d "$d" ]] && _node_bin="$d"
+    done
+    [[ -n "$_node_bin" ]] && PATH="$_node_bin:$PATH"
+    unset _node_bin
+fi
 
-# # don't put duplicate lines or lines starting with space in the history.
-# # See bash(1) for more options
-# HISTCONTROL=ignoreboth
+export PATH
 
-# # append to the history file, don't overwrite it
-# shopt -s histappend
+# ---------------------------------------------------------------------------
+# Env vars (safe for non-interactive shells)
+# ---------------------------------------------------------------------------
+export EDITOR="hx"
+export BAT_THEME="Solarized (light)"
 
-# # for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
-# HISTSIZE=1000
-# HISTFILESIZE=2000
+# ---------------------------------------------------------------------------
+# Bail out for non-interactive shells.
+# Claude Code's `bash -c -l` lands here and returns immediately with a
+# fully-populated PATH, no snapshot timeout.
+# ---------------------------------------------------------------------------
+case $- in
+    *i*) ;;
+    *)   return 0 ;;
+esac
 
-# # check the window size after each command and, if necessary,
-# # update the values of LINES and COLUMNS.
-# shopt -s checkwinsize
+# ---------------------------------------------------------------------------
+# Interactive-only below this line
+# ---------------------------------------------------------------------------
 
-# # If set, the pattern "**" used in a pathname expansion context will
-# # match all files and zero or more directories and subdirectories.
-# #shopt -s globstar
+# Lazy-load nvm: first call to `nvm` sources nvm.sh and re-invokes itself.
+# Avoids the ~1–3s startup cost on every interactive bash launch.
+nvm() {
+    unset -f nvm
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    nvm "$@"
+}
 
-# # make less more friendly for non-text input files, see lesspipe(1)
-# [ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
-
-# # set variable identifying the chroot you work in (used in the prompt below)
-# if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
-#     debian_chroot=$(cat /etc/debian_chroot)
-# fi
-
-# # set a fancy prompt (non-color, unless we know we "want" color)
-# case "$TERM" in
-#     xterm-color|*-256color) color_prompt=yes;;
-# esac
-
-# # uncomment for a colored prompt, if the terminal has the capability; turned
-# # off by default to not distract the user: the focus in a terminal window
-# # should be on the output of commands, not on the prompt
-# #force_color_prompt=yes
-
-# if [ -n "$force_color_prompt" ]; then
-#     if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
-# 	# We have color support; assume it's compliant with Ecma-48
-# 	# (ISO/IEC-6429). (Lack of such support is extremely rare, and such
-# 	# a case would tend to support setf rather than setaf.)
-# 	color_prompt=yes
-#     else
-# 	color_prompt=
-#     fi
-# fi
-
-# if [ "$color_prompt" = yes ]; then
-#     PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
-# else
-#     PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
-# fi
-# unset color_prompt force_color_prompt
-
-# # If this is an xterm set the title to user@host:dir
-# case "$TERM" in
-# xterm*|rxvt*)
-#     PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
-#     ;;
-# *)
-#     ;;
-# esac
-
-# # enable color support of ls and also add handy aliases
-# if [ -x /usr/bin/dircolors ]; then
-#     test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
-#     alias ls='ls --color=auto'
-#     #alias dir='dir --color=auto'
-#     #alias vdir='vdir --color=auto'
-
-#     alias grep='grep --color=auto'
-#     alias fgrep='fgrep --color=auto'
-#     alias egrep='egrep --color=auto'
-# fi
-
-# # colored GCC warnings and errors
-# #export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
-
-# # some more ls aliases
-# alias ll='ls -alF'
-# alias la='ls -A'
-# alias l='ls -CF'
-
-# # Add an "alert" alias for long running commands.  Use like so:
-# #   sleep 10; alert
-# alias alert='notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo error)" "$(history|tail -n1|sed -e '\''s/^\s*[0-9]\+\s*//;s/[;&|]\s*alert$//'\'')"'
-
-# # Alias definitions.
-# # You may want to put all your additions into a separate file like
-# # ~/.bash_aliases, instead of adding them here directly.
-# # See /usr/share/doc/bash-doc/examples in the bash-doc package.
-
-# if [ -f ~/.bash_aliases ]; then
-#     . ~/.bash_aliases
-# fi
-
-# # enable programmable completion features (you don't need to enable
-# # this, if it's already enabled in /etc/bash.bashrc and /etc/profile
-# # sources /etc/bash.bashrc).
-# if ! shopt -oq posix; then
-#   if [ -f /usr/share/bash-completion/bash_completion ]; then
-#     . /usr/share/bash-completion/bash_completion
-#   elif [ -f /etc/bash_completion ]; then
-#     . /etc/bash_completion
-#   fi
-# fi
-
-
-# source ~/dotfiles/lscolors.sh
-
-# [ -f ~/.fzf.bash ] && source ~/.fzf.bash
-# source ~/.fzf-env.zsh
-# source ~/.aliases-and-envs.zsh
-
-
-
-# # >>> conda initialize >>>
-# # !! Contents within this block are managed by 'conda init' !!
-# __conda_setup="$('$HOME/miniconda/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-# if [ $? -eq 0 ]; then
-#     eval "$__conda_setup"
-# else
-#     if [ -f "$HOME/miniconda/etc/profile.d/conda.sh" ]; then
-#         . "$HOME/miniconda/etc/profile.d/conda.sh"
-#     else
-#         export PATH="$HOME/miniconda/bin:$PATH"
-#     fi
-# fi
-# unset __conda_setup
-# # <<< conda initialize <<<
-
-# . "$HOME/.cargo/env"
-
-# export NVM_DIR="$HOME/.nvm"
-# [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-# [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
-# . "$HOME/.local/bin/env"
-echo "Sourcing $0"
-
-alias claude-mem='bun "$HOME/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs"'
-
+# fzf keybindings if installed
 [ -f ~/.fzf.bash ] && source ~/.fzf.bash
+
+# Plain prompt (you live in zsh; this is just for bash fallback sessions)
+PS1='\u@\h:\w\$ '
