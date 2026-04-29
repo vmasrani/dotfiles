@@ -102,6 +102,7 @@ install_if_missing yamllint install_yamllint # YAML linter
 install_if_missing hadolint install_hadolint # Dockerfile linter
 install_if_missing golangci-lint install_golangci_lint # Go linter
 install_if_missing lefthook install_lefthook # Git hooks manager
+install_if_missing just install_just # Just command runner (justfiles)
 install_if_missing bash-language-server install_bash_language_server # Bash LSP for editor integration
 install_if_missing yaml-language-server install_yaml_language_server # YAML LSP for editor integration
 install_if_missing vscode-html-language-server install_vscode_langservers_extracted # HTML/CSS/JSON/ESLint language servers

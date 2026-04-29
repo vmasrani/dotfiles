@@ -977,6 +977,17 @@ install_lefthook() {
 	install_on_brew_or_mac "lefthook"
 }
 
+install_just() {
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install just
+	else
+		# cargo is installed earlier in setup.sh, so it's available here
+		source "$HOME/.cargo/env" 2>/dev/null || true
+		cargo install just
+	fi
+	gum_success "just installed successfully."
+}
+
 install_yamllint() {
 	uv tool install yamllint
 }

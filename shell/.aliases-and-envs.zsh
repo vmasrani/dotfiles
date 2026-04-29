@@ -95,7 +95,11 @@ alias act='source .venv/bin/activate'
 fixmouse() {
     printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1015l'
     if [ -n "$TMUX" ]; then
-        tmux set -g mouse off \; set -g mouse on
+        # Two separate invocations so tmux fully emits disable then enable
+        # sequences to the outer terminal. A single chained `off \; on` gets
+        # coalesced and leaves iTerm2 with mouse reporting off.
+        tmux set -g mouse off
+        tmux set -g mouse on
     fi
 }
 

@@ -1,0 +1,200 @@
+#!/bin/zsh
+# Shared AWS EC2 management functions and configuration
+
+# Source gum utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+source "$SCRIPT_DIR/../shell/gum_utils.sh"
+
+# === Configuration ===
+typeset -A INSTANCES=(
+    ["metal"]="i-0858d0e3943d34004"
+    ["dev-machine"]="i-06e021e025d37666d"
+)
+
+typeset -A INSTANCE_TYPES=(
+    ["metal"]="g4dn.metal"
+    ["dev-machine"]="r6i.16xlarge"
+)
+
+KEY_PATH="$HOME/.ssh/vaden-vodasafe-aws.pem"
+SSH_USER="vaden"
+SSH_HOST="vodasafe-aws"
+SSH_CONFIG="$HOME/.ssh/config"
+VOLUME_ID="vol-0f6433d9d70214a83"
+AVAILABILITY_ZONE="ca-central-1"
+DEVICE_NAME="/dev/sda1"
+
+# === Functions ===
+
+select_instance() {
+    local title="$1"
+    local color="${2:-$GUM_COLOR_INFO}"
+
+    gum_box "$title" "$color"
+
+    local instance_type
+    instance_type=$(gum_choose --header "Select instance type:" "metal" "dev-machine")
+
+    if [[ -z "$instance_type" ]]; then
+        gum_error "No instance selected"
+        exit 1
+    fi
+
+    INSTANCE_ID="${INSTANCES[$instance_type]}"
+    DISPLAY_NAME="${INSTANCE_TYPES[$instance_type]}"
+
+    gum_info "Selected: $instance_type ($DISPLAY_NAME)"
+    echo "$instance_type"
+}
+
+get_instance_state() {
+    local instance_id="$1"
+    gum_spin_quick "Checking instance state..." \
+        aws ec2 describe-instances --instance-ids "$instance_id" \
+        --query "Reservations[0].Instances[0].State.Name" \
+        --output text --no-cli-pager
+}
+
+wait_for_instance_stopped() {
+    local instance_id="$1"
+    gum_spin_wait "Waiting for instance to stop..." \
+        aws ec2 wait instance-stopped --instance-ids "$instance_id" --no-cli-pager
+}
+
+wait_for_instance_running() {
+    local instance_id="$1"
+    gum_spin_wait "Waiting for instance to start..." \
+        aws ec2 wait instance-running --instance-ids "$instance_id" --no-cli-pager
+}
+
+wait_for_volume_available() {
+    local volume_id="$1"
+    gum_spin_wait "Waiting for volume..." \
+        aws ec2 wait volume-available --volume-ids "$volume_id" --no-cli-pager
+}
+
+wait_for_volume_attached() {
+    local volume_id="$1"
+    gum_spin_wait "Waiting for volume to attach..." \
+        aws ec2 wait volume-in-use --volume-ids "$volume_id" --no-cli-pager
+}
+
+stop_instance() {
+    local instance_id="$1"
+    local state="$2"
+
+    if [[ "$state" = "stopped" ]]; then
+        gum_success "Instance is already stopped"
+        return 0
+    elif [[ "$state" = "running" ]]; then
+        gum_warning "Instance is running. Stopping..."
+        aws ec2 stop-instances --instance-ids "$instance_id" --no-cli-pager > /dev/null
+        wait_for_instance_stopped "$instance_id"
+        gum_success "Instance stopped"
+    else
+        gum_warning "Instance is in state: $state. Waiting for it to stop..."
+        wait_for_instance_stopped "$instance_id"
+        gum_success "Instance stopped"
+    fi
+}
+
+get_public_ip() {
+    local instance_id="$1"
+    aws ec2 describe-instances \
+        --instance-ids "$instance_id" \
+        --query "Reservations[0].Instances[0].PublicIpAddress" \
+        --output text --no-cli-pager
+}
+
+get_volume_attachment_info() {
+    local volume_id="$1"
+    local query="$2"
+
+    aws ec2 describe-volumes \
+        --volume-ids "$volume_id" \
+        --query "$query" \
+        --output text --no-cli-pager 2>/dev/null || echo "None"
+}
+
+get_current_root_volume() {
+    local instance_id="$1"
+    local device_name="$2"
+
+    gum_spin_quick "Checking current root volume..." \
+        aws ec2 describe-instances --instance-ids "$instance_id" \
+        --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName=='$device_name'].Ebs.VolumeId" \
+        --output text --no-cli-pager
+}
+
+update_ssh_config() {
+    local new_ip="$1"
+    local host_name="$SSH_HOST"
+    local config_file="$SSH_CONFIG"
+
+    if [[ ! -f "$config_file" ]]; then
+        gum_warning "SSH config file not found at $config_file"
+        return 1
+    fi
+
+    # Check if the host exists in the config
+    if ! rg --quiet "^Host $host_name\$" "$config_file"; then
+        gum_warning "Host $host_name not found in SSH config"
+        return 1
+    fi
+
+    # Update the HostName for this host
+    # Use sed to replace the HostName line that follows the Host line
+    sed -i.bak "/^Host $host_name\$/,/^Host / s/^\s*HostName\s\+.*/  HostName  $new_ip/" "$config_file"
+
+    gum_success "Updated SSH config: $host_name -> $new_ip"
+}
+
+# === Mosh / Security Group ===
+
+MOSH_PORT="60001"
+
+get_instance_security_group() {
+    local instance_id="$1"
+    aws ec2 describe-instances \
+        --instance-ids "$instance_id" \
+        --query "Reservations[0].Instances[0].SecurityGroups[0].GroupId" \
+        --output text --no-cli-pager
+}
+
+ensure_mosh_ingress() {
+    local instance_id="$1"
+    local port="${2:-$MOSH_PORT}"
+
+    local sg_id
+    sg_id=$(get_instance_security_group "$instance_id")
+    if [[ -z "$sg_id" || "$sg_id" == "None" ]]; then
+        gum_warning "Could not find security group for $instance_id; skipping mosh ingress"
+        return 1
+    fi
+
+    local my_ip
+    my_ip=$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
+    if [[ -z "$my_ip" ]]; then
+        gum_warning "Could not determine public IP; skipping mosh ingress"
+        return 1
+    fi
+
+    gum_info "Ensuring UDP $port ingress on $sg_id for $my_ip/32..."
+    local err
+    if err=$(aws ec2 authorize-security-group-ingress \
+                --group-id "$sg_id" \
+                --protocol udp \
+                --port "$port" \
+                --cidr "$my_ip/32" \
+                --no-cli-pager 2>&1); then
+        gum_success "Added mosh ingress rule (udp/$port from $my_ip/32)"
+        return 0
+    fi
+    if [[ "$err" == *"InvalidPermission.Duplicate"* ]]; then
+        gum_dim "Mosh ingress rule already present"
+        return 0
+    fi
+    gum_error "Failed to authorize mosh ingress: $err"
+    return 1
+}
+

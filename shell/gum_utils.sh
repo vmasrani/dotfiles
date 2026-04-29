@@ -71,7 +71,7 @@ _gum_check() {
 
 gum_success() {
     if _gum_check; then
-        gum style --foreground "$GUM_COLOR_SUCCESS" "$GUM_SYMBOL_SUCCESS $*"
+        printf '\033[38;5;%sm%s %s\033[0m\n' "$GUM_COLOR_SUCCESS" "$GUM_SYMBOL_SUCCESS" "$*"
     else
         echo "$GUM_SYMBOL_SUCCESS $*"
     fi
@@ -88,7 +88,7 @@ gum_error() {
 
 gum_warning() {
     if _gum_check; then
-        gum style --foreground "$GUM_COLOR_WARNING" "$GUM_SYMBOL_WARNING $*"
+        printf '\033[38;5;%sm%s %s\033[0m\n' "$GUM_COLOR_WARNING" "$GUM_SYMBOL_WARNING" "$*"
     else
         echo "WARNING: $*"
     fi
@@ -96,7 +96,7 @@ gum_warning() {
 
 gum_info() {
     if _gum_check; then
-        gum style --foreground "$GUM_COLOR_INFO" "$GUM_SYMBOL_PROGRESS $*"
+        printf '\033[38;5;%sm%s %s\033[0m\n' "$GUM_COLOR_INFO" "$GUM_SYMBOL_PROGRESS" "$*"
     else
         echo "$GUM_SYMBOL_PROGRESS $*"
     fi
@@ -104,7 +104,7 @@ gum_info() {
 
 gum_dim() {
     if _gum_check; then
-        gum style --foreground "$GUM_COLOR_DIM" "$@"
+        printf '\033[38;5;%sm%s\033[0m\n' "$GUM_COLOR_DIM" "$*"
     else
         echo "$@"
     fi
@@ -199,10 +199,10 @@ gum_print_change() {
     local new="$2"
 
     if _gum_check; then
-        printf "%s %s %s\n" \
-            "$(gum style --foreground "$GUM_COLOR_GRAY" "$old")" \
-            "$(gum style --foreground "$GUM_COLOR_DIM" "$GUM_SYMBOL_PROGRESS")" \
-            "$(gum style --foreground "$GUM_COLOR_BLUE" "$new")"
+        printf '\033[38;5;%sm%s\033[0m \033[38;5;%sm%s\033[0m \033[38;5;%sm%s\033[0m\n' \
+            "$GUM_COLOR_GRAY" "$old" \
+            "$GUM_COLOR_DIM" "$GUM_SYMBOL_PROGRESS" \
+            "$GUM_COLOR_BLUE" "$new"
     else
         printf "%s -> %s\n" "$old" "$new"
     fi
