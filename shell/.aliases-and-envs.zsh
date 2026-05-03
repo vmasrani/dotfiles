@@ -93,13 +93,16 @@ alias act='source .venv/bin/activate'
 
 
 fixmouse() {
-    printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1015l'
     if [ -n "$TMUX" ]; then
-        # Two separate invocations so tmux fully emits disable then enable
-        # sequences to the outer terminal. A single chained `off \; on` gets
-        # coalesced and leaves iTerm2 with mouse reporting off.
+        # Inside tmux, let tmux renegotiate mouse reporting with the outer
+        # terminal. printf'ing DECRST sequences here disables iTerm2's mouse
+        # reporting and tmux won't re-enable it until something forces a redraw.
         tmux set -g mouse off
         tmux set -g mouse on
+        tmux refresh-client -S
+    else
+        # Outside tmux: clear stuck mouse-reporting modes on the local terminal.
+        printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1015l'
     fi
 }
 
