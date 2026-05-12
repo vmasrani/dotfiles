@@ -978,14 +978,27 @@ install_lefthook() {
 }
 
 install_just() {
-	if [[ "$OS_TYPE" == "mac" ]]; then
-		brew install just
-	else
-		# cargo is installed earlier in setup.sh, so it's available here
-		source "$HOME/.cargo/env" 2>/dev/null || true
-		cargo install just
-	fi
+	# cargo is installed earlier in setup.sh, so it's available here
+	source "$HOME/.cargo/env" 2>/dev/null || true
+	cargo install just
 	gum_success "just installed successfully."
+}
+
+install_gh() {
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install gh
+	else
+		# Official GitHub CLI install for Debian/Ubuntu
+		sudo mkdir -p -m 755 /etc/apt/keyrings
+		curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+			| sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+		sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+		echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+			| sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+		sudo apt update
+		sudo apt install -y gh
+	fi
+	gum_success "gh installed successfully."
 }
 
 install_yamllint() {

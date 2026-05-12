@@ -77,12 +77,13 @@
   "fastMode": true,
   "showClearContextOnPlanAccept": true,
   "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
   "preferredNotifChannel": "iterm2",
   "teammateMode": "tmux",
   "remoteControlAtStartup": true,
+  "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006
-  },
-  "agentPushNotifEnabled": true
+  }
 }

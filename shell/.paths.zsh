@@ -17,6 +17,7 @@ fi
 
 # Consolidated PATH Setup (order matters - earlier entries take precedence)
 PATH_ADDITIONS=(
+    "$HOME/.cargo/bin"              # Rust/Cargo binaries
     "$HOME/.local/bin"              # Local user binaries
     "$HOME/bin"                     # Personal scripts
     "$HOME/tools"                   # Custom tools from dotfiles
@@ -26,7 +27,6 @@ PATH_ADDITIONS=(
     "$NODE_BIN_PATH"                # Node.js binaries (dynamic version)
     "$HOME/go/bin"                  # Go binaries
     "/usr/local/go/bin"             # Go installation
-    "$HOME/.cargo/bin"              # Rust/Cargo binaries
     "$HOME/.nvm"                    # nvm installation
     "/opt/homebrew/sbin"            # Homebrew sbin
     "/opt/homebrew/bin"             # Homebrew binaries (before /usr/bin)

@@ -1,4 +1,3 @@
-zsh
 # export POWERLEVEL9K_INSTALLATION_DIR=$HOME/.zprezto/modules/prompt/external/powerlevel10k
 # # export PATH="$HOME/miniconda/bin:$PATH"  # commented out by conda initialize
 # export PATH=$HOME/local/bin:$PATH
@@ -23,3 +22,7 @@ zsh
 # . "$HOME/.cargo/env"
 
 # . "$HOME/.local/bin/env"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
