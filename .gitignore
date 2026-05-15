@@ -35,3 +35,6 @@ maintained_global_claude/plugins/marketplaces
 /maintained_global_claude/skills
 /codex/config.toml
 /tools/aws_common.sh
+/maintained_global_claude/agents/podcast-chapter-generator.md
+/maintained_global_claude/skills/gws/SKILL.md
+/tools/yt

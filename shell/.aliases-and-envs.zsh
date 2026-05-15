@@ -118,8 +118,8 @@ get_filtered_pids() {
 
 alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
 
-alias cc='claude agents'
-alias ccc='claude agents --continue'
+alias cc='claude'
+alias ccc='claude --continue'
 alias ccd='claude --dangerously-skip-permissions'
 alias upd='update-packages'
 alias updq='update-packages --quiet'
