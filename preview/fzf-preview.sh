@@ -10,7 +10,8 @@ preview_json()     { preview jq -C . "$1" 2>/dev/null | head -n $MAX_LINES || pr
 preview_markdown() { preview markitdown "$1" | head -n $MAX_LINES | mdterm -w "${FZF_PREVIEW_COLUMNS:-120}"; }
 # Force native Sixel (not auto-detected "symbols", which is the pixelated
 # fallback) and size to the actual preview window. Works in iTerm2 with a
-# single tmux layer; nested tmux will show garbage — use 1-layer for now.
+# single tmux layer; nested tmux can't relay Sixel — the escape leaks as
+# literal text. Use a single tmux layer.
 preview_image()    { preview chafa -f sixels --size="${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-40}" "$1"; }
 is_binary()        { file --brief --mime-encoding "$1" | grep -q 'binary'; }
 is_json()          { file --brief "$1" | grep -qi 'json'; }
