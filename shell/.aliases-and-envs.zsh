@@ -93,16 +93,30 @@ alias act='source .venv/bin/activate'
 
 
 fixmouse() {
-    # Clear stuck mouse-reporting modes from a dead app (inner terminal state).
-    printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1015l'
+    # Order matters per xterm/iTerm2 spec:
+    #   DISABLE: tracking modes first (1000/1002/1003/1004), then encoding (1015/1006)
+    #   ENABLE:  encoding first (1006), then tracking (1000/1002)
+    # Modes: 1000=basic 1002=button-motion 1003=any-motion 1004=focus
+    #        1005=utf-8 (legacy) 1006=SGR 1015=urxvt (legacy)
+    local off='\e[?1000l\e[?1002l\e[?1003l\e[?1004l\e[?1005l\e[?1015l\e[?1006l'
+
     if [ -n "$TMUX" ]; then
-        # Toggle tmux mouse so it re-emits DECSET to the outer terminal.
-        # The two separate invocations (not chained) ensure tmux actually
-        # flushes the disable->enable transition.
+        # 1. Reset iTerm2 directly via DCS passthrough — clears modes the dying
+        #    app set on the outer terminal (esp. 1003 + 1004).
+        printf '\ePtmux;\e\e[?1000l\e\e[?1002l\e\e[?1003l\e\e[?1004l\e\e[?1005l\e\e[?1015l\e\e[?1006l\e\\'
+
+        # 2. Clear tmux's per-pane inner-state tracking.
+        printf "$off"
+
+        # 3. Drain queued mouse bytes on stdin so the next prompt doesn't read them.
+        while read -t 0 -k 1 -s 2>/dev/null; do :; done
+
+        # 4. Re-establish tmux's mouse mode (emits spec-ordered DECSET to iTerm2).
         tmux set -g mouse off
         tmux set -g mouse on
-        # Full client redraw forces tmux to re-emit terminal modes to iTerm2.
-        tmux refresh-client
+    else
+        printf "$off"
+        while read -t 0 -k 1 -s 2>/dev/null; do :; done
     fi
 }
 

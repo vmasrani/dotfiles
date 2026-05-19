@@ -12,7 +12,17 @@ preview_markdown() { preview markitdown "$1" | head -n $MAX_LINES | mdterm -w "$
 # fallback) and size to the actual preview window. Works in iTerm2 with a
 # single tmux layer; nested tmux can't relay Sixel — the escape leaks as
 # literal text. Use a single tmux layer.
-preview_image()    { preview chafa -f sixels --size="${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-40}" "$1"; }
+preview_image() {
+  # --passthrough tmux routes the image through tmux's explicit passthrough
+  # channel, so tmux tracks it as a real object and erases it deterministically
+  # on redraw. Without it, tmux's native Sixel interception races fzf's clear
+  # and the old image ghosts into the next (text) preview. Only valid inside
+  # tmux; outside tmux the wrapper would corrupt output, so gate on $TMUX.
+  local pt=none
+  [[ -n "$TMUX" ]] && pt=tmux
+  chafa -f sixels --passthrough "$pt" -s 40x40 "$1"
+}
+# preview_image()    { chafa -f sixels -s "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-40}" "$1"; }
 is_binary()        { file --brief --mime-encoding "$1" | grep -q 'binary'; }
 is_json()          { file --brief "$1" | grep -qi 'json'; }
 
