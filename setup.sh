@@ -101,7 +101,6 @@ install_if_missing shfmt install_shfmt # Shell script formatter
 install_if_missing yamllint install_yamllint # YAML linter
 install_if_missing hadolint install_hadolint # Dockerfile linter
 install_if_missing golangci-lint install_golangci_lint # Go linter
-install_if_missing lefthook install_lefthook # Git hooks manager
 install_if_missing just install_just # Just command runner (justfiles)
 install_if_missing gh install_gh # GitHub CLI
 install_if_missing bash-language-server install_bash_language_server # Bash LSP for editor integration

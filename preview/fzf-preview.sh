@@ -56,6 +56,9 @@ if [[ -f "$1" ]]; then
     *.feather)
       preview feather-preview "$1"
       ;;
+    *.arrow)
+      preview arrow-preview "$1"
+      ;;
 
     # ML
     *.pkl|*.pickle)

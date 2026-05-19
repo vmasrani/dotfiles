@@ -160,6 +160,7 @@ install_dotfiles() {
 		"$dotfiles/preview/torch-preview.py:$bin/torch-preview"
 		"$dotfiles/preview/npy-preview.py:$bin/npy-preview"
 		"$dotfiles/preview/feather-preview.py:$bin/feather-preview"
+		"$dotfiles/preview/arrow-preview.py:$bin/arrow-preview"
 		"$dotfiles/preview/pkl-preview.py:$bin/pkl-preview"
 		"$dotfiles/preview/onnx-preview.py:$bin/onnx-preview"
 
@@ -174,7 +175,6 @@ install_dotfiles() {
 
 		# linters dotfiles
 		"$dotfiles/linters/lint:$bin/lint"
-		"$dotfiles/linters/lefthook.yml:$dotfiles/lefthook.yml"
 		"$dotfiles/linters/.pylintrc:$home/.pylintrc"
 		"$dotfiles/linters/.sourcery.yaml:$home/.sourcery.yaml"
 
@@ -971,10 +971,6 @@ install_shfmt() {
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install shfmt
 	fi
-}
-
-install_lefthook() {
-	install_on_brew_or_mac "lefthook"
 }
 
 install_just() {
