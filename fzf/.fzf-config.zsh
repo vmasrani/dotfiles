@@ -3,7 +3,7 @@ source ~/.fzf-env.zsh
 fasd_fzf-preview() {
     fasd -d -R | \
         awk '{print $2}' | \
-        fzf \
+        fzf --tmux 95% \
             --bind 'focus:+transform-header:' \
             --bind "$FZF_PREVIEW_WINDOW_BINDING"
 }

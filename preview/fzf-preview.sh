@@ -8,21 +8,19 @@ preview()          { timeout "$TIMEOUT" "$@" 2>/dev/null; }
 preview_bat()      { preview bat -n --color=always --line-range :$MAX_LINES "$1"; }
 preview_json()     { preview jq -C . "$1" 2>/dev/null | head -n $MAX_LINES || preview_bat "$1"; }
 preview_markdown() { preview markitdown "$1" | head -n $MAX_LINES | mdterm -w "${FZF_PREVIEW_COLUMNS:-120}"; }
-# Force native Sixel (not auto-detected "symbols", which is the pixelated
-# fallback) and size to the actual preview window. Works in iTerm2 with a
-# single tmux layer; nested tmux can't relay Sixel — the escape leaks as
-# literal text. Use a single tmux layer.
+# Symbols mode with sextants (2x3 subpixels/cell), truecolor, diffusion
+# dither, max-quality dither work. Cap at MAX_IMG_COLSxMAX_IMG_LINES so a
+# big preview window doesn't render a wall of blocky pixels.
+MAX_IMG_COLS=80
+MAX_IMG_LINES=40
 preview_image() {
-  # --passthrough tmux routes the image through tmux's explicit passthrough
-  # channel, so tmux tracks it as a real object and erases it deterministically
-  # on redraw. Without it, tmux's native Sixel interception races fzf's clear
-  # and the old image ghosts into the next (text) preview. Only valid inside
-  # tmux; outside tmux the wrapper would corrupt output, so gate on $TMUX.
-  local pt=none
-  [[ -n "$TMUX" ]] && pt=tmux
-  chafa -f sixels --passthrough "$pt" -s 40x40 "$1"
+  local cols=${FZF_PREVIEW_COLUMNS:-80}
+  local lines=${FZF_PREVIEW_LINES:-40}
+  (( cols  > MAX_IMG_COLS  )) && cols=$MAX_IMG_COLS
+  (( lines > MAX_IMG_LINES )) && lines=$MAX_IMG_LINES
+  preview chafa -f symbols --symbols sextant --colors full \
+    --dither diffusion --work 9 --size "${cols}x${lines}" "$1"
 }
-# preview_image()    { chafa -f sixels -s "${FZF_PREVIEW_COLUMNS:-80}x${FZF_PREVIEW_LINES:-40}" "$1"; }
 is_binary()        { file --brief --mime-encoding "$1" | grep -q 'binary'; }
 is_json()          { file --brief "$1" | grep -qi 'json'; }
 

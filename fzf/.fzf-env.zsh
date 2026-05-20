@@ -4,7 +4,7 @@ export FZF_PREVIEW_WINDOW_BINDING='ctrl-/:change-preview-window(down,50%|hidden|
 
 export FZF_DEFAULT_OPTS=" \
     --style full \
-    --height 100% \
+    --tmux 95%  \
     --cycle -m  \
     --reverse --ansi \
     --border --padding 1,2 \
@@ -22,7 +22,6 @@ export FZF_DEFAULT_OPTS=" \
         ' \
     --bind 'focus:transform-preview-label:[[ -n {} ]] && printf \" Previewing [%s] \" {}' \
     --bind 'focus:+transform-header:file --brief {} || echo \"No file selected\"' \
-    --bind 'focus:+clear-screen+refresh-preview' \
     --bind 'ctrl-r:change-list-label( Reloading the list )+reload(sleep 2; git ls-files)' \
     --color 'border:#aaaaaa,label:#cccccc' \
     --color 'preview-border:#9999cc,preview-label:#ccccff' \
