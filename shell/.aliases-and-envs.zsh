@@ -160,3 +160,11 @@ unalias gws 2>/dev/null  # free gws for googleworkspace-cli
 autoload -Uz bracketed-paste-magic
 zle -N bracketed-paste bracketed-paste-magic
 alias m='mdterm'
+
+function y() {
+	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
+	command yazi "$@" --cwd-file="$tmp"
+	IFS= read -r -d '' cwd < "$tmp"
+	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
+	command rm -f -- "$tmp"
+}
