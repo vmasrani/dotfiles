@@ -34,6 +34,16 @@ After every file edit, check LSP diagnostics for errors introduced by the change
 - never write a function yourself when it can come from a library instead
 - NEVER include `Co-Authored-By` lines in git commit messages
 
+# Model selection for subagents
+
+When delegating work to subagents (Agent tool `model` param, Workflow `agent()` `model` opt), match the model tier to task difficulty:
+
+- **simple tasks** → `haiku` or `sonnet` (haiku for the most trivial: scouting, file mapping, mechanical edits, formatting)
+- **moderately difficult tasks** → `opus` (standard implementation, code review, test writing)
+- **very difficult tasks** → `fable` (Fable 5: architecture, tricky concurrency, subtle correctness work)
+
+Also scale the amount of thinking/reasoning effort to the task — minimal deliberation for simple work, more for hard work.
+
 # python guidelines
 
 - always use `uv` for dependency management
