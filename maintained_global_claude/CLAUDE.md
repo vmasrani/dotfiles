@@ -42,6 +42,8 @@ When delegating work to subagents (Agent tool `model` param, Workflow `agent()` 
 - **moderately difficult tasks** → `opus` (standard implementation, code review, test writing)
 - **very difficult tasks** → `fable` (Fable 5: architecture, tricky concurrency, subtle correctness work)
 
+**HARD RULE — research tasks:** research-type subagents (context-file generation, codebase exploration, directory summarization, doc/research fan-outs) ALWAYS get `model: sonnet` (or `haiku` for trivial scouting), NEVER `fable`. Always pass the `model` param explicitly so the subagent never silently inherits an expensive session model.
+
 Also scale the amount of thinking/reasoning effort to the task — minimal deliberation for simple work, more for hard work.
 
 # python guidelines
