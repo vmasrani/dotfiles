@@ -38,3 +38,6 @@ maintained_global_claude/plugins/marketplaces
 /maintained_global_claude/agents/podcast-chapter-generator.md
 /maintained_global_claude/skills/gws/SKILL.md
 /tools/yt
+/tools/media-stack-alert
+/tools/media-stack-backup
+/tools/media-stack-watchdog
