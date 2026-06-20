@@ -45,7 +45,9 @@ Process leaves first (Step 4a), wait for all to complete, then process parents (
 
 ### 4. Generation
 
-For each directory needing a context file, launch a `context-researcher` agent via the Agent tool with `model: sonnet`.
+For each directory needing a context file, launch a `context-researcher` agent via the Agent tool.
+
+**MODEL — HARD RULE:** Every Agent call MUST explicitly set `model: sonnet`. NEVER use `fable` (or any fable5/Mythos-tier model) for research tasks, and never omit the `model` param — omitting it can let the agent inherit the session model. Context generation is summarization work; sonnet is always sufficient.
 
 Use a **short** description (e.g., `"ctx: src/utils"`). The agent prompt should be:
 > Analyze the directory `{path}` and write the context file to `{path}/{dirname}-context.md`. Today's date is {YYYY-MM-DD}. Return ONLY "SUCCESS: wrote {path}" or "ERROR: {path} — {reason}". Nothing else.
