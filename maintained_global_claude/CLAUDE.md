@@ -34,6 +34,38 @@ After every file edit, check LSP diagnostics for errors introduced by the change
 - never write a function yourself when it can come from a library instead
 - NEVER include `Co-Authored-By` lines in git commit messages
 
+# Fail loud — never write slow defensive fallbacks
+
+**Core doctrine: there is ONE correct (fast) path. When it can't run, stop with a loud, actionable error — NEVER silently fall back to a slow, degraded, or wrong path.** This holds in every language (Rust, Python, JS/TS, shell, anything). It is the cross-language generalization of the Python "no try/except, fail loudly" rule below — apply it everywhere, by default, without being asked.
+
+Why: a silent fallback turns a visible failure into an invisible one. Wrong, empty, partial, or merely-slow results that *look* successful cost far more to debug than an immediate crash. The fast path is the contract; a broken fast path is a bug to surface, not to paper over.
+
+**Rules:**
+- **Make the fast path the only path.** Don't keep a slow alternative implementation alive "just in case." When you build a fast path, *delete* the old slow one — don't leave it reachable as a hidden safety net. Dead-but-reachable fallback code silently mis-serves the instant the fast path declines.
+- **A broken or unsupported fast path errors loudly**: nonzero exit code (CLI), raised exception (Python), returned `Err` or `panic!` as appropriate (Rust), thrown error (JS) — *plus an actionable message naming what failed and how to fix it* (e.g. "rebuild with --fuzzy", "metacharacter `*` unsupported — use -F"). Never return unfiltered, empty, partial, or literal-instead-of-regex results.
+- **Silent mis-serve is the cardinal sin.** Returning wrong rows, an O(corpus) rescan where an O(1) lookup was promised, or degraded output the caller can't distinguish from a correct answer — all forbidden. Prefer a crash over a plausible-but-wrong result.
+- **Validate invariants up front; fail before doing work.** Corrupt-on-disk data, violated preconditions, a required service that's down → loud error *before* any computation, not a mid-flight panic or a quietly-wrong traversal.
+- **Stub the not-yet-implemented loudly.** An unimplemented branch is an explicit "not implemented" error with an exit code, never a fall-through to an older/slower code path.
+- **Delete escape hatches that re-enable the slow path.** Env vars, flags, or config toggles that silently switch to a degraded mode are themselves footguns — remove them rather than support two paths.
+
+**The one nuance — distinguish "not applicable" from "broken":**
+- A *legitimate absence* (a `NotFound`, an empty `Option`/`None`, a feature that genuinely doesn't apply to this input) may return quietly — that's not a fallback, it's a correct answer.
+- A *real failure* (IO error, corruption, a missing dependency, an unsupported-but-requested operation) must be loud.
+- The test: "if I return quietly here, could the caller mistake a failure for a successful result?" If yes → fail loud.
+
+**No try/except / try/catch / match-and-swallow for control flow.** Don't wrap a call to "handle" its error by continuing with a default. Let it propagate. Catch only to *add context and re-raise*, or at a genuine top-level boundary (CLI entrypoint, request handler) where you log and exit nonzero.
+
+```python
+# ❌ silent fallback — a broken fast path degrades into a slow/wrong one
+try:
+    return index_lookup(key)        # the contract: O(1)
+except Exception:
+    return linear_scan(rows, key)   # now silently O(n) — or wrong
+
+# ✅ fail loud — the fast path is the only path
+return index_lookup(key)            # raises if the index is broken; surface it
+```
+
 # Model selection for subagents
 
 When delegating work to subagents (Agent tool `model` param, Workflow `agent()` `model` opt), match the model tier to task difficulty:
@@ -53,7 +85,7 @@ Also scale the amount of thinking/reasoning effort to the task — minimal delib
 - always use `uv run` instead of `python3`
 - always use typer for CLI, loguru for logs, and rich for print
 - always prefer list comprehensions and functional style programming over for loops
-- always prefer to not use try/except anywhere, in favor of failing loudly
+- always prefer to not use try/except anywhere, in favor of failing loudly (this is the Python instance of the "Fail loud — never write slow defensive fallbacks" doctrine above)
 - whenever you need to write temporary python code to run, make a `tmp`
 - whenever we need to add parallelism, do it by first adding this dependency:
    uv add git+<https://github.com/vmasrani/machine_learning_helpers.git>
