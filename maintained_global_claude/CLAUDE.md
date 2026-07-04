@@ -299,6 +299,7 @@ flat |= parent.nested_field.model_dump(by_alias=True)
 - always try to make the bash scripts idempotent, so they can be run multiple times safely. if the script contains multiple "stages", make each stage idempotent
 - always use fd instead of find
 - always use rg instead of grep
+  - **NEVER port grep's `-r` to `rg`.** In ripgrep `-r`/`--replace` takes an argument and silently rewrites every match to it — so `rg -rn PATTERN` means `--replace=n` (matches become the literal `n`), `rg -rln` → `ln`, `rg -rl` → `l`. This produces plausible-but-wrong output (identifiers like `blake3::hash`→`ln::hash`, `fn select1`→`ln`), NOT an error. Recursion is rg's DEFAULT — no flag needed. Use `rg -n PATTERN` for line numbers, `rg -l PATTERN` for filenames only. `-l` and `-n` are mutually exclusive; never combine them.
 - always use `eza --tree` over `tree`
 
 # Front end development guidelines
