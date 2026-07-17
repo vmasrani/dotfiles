@@ -183,6 +183,7 @@ install_dotfiles() {
 		"$dotfiles/fzf/.fzf.bash:$home/.fzf.bash"
 		"$dotfiles/fzf/.fzf.zsh:$home/.fzf.zsh"
 		"$dotfiles/fzf/.fzf-env.zsh:$home/.fzf-env.zsh"
+		"$dotfiles/fzf/fzf-history-delete.zsh:$home/.fzf-history-delete.zsh"
 
 		# Shell dotfiles
 		"$dotfiles/shell/.p10k.zsh:$home/.p10k.zsh"

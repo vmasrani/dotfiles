@@ -98,4 +98,6 @@ export FZF_CTRL_R_OPTS="
   --bind 'ctrl-/:toggle-preview' \
   --bind 'ctrl-v:execute(echo {2..} | view - > /dev/tty)' \
   --bind 'ctrl-t:track+clear-query' \
-  --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort'"
+  --bind 'ctrl-y:execute-silent(echo -n {2..} | pbcopy)+abort' \
+  --bind 'ctrl-x:execute-silent(zsh ~/.fzf-history-delete.zsh delete {f})+exclude' \
+  --footer ' enter: run  ·  C-x: delete from history  ·  C-y: copy  ·  C-v: view  ·  C-/: preview '"

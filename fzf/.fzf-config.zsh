@@ -105,3 +105,25 @@ fzf-tmux-widget(){
 # Pressing Ctrl-n autocompletes from the Tmux scrollback buffer
 zle     -N   fzf-tmux-widget
 bindkey '^N' fzf-tmux-widget
+
+# Ctrl-R history delete: inside the widget, C-x removes the highlighted entry
+# (binding lives in $FZF_CTRL_R_OPTS -> ~/.fzf-history-delete.zsh) which deletes
+# it from $HISTFILE and drops a sentinel. After the widget closes we rebuild the
+# live shell's in-memory history from the (edited) file so it's gone this session
+# too, not just in future shells. No-op unless something was actually deleted.
+if (( ${+widgets[fzf-history-widget]} )); then
+    _fzf_history_widget_prune() {
+        zle fzf-history-widget
+        local ret=$?
+        local sentinel=${TMPDIR:-/tmp}/.fzf_hist_dirty
+        if [[ -e $sentinel ]]; then
+            command rm -f -- "$sentinel"
+            local _hs=$HISTSIZE
+            HISTSIZE=0; HISTSIZE=$_hs                        # flush in-memory history
+            fc -R -- "${HISTFILE:-$HOME/.zsh_history}"       # reload from edited file
+        fi
+        return $ret
+    }
+    zle     -N   _fzf_history_widget_prune
+    bindkey '^R' _fzf_history_widget_prune
+fi
