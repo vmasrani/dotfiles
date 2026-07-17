@@ -66,18 +66,58 @@ except Exception:
 return index_lookup(key)            # raises if the index is broken; surface it
 ```
 
+# Fable is an orchestrator — Fable NEVER writes code
+
+**HARD RULE — whenever the session model is Fable, ALWAYS use an orchestrator-delegator approach. Fable NEVER writes, edits, or patches code itself — not source files, not scripts, not tests, not one-line fixes, not code smuggled through Bash heredocs. ALL code is written by opus/sonnet/haiku subagents (Agent tool or Workflow `agent()`). Fable's role is exclusively to prompt them and review their work:**
+
+- scope the task, research the codebase, design the approach
+- write precise, self-contained prompts and dispatch implementation subagents
+- review the resulting diffs critically and independently verify their claims
+- integrate results and report back
+
+Fable may still directly write non-code text: plans, prompts, reviews, documentation, commit messages, memory/context files.
+
+**Verify, don't trust.** Subagent self-reports ("done", "all tests green") are claims, not evidence — agents have reported green while a test was red, and forks have confidently answered the wrong question with zero tool calls. For load-bearing work, verify yourself before reporting success: inspect `git status`/`git diff`, build, and run the FULL test suite (not the agent's chosen subset). For execution tasks prefer a fresh agent with a self-contained prompt over a fork.
+
+**Parallel by default.** When work decomposes into independent tasks, dispatch subagents concurrently (multiple Agent calls in one message, `run_in_background`) and do useful pre-staging work while they run. The bar is "could this run concurrently?", not "was I told to parallelize?".
+
 # Model selection for subagents
 
 When delegating work to subagents (Agent tool `model` param, Workflow `agent()` `model` opt), match the model tier to task difficulty:
 
 - **simple tasks** → `haiku` or `sonnet` (haiku for the most trivial: scouting, file mapping, mechanical edits, formatting)
 - **moderately difficult tasks** → `opus` (standard implementation, code review, test writing)
-- **very difficult tasks** → `opus max thinking`
-- NEVER USE FABLE MODELS, THEY ARE BROKEN
+- **very difficult tasks** → `opus` with max thinking/reasoning effort
 
-**HARD RULE — research tasks:** research-type subagents (context-file generation, codebase exploration, directory summarization, doc/research fan-outs) ALWAYS get `model: sonnet` (or `haiku` for trivial scouting), NEVER `fable`. Always pass the `model` param explicitly so the subagent never silently inherits an expensive session model.
+**HARD RULE — never `model: fable` on a subagent.** Code is written only by opus/sonnet/haiku (see the orchestrator rule above), and Fable-model subagents have died mid-workflow when the model was unavailable — the work silently shifted to a lower-quality reactive fixer while the run still reported success. Always pass the `model` param explicitly so a subagent never silently inherits the expensive session model.
+
+**HARD RULE — research tasks:** research-type subagents (context-file generation, codebase exploration, directory summarization, doc/research fan-outs) ALWAYS get `model: sonnet` (or `haiku` for trivial scouting).
 
 Also scale the amount of thinking/reasoning effort to the task — minimal deliberation for simple work, more for hard work.
+
+# Workflow defaults
+
+- **TDD is the default** for any non-trivial change. Plans lead with an exhaustive failing-test suite (happy path, every documented edge case, boundaries, failure modes, and the real-world input that triggered the bug — not a synthetic substitute), then implementation, then a full-suite verification pass: a test "sandwich" with tests on both ends.
+- **Verbal plan approval counts.** If ExitPlanMode is rejected but the user replies "implement this" / "proceed" / "go ahead", treat that as plan approval and start executing immediately — don't re-attempt ExitPlanMode or stall for UI approval.
+- **Use git worktrees for non-trivial implementation work** so main working trees stay untouched and subagents can run in parallel without stepping on each other. For path-dep'd sibling repos, create matching worktrees under one parent dir so relative deps still resolve.
+- **Git cleanup is local-only by default.** "Clean up branches/worktrees" means `git worktree remove`, `git branch -d`, `git fetch --prune`. Never delete remote branches (`git push origin --delete`) unless explicitly told. Never delete unmerged work.
+
+# Design doctrine
+
+- **A substantial change is a smell.** If "add X to every path" touches N places, stop before implementing — the duplication is probably the bug. Check whether the paths should funnel through one shared primitive, recommend consolidating first, and the feature falls out for free.
+- **Many small scripts beat one big one.** Split examples/demos/CLIs by concern; a 30-line script that does one thing is readable and copy-pasteable, a 300-line do-everything demo is neither.
+- **"auto" defaults must adapt to inputs.** An auto knob resolves as a deterministic function of measurable input properties (size, count, content class), never a hidden static constant. Explicit user values always win.
+- **"Identical" means byte-identical.** When asked whether files/modules/dirs are "the same", verify with `diff -r` or equivalent — matching names are not matching content. Report name-matches and content-matches separately.
+
+## UI values (any user-facing surface)
+
+Apply these from the first sketch, not as a retrofit:
+
+1. **Zero jargon — never show jargon to the viewer.** The UI must be legible to the target user, not to us. Pipeline-internal vocabulary (algorithm names, internal field names, CLI syntax, library terms) never renders. Translate at the SOURCE: the server/backend ships ready-made labels and plain-language sentences, so no client ever needs the internal name. Keep a jargon table of banned terms in the project plan and `rg`-sweep rendered strings before shipping.
+2. **Intuitive first, discovery second.** Lead with the user's question (a search box, their own list), not the builder's curation (a hard-coded leaderboard, an opaque composite score). Advanced/exploratory features are reached FROM the intuitive path, one click deeper.
+3. **Simplicity with optional, non-intrusive complexity** (the VS Code model). The default surface is minimal; methodology, tuning knobs, and power features live behind quiet affordances ("?" popovers, a collapsed panel, a view toggle) that never tax the user who ignores them.
+4. **Honest empty states.** A zero-result query renders as an honest, genuinely-computed empty state — never a 404 wall, never fabricated zeros — and a transport/build failure must look VISIBLY distinct from a legitimate empty result (fail-loud reaches the UI too). Copy states what was actually computed, never more.
+5. **Prefer live computation and evidence-backed figures where the design supports it.** When results *can* be computed live against real data, that beats serving precomputed fixtures; when a number *can* link to its underlying evidence/source record, make it clickable. These are defaults to reach for, not hard requirements for every design.
 
 # python guidelines
 
@@ -86,9 +126,8 @@ Also scale the amount of thinking/reasoning effort to the task — minimal delib
 - always use typer for CLI, loguru for logs, and rich for print
 - always prefer list comprehensions and functional style programming over for loops
 - always prefer to not use try/except anywhere, in favor of failing loudly (this is the Python instance of the "Fail loud — never write slow defensive fallbacks" doctrine above)
-- whenever you need to write temporary python code to run, make a `tmp`
 - whenever we need to add parallelism, do it by first adding this dependency:
-   uv add git+<https://github.com/vmasrani/machine_learning_helpers.git>
+   uv add git+https://github.com/vmasrani/machine_learning_helpers.git
 
   (or uv add --script ... as appropriate)
 
@@ -107,7 +146,8 @@ Also scale the amount of thinking/reasoning effort to the task — minimal delib
   when threads are preferred over processes. NEVER do parallelism any other way unless I specifically ask you to  
 
 - whenever you need to connect to postgres and pull/push data, use pandas and sql_alchemy
-- whenever you need to write data processing pipelines in pandas, do it using this method-chaining style:
+- for dataframe work, use either polars or pandas depending on the problem (polars for large data / performance-sensitive pipelines, pandas for interop-heavy or quick exploratory work)
+- whenever you need to write data processing pipelines, do it using this method-chaining style (example below uses polars; the same style applies to pandas via `.pipe`/`.assign`):
 
     ```python
     # Example of using helper functions and .pipe to simplify code blocks
@@ -150,15 +190,15 @@ Also scale the amount of thinking/reasoning effort to the task — minimal delib
             )
     ```
 
-  - Always use `uv add --script $scriptname package_name_1 package_name_2` for handling python scripts with dependencies.
-  - Whenever writing python scripts, always add the uv shebang at the top:
-        #!/usr/bin/env -S uv run --script
-  - whenever you need to run temporary python code, do so by making a file called `tmp.py` and running via `uv run tmp.py`
-  - Keep my functions small, "raveoli" code better than "spagetti" code.
-  - ALWAYS use pathlib over os
-  - Use comments sparingly, only write comments to explain anything non-standard
-  - whenever you need to hardcode large strings (for sql queries, say), relegate all that code into a helper script called static.py
-  - ALWAYS separate data analysis/computation from display/plotting code. Analysis functions must return a DataFrame. Display functions receive a DataFrame and handle all formatting (Rich tables, console.print, markdown, plots). Never interleave computation with presentation.
+- Always use `uv add --script $scriptname package_name_1 package_name_2` for handling python scripts with dependencies.
+- Whenever writing python scripts, always add the uv shebang at the top:
+      #!/usr/bin/env -S uv run --script
+- whenever you need to run temporary python code, do so by making a file called `tmp.py` and running via `uv run tmp.py`
+- Keep my functions small, "ravioli" code better than "spaghetti" code.
+- ALWAYS use pathlib over os
+- Use comments sparingly, only write comments to explain anything non-standard
+- whenever you need to hardcode large strings (for sql queries, say), relegate all that code into a helper script called static.py
+- ALWAYS separate data analysis/computation from display/plotting code. Analysis functions must return a DataFrame. Display functions receive a DataFrame and handle all formatting (Rich tables, console.print, markdown, plots). Never interleave computation with presentation.
 
     ### ❌ Avoid: mixed analysis + display
 
@@ -295,7 +335,7 @@ flat |= parent.nested_field.model_dump(by_alias=True)
 - always use gum for printing and styling shell scripts
 - always use zsh over bash
 - always use small bash helper functions if it makes the code more readable
-- always prioritize readibility over everything else when making bash scripts
+- always prioritize readability over everything else when making bash scripts
 - always try to make the bash scripts idempotent, so they can be run multiple times safely. if the script contains multiple "stages", make each stage idempotent
 - always use fd instead of find
 - always use rg instead of grep
