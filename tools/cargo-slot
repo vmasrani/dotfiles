@@ -1,0 +1,206 @@
+#!/usr/bin/env zsh
+# Give a build its OWN cargo target dir, so parallel agents don't serialize.
+#
+# WHY THIS EXISTS
+#   Cargo takes an EXCLUSIVE advisory lock on target/ during compilation.
+#   N agents sharing one target dir do NOT build in parallel — they queue
+#   ("Blocking waiting for file lock on artifact directory"). There is no
+#   flag to disable the lock, and disabling it would corrupt artifacts.
+#   The only real fixes are "don't share the dir" (this script) or "don't
+#   build concurrently" (see ALTERNATIVES below).
+#
+#   Each slot also gets CARGO_INCREMENTAL=0, because sccache CANNOT cache
+#   incremental compilations — it silently skips them. Incremental is left
+#   ON for the interactive shell (one dev, one tree) and turned OFF here.
+#
+#   MEASURED CAVEAT — a slot does NOT get its deps for free. sccache keys
+#   include target-dir-absolute rustc args (--out-dir, -L, --extern), so a
+#   fresh slot building code another slot already built got 0 cache hits;
+#   the same slot rebuilt clean got 6/6 hits (3.77s -> 1.33s). So each slot
+#   pays its own dependency compile ONCE, then stays warm. Budget for that:
+#   N slots = N dependency builds, not one shared one.
+#
+# USAGE
+#   cargo-slot <slot> <command...>     run <command> in slot <slot>
+#   cargo-slot --env <slot>            print exports for `eval`
+#   cargo-slot --list                  slots for this project, with sizes
+#   cargo-slot --reclaim <slot>        delete one slot
+#   cargo-slot --reclaim-all           delete every slot for this project
+#
+# EXAMPLES
+#   cargo-slot reviewer cargo nextest run --workspace
+#   cargo-slot agent-3 cargo check --all-targets
+#   eval "$(cargo-slot --env agent-3)"   # then many cargo commands in one shell
+#
+# SLOT ALLOCATION
+#   The slot name IS the key — pass the agent's name. No counter, no
+#   lockfile, no race: two agents with different names get different dirs
+#   deterministically, and the same agent re-running reuses its warm dir.
+#   Slots are namespaced per project (git toplevel, else nearest Cargo.toml)
+#   so two repos never share a target dir.
+#
+# DISK
+#   ~25 GB per slot for a large workspace (parot-core), against ~1.7 TB
+#   free on /Volumes/external. Capped at CARGO_SLOT_MAX (default 8) NEW
+#   slots per project — creating the 9th fails loud rather than quietly
+#   filling the disk. Reclaim with `cargo-slot --reclaim <slot>`, or just
+#   `rm -rf` the printed path; the next run rebuilds it (sccache makes
+#   that cheap).
+#
+# ALTERNATIVES — often better than a slot per agent:
+#   1. BUILD ONCE, FAN OUT. The lock is held during COMPILATION, not test
+#      execution. Compile once, then let N agents run tests concurrently:
+#        cargo nextest archive --workspace --archive-file /tmp/t.tar.zst
+#        cargo nextest run --archive-file /tmp/t.tar.zst -E 'test(foo)'
+#      Best when agents only need to RUN tests, not build new code.
+#   2. AGENTS DON'T BUILD AT ALL. Agents write code; ONE process compiles
+#      and verifies. Costs no extra disk and fixes the trust problem too —
+#      an agent reporting "all tests green" is a claim, not evidence, and
+#      the lead re-verifies anyway. This is the default worth preferring.
+#
+# ENV OVERRIDES
+#   CARGO_SLOT_ROOT  where slots live   (default /Volumes/external/.cargo-targets)
+#   CARGO_SLOT_MAX   max slots/project  (default 8)
+
+set -e
+
+# Deliberately NO gum_utils source and no external helpers: this script is on
+# the hot path of every agent build command, so startup must be trivial and
+# cannot depend on anything that might block. Plain prints only.
+die() { print -u2 "cargo-slot: error: $1"; exit 2 }
+note() { print -u2 "cargo-slot: $1" }
+
+SLOT_ROOT="${CARGO_SLOT_ROOT:-/Volumes/external/.cargo-targets}"
+SLOT_MAX="${CARGO_SLOT_MAX:-8}"
+
+# Cargo invokes `cargo slot ...` as `cargo-slot slot ...`; drop the echoed name.
+[[ "$1" == "slot" ]] && shift
+
+# Help text is EMBEDDED, not scraped out of $0 with sed. A sed that cannot
+# read $0 silently falls back to reading stdin and hangs forever — a silent
+# hang in the one path that is supposed to explain things.
+usage() {
+cat <<'EOF'
+cargo-slot — give a build its own cargo target dir so parallel agents
+don't serialize on cargo's exclusive lock over target/.
+
+USAGE
+  cargo-slot <slot> <command...>     run <command> in slot <slot>
+  cargo-slot --env <slot>            print exports for `eval`
+  cargo-slot --list                  slots for this project, with sizes
+  cargo-slot --reclaim <slot>        delete one slot
+  cargo-slot --reclaim-all           delete every slot for this project
+
+EXAMPLES
+  cargo-slot reviewer cargo nextest run --workspace
+  cargo-slot agent-3  cargo check --all-targets
+  eval "$(cargo-slot --env agent-3)"    # many cargo commands in one shell
+
+NOTES
+  The slot name IS the allocation key — pass the agent's name. Deterministic,
+  no counter, no race. Slots are namespaced per project (git toplevel, else
+  nearest Cargo.toml) under CARGO_SLOT_ROOT.
+  Each slot sets CARGO_INCREMENTAL=0 (sccache cannot cache incremental).
+  Each slot pays its OWN dependency build once (~25 GB for a big workspace);
+  sccache keys are path-specific so slots do not share compile work.
+  Capped at CARGO_SLOT_MAX (default 8) slots per project; reclaim to free.
+
+ENV
+  CARGO_SLOT_ROOT   default /Volumes/external/.cargo-targets
+  CARGO_SLOT_MAX    default 8
+
+See the comments at the top of this script for the full rationale and for
+the two alternatives (build-once-fan-out; agents write, lead builds).
+EOF
+}
+
+[[ $# -eq 0 || "$1" == "--help" || "$1" == "-h" ]] && { usage; exit 0 }
+
+# ── project identity ──────────────────────────────────────────────────
+# git toplevel if available (so each worktree is its own project), else
+# the nearest ancestor holding a Cargo.toml. Fail loud if neither: we are
+# not in a cargo project and a slot would be meaningless.
+project_root=$(git rev-parse --show-toplevel 2>/dev/null) || project_root=""
+if [[ -z "$project_root" ]]; then
+    d="${PWD:A}"
+    while [[ "$d" != "/" && ! -f "$d/Cargo.toml" ]]; do d="${d:h}"; done
+    [[ -f "$d/Cargo.toml" ]] || die "not in a git repo or cargo project (cwd: $PWD)"
+    project_root="$d"
+fi
+
+# basename alone collides (two checkouts named parot-core); suffix a short
+# path hash so identity is the FULL path, deterministically.
+path_hash=$(print -n "${project_root:A}" | shasum | cut -c1-6)
+project_key="${project_root:t}-${path_hash}"
+project_dir="$SLOT_ROOT/$project_key"
+
+# ── maintenance modes ─────────────────────────────────────────────────
+case "$1" in
+    --list)
+        [[ -d "$project_dir" ]] || { note "no slots for $project_key"; exit 0 }
+        print "slots for $project_key  ($project_root)"
+        for s in "$project_dir"/*(N/); do
+            printf '  %-20s %8s  %s\n' "${s:t}" "$(du -sh "$s" 2>/dev/null | cut -f1)" "$s"
+        done
+        exit 0
+        ;;
+    --reclaim)
+        [[ -n "$2" ]] || die "--reclaim needs a slot name (see --list)"
+        target="$project_dir/$2"
+        [[ -d "$target" ]] || die "no such slot: $2  (looked in $project_dir)"
+        rm -rf "$target"
+        print "reclaimed slot $2"
+        exit 0
+        ;;
+    --reclaim-all)
+        [[ -d "$project_dir" ]] || { note "no slots for $project_key"; exit 0 }
+        rm -rf "$project_dir"
+        print "reclaimed all slots for $project_key"
+        exit 0
+        ;;
+    --env)
+        [[ -n "$2" ]] || die "--env needs a slot name"
+        slot="$2"; mode="env"
+        ;;
+    -*)
+        die "unknown flag: $1  (try --help)"
+        ;;
+    *)
+        slot="$1"; shift; mode="run"
+        [[ $# -gt 0 ]] || die "no command given. Usage: cargo-slot <slot> <command...>"
+        ;;
+esac
+
+# ── validate + allocate ───────────────────────────────────────────────
+[[ "$slot" =~ '^[A-Za-z0-9][A-Za-z0-9._-]*$' ]] \
+    || die "invalid slot name '$slot' — use [A-Za-z0-9._-], starting alphanumeric"
+
+slot_dir="$project_dir/$slot"
+
+if [[ ! -d "$slot_dir" ]]; then
+    # Refuse to create a slot on a volume that isn't there, rather than
+    # silently building into a fresh empty dir on the boot disk.
+    root_vol="${SLOT_ROOT}"
+    while [[ "$root_vol" != "/" && ! -d "$root_vol" ]]; do root_vol="${root_vol:h}"; done
+    [[ -d "$root_vol" ]] || die "slot root unavailable: $SLOT_ROOT (volume not mounted?)"
+
+    existing=(${project_dir}/*(N/))
+    if (( ${#existing} >= SLOT_MAX )); then
+        die "slot cap reached: ${#existing}/${SLOT_MAX} slots for $project_key.
+   Each slot is ~25 GB. Reuse an existing slot, reclaim one with
+   'cargo-slot --reclaim <slot>', or raise CARGO_SLOT_MAX deliberately.
+   Existing: ${existing:t}"
+    fi
+    mkdir -p "$slot_dir" || die "could not create slot dir: $slot_dir"
+fi
+
+if [[ "$mode" == "env" ]]; then
+    print "export CARGO_TARGET_DIR=$slot_dir"
+    print "export CARGO_INCREMENTAL=0"
+    exit 0
+fi
+
+note "$slot → $slot_dir"
+export CARGO_TARGET_DIR="$slot_dir"
+export CARGO_INCREMENTAL=0
+exec "$@"

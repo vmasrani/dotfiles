@@ -2,6 +2,26 @@
 [[ -f ~/.paths.zsh ]] && source ~/.paths.zsh
 
 # ===================================================================
+# SHELL OPTIONS
+# ===================================================================
+# Re-enable `>` overwriting existing files. Prezto's directory module
+# (~/.zprezto/modules/directory/init.zsh:21) does `unsetopt CLOBBER`,
+# which makes a plain `cmd > existing_file` fail with "file exists"
+# instead of truncating. That is a genuine footgun for scripted and
+# agent-driven work: the redirect fails, the surrounding command often
+# still reports success, and you get a silent no-op that looks like it
+# ran. (Cost a real debugging cycle: a `git show HEAD:file > file`
+# meant to stage a revert silently did nothing, and the test run that
+# followed "passed" while proving nothing.)
+#
+# This file is sourced from ~/.zshrc AFTER the prezto init, so setting
+# it here wins. Prezto itself is a vendored submodule — do not patch it
+# directly; the change would be lost on update.
+#
+# Use `>!` if you ever want the guarded behaviour for a single command.
+setopt CLOBBER
+
+# ===================================================================
 # APPLICATION ALIASES
 # ===================================================================
 alias vscode='cursor'
@@ -145,6 +165,47 @@ export NOTMUCH_CONFIG="$HOME/.config/notmuch/notmuchrc"
 export NODE_OPTIONS="--dns-result-order=ipv4first"
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 export CLAUDE_CODE_NO_FLICKER=1
+
+# ── sccache (shared compiler cache) ────────────────────────────────────
+# `rustc-wrapper = sccache` is set in ~/.cargo/config.toml. Two settings
+# make it actually earn its keep:
+#
+# 1. Cache on the external 2 TB SSD, not the 228 GB internal. Rust
+#    artifacts are big and the dev trees live on this volume anyway, so
+#    if it's unmounted nothing builds regardless.
+# 2. 1 GiB (the old launchctl value) was 100% FULL and thrashing —
+#    evicting entries faster than they could be reused. Measured Rust
+#    hit rate at 1 GiB: 1.39%.
+export SCCACHE_DIR=/Volumes/external/sccache
+export SCCACHE_CACHE_SIZE=100G
+
+# CARGO_INCREMENTAL is deliberately NOT exported here. The tradeoff:
+#
+#   sccache CANNOT cache incremental compilations — it silently skips
+#   them. Cargo's dev/test profile turns `-C incremental` ON by default,
+#   which is why 3495 of ~4456 calls were rejected with reason
+#   "incremental": the cache did nothing for Rust no matter how large it
+#   was. So CARGO_INCREMENTAL=0 is what makes sccache work at all.
+#
+#   BUT incremental is the right default for THIS shell — one dev, one
+#   tree, editing one file and rebuilding. Incremental reuses per-function
+#   codegen units and beats a cache lookup on that loop. Setting 0 here
+#   would tax every interactive rebuild to benefit runs that don't happen
+#   in this shell.
+#
+# So it is scoped to CI, worktrees, and parallel agents that each need
+# their own CARGO_TARGET_DIR (cargo takes an EXCLUSIVE lock on target/,
+# so concurrent builds sharing one dir serialize). `cargo-slot`
+# (~/dotfiles/tools/cargo-slot) sets both CARGO_TARGET_DIR and
+# CARGO_INCREMENTAL=0 per slot — see `cargo-slot --help`.
+#
+# MEASURED, so we don't overclaim: with incremental off, a clean rebuild
+# of the SAME target dir went 6/6 sccache hits, 3.77s -> 1.33s. The same
+# code built into a DIFFERENT target dir got 0 hits — rustc's args embed
+# target-dir-absolute paths (--out-dir, -L, --extern), so sccache keys are
+# path-specific. Practical upshot: sccache pays off on clean rebuilds,
+# branch switches and CI within a tree; it does NOT let two slots share
+# compile work. Each slot pays its own dependency build once.
 # uwu shorcut
 alias ::='uwu-cli'
 alias :::='uwu'

@@ -27,13 +27,42 @@
       "mcp__context7__resolve-library-id",
       "mcp__plugin_context7_context7__query-docs",
       "mcp__plugin_context7_context7__resolve-library-id",
-      "ExitPlanMode"
+      "ExitPlanMode",
+      "Read(//Volumes/external/**)",
+      "Edit(//Volumes/external/**)"
     ],
     "deny": [],
-    "defaultMode": "auto"
+    "defaultMode": "auto",
+    "additionalDirectories": [
+      "/Volumes/external"
+    ]
   },
-  "model": "claude-fable-5[1m]",
+  "model": "opus[1m]",
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "The user's development directory is /Volumes/external/dev on an always-connected external volume, symlinked as ~/dev (so the same project appears as both /Users/vmasrani/dev/... and /Volumes/external/dev/...). Treat everything under /Volumes/external as the user's own project files -- equivalent to paths under the home directory, not untrusted, removable, or system locations."
+    ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "/Volumes/external"
+      ]
+    }
+  },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 ~/.claude/hooks/test_queue_guard.py"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "",

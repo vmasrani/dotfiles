@@ -1,0 +1,140 @@
+#!/usr/bin/env zsh
+# ONE global queue for heavy Rust builds / test suites / benchmarks.
+#
+# WHY THIS EXISTS
+#   Several agents working in parallel each want to run a full test suite.
+#   On a 10-core / 16 GB box those runs do not overlap usefully -- they
+#   thrash. CPU oversubscription makes every suite slower than if it had run
+#   alone, and memory is the real cliff: a single 1 GB bench here peaks near
+#   7.5 GB RSS, so two heavy jobs at once means swap, and swap means suites
+#   that never finish.
+#
+#   So: don't run them concurrently. Run them one at a time, in submission
+#   order, machine-wide. Total wall-clock for N suites is unchanged (it was
+#   always N suites' worth of work) but each one now runs at full speed and
+#   actually terminates.
+#
+#   This is a thin wrapper over task-spooler (`ts`), which is a real job
+#   queue daemon -- FIFO ordering, a slot count, job listing, output capture.
+#   The wrapper exists to pin ONE global socket (so every agent in every repo
+#   shares the same queue), to fix the slot count, and to make the whole
+#   thing a transparent command prefix.
+#
+# RELATIONSHIP TO cargo-slot -- THEY SOLVE OPPOSITE PROBLEMS, DON'T COMBINE
+#   cargo-slot gives each agent its OWN target dir so agents can compile
+#   CONCURRENTLY (cargo takes an exclusive lock on target/).
+#   testq makes agents compile SERIALLY.
+#   If jobs are serialized there is no lock to contend for, so a private
+#   target dir buys nothing and costs a full dependency rebuild plus ~25 GB
+#   of disk per slot. Under testq, agents should SHARE one warm target/.
+#   Use cargo-slot only when you have deliberately raised the slot count
+#   above 1 and want those concurrent jobs to actually build in parallel.
+#
+# USAGE
+#   testq <command...>        wait for a free slot, then run <command> here
+#   testq -l | --list         show the queue (waiting / running / finished)
+#   testq --watch             live-refreshing queue view
+#   testq --slots [N]         show, or set, how many jobs run at once
+#   testq --clear             forget finished jobs
+#   testq --kill              stop the queue daemon (does not kill a running job)
+#
+# EXAMPLES
+#   testq cargo nextest run --workspace
+#   testq just test
+#   testq -- cargo build --release        # `--` if the command starts with a flag
+#
+# SEMANTICS
+#   Blocks until a slot frees, then runs the command IN THIS PROCESS: stdout
+#   and stderr stream live, the exit code is the command's own, and the job
+#   inherits this shell's cwd and environment. It is a queue, not a sandbox --
+#   `testq X` behaves exactly like `X`, only it waits its turn.
+#
+#   Because it BLOCKS, a caller with a timeout (an agent's shell tool caps at
+#   10 minutes) should run it detached / in the background: the queue wait
+#   plus the suite itself will routinely exceed any short timeout.
+#
+# RE-ENTRANCY
+#   A queued job runs with TESTQ_ACTIVE=1. If testq sees that set it runs the
+#   command directly instead of enqueuing it. Without this, a queued `just
+#   test` whose recipe itself calls testq would wait forever for the single
+#   slot its own parent is holding -- a guaranteed self-deadlock at 1 slot.
+
+emulate -L zsh
+setopt no_unset pipe_fail
+
+readonly SELF="${0:t}"
+
+die() { print -u2 "$SELF: $*"; exit 1 }
+
+# --- already inside a queued job: run directly, never re-enqueue -------------
+# Management subcommands still work normally in here; only an actual command
+# bypasses the queue. `--` must be handled explicitly, else `testq -- cargo x`
+# would look like a flag, fall through, and deadlock on its parent's slot.
+if [[ -n "${TESTQ_ACTIVE:-}" ]]; then
+  case "${1:-}" in
+    -h|--help|-l|--list|status|--watch|--slots|--clear|--kill|"") ;;
+    --) shift; [[ $# -gt 0 ]] && exec "$@" ;;
+    *)  exec "$@" ;;
+  esac
+fi
+
+command -v ts >/dev/null 2>&1 || die "task-spooler is not installed -- run: brew install task-spooler"
+
+# ONE socket for the whole machine, independent of cwd, project or shell.
+# That single fact is what makes the queue global across agents and repos.
+export TS_SOCKET="${TESTQ_SOCKET:-/tmp/testq-${UID}.sock}"
+export TS_MAXFINISHED="${TESTQ_MAXFINISHED:-50}"
+
+readonly SLOTS="${TESTQ_SLOTS:-1}"
+
+# `ts -S` starts the daemon if it isn't up, and pins the slot count if it is.
+# Both are idempotent, so this is safe to call on every invocation.
+ensure_server() {
+  ts -S "$SLOTS" >/dev/null 2>&1 \
+    || die "could not start or reach the queue daemon at $TS_SOCKET"
+}
+
+case "${1:-}" in
+  -h|--help)
+    sed -n '/^# USAGE/,/^# RE-ENTRANCY/p' "$0" | sed 's/^# \?//'
+    exit 0 ;;
+  -l|--list|status)
+    ensure_server; exec ts -l ;;
+  --watch)
+    ensure_server
+    while :; do clear; print "queue: $TS_SOCKET  (slots: $SLOTS)"; print; ts -l; sleep 2; done ;;
+  --slots)
+    ensure_server
+    if [[ -n "${2:-}" ]]; then
+      ts -S "$2" || die "could not set slots to $2"
+      print "$SELF: slots -> $2 (this session only; export TESTQ_SLOTS=$2 to persist)"
+    else
+      print "$SELF: slots = $SLOTS  (socket: $TS_SOCKET)"
+    fi
+    exit 0 ;;
+  --clear)
+    ensure_server; exec ts -C ;;
+  --kill)
+    ts -K 2>/dev/null && print "$SELF: queue daemon stopped" || print "$SELF: no queue daemon running"
+    exit 0 ;;
+  --) shift ;;
+  "") die "nothing to run. See '$SELF --help'." ;;
+esac
+
+[[ $# -gt 0 ]] || die "nothing to run. See '$SELF --help'."
+
+ensure_server
+
+# Tell the caller WHY it is blocked, rather than looking hung. `ts -l` lists
+# one header line plus one line per job, so anything past the header that is
+# not "finished" is either running or waiting ahead of us.
+ahead=$(ts -l 2>/dev/null | tail -n +2 | grep -cv '^[0-9]* *finished' || true)
+if (( ahead > 0 )); then
+  print -u2 "$SELF: $ahead job(s) ahead of you; waiting for a free slot (slots: $SLOTS)..."
+fi
+
+# -n : inherit this process's stdout/stderr instead of capturing to a file
+# -f : don't detach -- wait for the slot, then run right here
+# Together they make the wrapper transparent: live output, real exit code,
+# caller's cwd and environment.
+TESTQ_ACTIVE=1 ts -nf "$@"

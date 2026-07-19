@@ -95,6 +95,34 @@ When delegating work to subagents (Agent tool `model` param, Workflow `agent()` 
 
 Also scale the amount of thinking/reasoning effort to the task — minimal deliberation for simple work, more for hard work.
 
+# Rust builds under parallel subagents
+
+**Heavy cargo work is queued machine-wide, automatically — do NOT prefix anything yourself.**
+A PreToolUse hook (`~/.claude/hooks/test_queue_guard.py`) rewrites any
+`cargo nextest|test|build|check|clippy|bench|install` or `just test*|bench*|lint` command
+into `testq zsh -c '<the command>'`. `testq` (`~/dotfiles/tools/testq`, over task-spooler)
+then runs jobs **one at a time across every agent and every repo** — one global socket.
+
+- **A pause before output is the QUEUE, not a hang.** `testq -l` shows what is running and
+  what is waiting ahead of you. Never "work around" a slow start by re-running.
+- **Run long suites detached** (`run_in_background`). Queue wait + suite time routinely
+  exceeds the 10-minute shell-tool cap.
+- **It is transparent**: exit code, stdout/stderr, cwd and environment all pass through, so
+  `testq X` behaves exactly like `X` — it just waits its turn.
+- **Slots default to 1** (10 cores / 16 GB; the 1 GB bench alone peaks ~7.5 GB RSS). Raise
+  deliberately with `testq --slots N`, or persist via `TESTQ_SLOTS` in `~/.zshenv`.
+
+Why serialize: cargo takes an **exclusive lock on `target/` during compilation**, so agents
+sharing a target dir never compiled in parallel anyway — they queued on "Blocking waiting
+for file lock on artifact directory". And N concurrent suites oversubscribe the CPU and
+blow the RAM budget, so each runs slower and some never finish at all. Serializing costs no
+total wall-clock (it was always N suites of work) and makes every run fast and terminating.
+
+- **Default: agents write, the lead builds.** Subagents edit code; ONE process compiles and runs the suite. Costs no extra disk and fixes the trust problem — you re-verify anyway, and an agent's "all tests green" is a claim, not evidence.
+- **Test-execution fan-out is now bounded by the slot count.** `cargo nextest archive --workspace --archive-file /tmp/t.tar.zst` then per-agent `cargo nextest run --archive-file …` still avoids N compiles, but those runs are queued too, so at 1 slot they execute serially. Raise slots first if you actually want that fan-out.
+- **`cargo-slot` is for the raised-slot case ONLY — it is counterproductive at 1 slot.** It exists to dodge the `target/` lock during *concurrent* builds; serialized jobs have no lock to dodge, so a private target dir buys nothing and costs a full dependency rebuild plus ~25 GB per slot. Under the default queue, agents should SHARE one warm `target/`. If you do raise slots: `cargo-slot <agent-name> cargo nextest run --workspace` — the slot name IS the allocation key (deterministic, no counter, no race); slots live per-project under `/Volumes/external/.cargo-targets`, capped at 8; `cargo-slot --list`, `--reclaim <slot>`, `--reclaim-all`, `--help`.
+- **Each slot sets `CARGO_INCREMENTAL=0`** — sccache cannot cache incremental compilations and silently skips them. Do NOT set it globally; the interactive shell keeps incremental deliberately.
+
 # Workflow defaults
 
 - **TDD is the default** for any non-trivial change. Plans lead with an exhaustive failing-test suite (happy path, every documented edge case, boundaries, failure modes, and the real-world input that triggered the bug — not a synthetic substitute), then implementation, then a full-suite verification pass: a test "sandwich" with tests on both ends.
