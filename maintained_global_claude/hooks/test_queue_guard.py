@@ -38,34 +38,93 @@ import re
 import shlex
 import sys
 
-# Match only in COMMAND POSITION: start of string, or just after a shell
-# operator. Without this anchor, `git commit -m "fix cargo test failure"`
-# matches and a commit gets queued behind a 20-minute suite.
-_LEAD = r"(?:\A|[\n;&|(]|&&|\|\|)\s*"
-# Tolerate env prefixes (RUST_LOG=debug cargo test) and a cargo-slot wrapper.
-_ENV = r"(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*"
-_SLOT = r"(?:cargo-slot\s+\S+\s+)?"
+# WHY TOKENIZE INSTEAD OF REGEX-OVER-THE-RAW-STRING
+#     A regex cannot see shell quoting. An earlier version anchored on shell
+#     operators (|, &&, ;) to find "command position", but those bytes also
+#     appear INSIDE quoted arguments -- and there they are data, not operators:
+#         rg -n "^test|nextest|cargo test" justfile
+#     The `|cargo test` inside that rg pattern looked exactly like a piped
+#     `cargo test` command, so a read-only grep got queued behind a 20-minute
+#     suite. shlex parses quotes correctly: the whole pattern is ONE token and
+#     its inner `|` is never mistaken for a pipe. We then match heavy verbs only
+#     against tokens that genuinely start a command.
 
 # Heavy cargo verbs -- each one compiles and/or saturates cores.
-# `+toolchain` is tolerated (cargo +nightly test).
 # Deliberately EXCLUDED as trivial/metadata-only: fmt, metadata, tree, add,
 # remove, update, search, login, --version. Those must stay instant.
-CARGO_HEAVY = re.compile(
-    _LEAD + _ENV + _SLOT
-    + r"cargo\s+(?:\+\S+\s+)?(?:nextest|test|build|check|clippy|bench|install|miri)\b"
-)
+HEAVY_CARGO_VERBS = {"nextest", "test", "build", "check", "clippy", "bench", "install", "miri"}
+# Project recipes that fan out into the above: just test*, just bench-*, just lint*.
+JUST_HEAVY_RE = re.compile(r"\A(?:test|bench|lint)[a-z0-9-]*\Z")
+# Env prefixes to skip: RUST_LOG=debug cargo test.
+ENV_ASSIGN_RE = re.compile(r"\A[A-Za-z_][A-Za-z0-9_]*=")
+# Shell control operators shlex emits as their own tokens under punctuation_chars.
+_PUNCT = set(";&|()<>")
 
-# Project recipes that fan out into the above: just test*, just bench-*, just lint.
-JUST_HEAVY = re.compile(_LEAD + _ENV + r"just\s+(?:test|bench|lint)[a-z0-9-]*\b")
 
-# Already routed through the queue -- never double-wrap.
-ALREADY_QUEUED = re.compile(r"(?:^|[\s;&|(])(?:testq|ts\s+-\w*[nf])\b")
+def _tokenize(command: str):
+    """Split respecting quotes; keep shell operators as standalone tokens."""
+    lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    return list(lex)
+
+
+def _is_operator(tok: str) -> bool:
+    return tok != "" and all(c in _PUNCT for c in tok)
+
+
+def _command_heads(tokens):
+    """Yield the index of each token that starts a command (string start or
+    immediately after a control operator)."""
+    at_start = True
+    for i, tok in enumerate(tokens):
+        if _is_operator(tok):
+            at_start = True
+            continue
+        if at_start:
+            yield i
+            at_start = False
+
+
+def _classify_head(tokens, head):
+    """Return (is_heavy, already_queued) for the command beginning at `head`."""
+    i = head
+    while i < len(tokens) and ENV_ASSIGN_RE.match(tokens[i]):
+        i += 1
+    # A cargo-slot <name> wrapper precedes the real cargo invocation.
+    if i + 1 < len(tokens) and tokens[i] == "cargo-slot":
+        i += 2
+        while i < len(tokens) and ENV_ASSIGN_RE.match(tokens[i]):
+            i += 1
+    if i >= len(tokens):
+        return False, False
+    tok = tokens[i]
+    if tok in ("testq", "ts"):
+        return False, True  # already routed through the queue -- never double-wrap
+    if tok == "cargo":
+        j = i + 1
+        if j < len(tokens) and tokens[j].startswith("+"):  # +nightly toolchain selector
+            j += 1
+        if j < len(tokens) and tokens[j] in HEAVY_CARGO_VERBS:
+            return True, False
+    if tok == "just":
+        if i + 1 < len(tokens) and JUST_HEAVY_RE.match(tokens[i + 1]):
+            return True, False
+    return False, False
 
 
 def needs_queue(command: str) -> bool:
-    if ALREADY_QUEUED.search(command):
+    try:
+        tokens = _tokenize(command)
+    except ValueError:
+        # Unbalanced quote etc. -- not a runnable heavy command; leave it alone.
         return False
-    return bool(CARGO_HEAVY.search(command) or JUST_HEAVY.search(command))
+    heavy = False
+    for head in _command_heads(tokens):
+        is_heavy, already_queued = _classify_head(tokens, head)
+        if already_queued:
+            return False
+        heavy = heavy or is_heavy
+    return heavy
 
 
 def queued(command: str) -> str:
