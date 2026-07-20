@@ -1,0 +1,89 @@
+#!/usr/bin/env zsh
+# A `cargo` that cannot be accidentally run outside the queue.
+#
+# WHY THIS EXISTS
+#   The PreToolUse hook (~/.claude/hooks/test_queue_guard.py) rewrites a Bash
+#   command matching `cargo <heavy-subcommand>` into `testq zsh -c '<cmd>'`.
+#   It matches the COMMAND STRING, so any indirection defeats it silently:
+#
+#       zsh build.sh            # script contains `cargo build` -- hook sees "zsh"
+#       just test               # recipe contains `cargo nextest` -- sees "just"
+#       make check              # same
+#       env FOO=1 cargo build   # sees "env"
+#
+#   MEASURED 2026-07-20: exactly this happened. A `zsh arm1_path_only.sh`
+#   whose script ran `cargo build` slipped past the hook and ran unqueued,
+#   at 48% CPU, fighting a live `cargo nextest run --workspace`. Both were
+#   slowed. Nothing warned; the guard simply did not apply.
+#
+#   A hook that inspects command strings can always be evaded by one more
+#   layer of indirection. A shim on PATH cannot: whatever finally execs
+#   `cargo` runs THIS, no matter how many scripts deep it is.
+#
+# NO ESCAPE HATCH, DELIBERATELY
+#   There is no CARGO_NO_QUEUE opt-out. An env var that silently returns you
+#   to unqueued execution would recreate precisely the failure this exists to
+#   prevent. The ONLY bypass is TESTQ_ACTIVE=1, which testq itself sets on a
+#   job it is already running -- that is re-entrancy, not an escape hatch.
+#   If you genuinely need an unqueued cargo, call the real binary by path.
+#
+# ENABLING (opt-in -- this file is NOT on PATH by default)
+#   Add to ~/dotfiles/shell/.paths.zsh, BEFORE ~/.cargo/bin:
+#       path=("$HOME/tools/shims" $path)
+#   Verify with:  which cargo   # -> ~/tools/shims/cargo
+#   Disable by removing that line; nothing else depends on it.
+
+emulate -L zsh
+setopt no_unset pipe_fail
+
+readonly SELF_DIR="${0:A:h}"
+
+die() { print -u2 "cargo-shim: $*"; exit 1 }
+
+# Resolve the REAL cargo: first executable named `cargo` on PATH that is not
+# in this shim's own directory. Comparing resolved directories (not names)
+# is what makes this recursion-proof.
+real_cargo() {
+  local -a candidates
+  local dir
+  for dir in $path; do
+    [[ "${dir:A}" == "$SELF_DIR" ]] && continue
+    [[ -x "$dir/cargo" ]] && { print -- "$dir/cargo"; return 0 }
+  done
+  # rustup's default location, in case PATH is unusual
+  [[ -x "$HOME/.cargo/bin/cargo" ]] && { print -- "$HOME/.cargo/bin/cargo"; return 0 }
+  return 1
+}
+
+CARGO="$(real_cargo)" \
+  || die "could not find the real cargo (PATH has only this shim). Fix PATH; refusing to guess."
+
+# Already inside a queued job -- run directly. Without this, a queued
+# `just test` whose recipe calls cargo would wait forever for the slot its
+# own parent holds.
+if [[ -n "${TESTQ_ACTIVE:-}" ]]; then
+  exec "$CARGO" "$@"
+fi
+
+# `cargo +nightly test` puts the toolchain first; the subcommand is next.
+sub="${1:-}"
+[[ "$sub" == +* ]] && sub="${2:-}"
+
+# The heavy set, kept identical to test_queue_guard.py's regex so the hook
+# and the shim never disagree about what belongs in the queue.
+case "$sub" in
+  nextest|test|build|check|clippy|bench|install|miri)
+    # FAIL LOUD if the queue is missing. Falling through to an unqueued cargo
+    # here would be a silent degradation of the one guarantee this shim
+    # exists to provide -- the caller would get a heavy build racing whatever
+    # else is running, and no indication anything was different.
+    command -v testq >/dev/null 2>&1 \
+      || die "testq not found on PATH, refusing to run '$sub' unqueued.
+  This shim exists to guarantee heavy cargo work goes through the queue;
+  running it anyway would silently reintroduce the collision it prevents.
+  Fix: install task-spooler (brew install task-spooler) and ensure
+  ~/tools/testq is on PATH, or remove ~/tools/shims from PATH to opt out."
+    exec testq "$CARGO" "$@" ;;
+  *)
+    exec "$CARGO" "$@" ;;
+esac

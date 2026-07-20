@@ -9,10 +9,12 @@
 #   7.5 GB RSS, so two heavy jobs at once means swap, and swap means suites
 #   that never finish.
 #
-#   So: don't run them concurrently. Run them one at a time, in submission
-#   order, machine-wide. Total wall-clock for N suites is unchanged (it was
-#   always N suites' worth of work) but each one now runs at full speed and
-#   actually terminates.
+#   MEASURED 2026-07-20 on parot-core (2,269 tests): one `cargo nextest run`
+#   consumed 2,930s of CPU against 323s of wall clock -- ~9x parallelism on
+#   10 cores. A single suite ALREADY saturates the machine. There is no
+#   headroom for a second concurrent job, so two suites do not finish sooner
+#   in aggregate; they split the cores and both finish late instead of one
+#   finishing early. That is the measured case for this queue existing.
 #
 #   This is a thin wrapper over task-spooler (`ts`), which is a real job
 #   queue daemon -- FIFO ordering, a slot count, job listing, output capture.
@@ -25,13 +27,13 @@
 #   CONCURRENTLY (cargo takes an exclusive lock on target/).
 #   testq makes agents compile SERIALLY.
 #   If jobs are serialized there is no lock to contend for, so a private
-#   target dir buys nothing and costs a full dependency rebuild plus ~25 GB
-#   of disk per slot. Under testq, agents should SHARE one warm target/.
-#   Use cargo-slot only when you have deliberately raised the slot count
-#   above 1 and want those concurrent jobs to actually build in parallel.
+#   target dir buys nothing. Under testq, agents should SHARE one warm
+#   target/. Use cargo-slot only when you have deliberately raised the slot
+#   count above 1 and want those concurrent jobs to actually build in parallel.
 #
 # USAGE
 #   testq <command...>        wait for a free slot, then run <command> here
+#   testq --events <command>  same, but emit machine-readable state lines
 #   testq -l | --list         show the queue (waiting / running / finished)
 #   testq --watch             live-refreshing queue view
 #   testq --slots [N]         show, or set, how many jobs run at once
@@ -42,6 +44,7 @@
 #   testq cargo nextest run --workspace
 #   testq just test
 #   testq -- cargo build --release        # `--` if the command starts with a flag
+#   testq --events just test              # for Monitor / notification callers
 #
 # SEMANTICS
 #   Blocks until a slot frees, then runs the command IN THIS PROCESS: stdout
@@ -52,6 +55,40 @@
 #   Because it BLOCKS, a caller with a timeout (an agent's shell tool caps at
 #   10 minutes) should run it detached / in the background: the queue wait
 #   plus the suite itself will routinely exceed any short timeout.
+#
+# HEARTBEAT
+#   While waiting for a slot, a "still queued" line goes to stderr every
+#   TESTQ_HEARTBEAT seconds (default 30; set 0 to disable). Without it the
+#   wrapper prints one line and then goes silent for however long the queue
+#   is -- which reads as a hang, and provokes callers into polling `testq -l`
+#   or, worse, re-running the job.
+#
+# --events MODE
+#   For callers that want NOTIFICATIONS rather than live output (an agent's
+#   Monitor tool turns each stdout line into an event). Emits one line per
+#   state transition:
+#
+#     QUEUED id=7 ahead=2 label=tq-1234-… slots=1
+#     RUNNING id=7 waited=312s
+#     DONE id=7 exit=0 elapsed=522s out=/tmp/ts-out.XXXX
+#
+#   TRADEOFF, on purpose: events mode submits the job DETACHED, so the
+#   command's own stdout/stderr are captured to `out=` instead of streaming
+#   live. You get notifications or you get streaming, not both -- Monitor
+#   would otherwise interleave the job's output with the event lines and
+#   every log line would become a notification. The exit code is still the
+#   command's own.
+#
+# SLOT WEIGHTING (-N)
+#   Heavy jobs (cargo nextest/test/bench/miri, just test*/bench*) request ALL
+#   slots, so they still run exclusively. Everything else -- check, clippy,
+#   build -- requests one slot and can overlap with other light jobs.
+#
+#   At the default TESTQ_SLOTS=1 this changes NOTHING: every job weighs 1 and
+#   runs alone exactly as before. It only takes effect if you raise the slot
+#   count, where it stops a 3-second `cargo check` from waiting behind a
+#   9-minute suite for no resource reason. Override per-invocation with
+#   TESTQ_WEIGHT=<n>.
 #
 # RE-ENTRANCY
 #   A queued job runs with TESTQ_ACTIVE=1. If testq sees that set it runs the
@@ -73,6 +110,7 @@ die() { print -u2 "$SELF: $*"; exit 1 }
 if [[ -n "${TESTQ_ACTIVE:-}" ]]; then
   case "${1:-}" in
     -h|--help|-l|--list|status|--watch|--slots|--clear|--kill|"") ;;
+    --events) shift; [[ $# -gt 0 ]] && exec "$@" ;;
     --) shift; [[ $# -gt 0 ]] && exec "$@" ;;
     *)  exec "$@" ;;
   esac
@@ -86,12 +124,61 @@ export TS_SOCKET="${TESTQ_SOCKET:-/tmp/testq-${UID}.sock}"
 export TS_MAXFINISHED="${TESTQ_MAXFINISHED:-50}"
 
 readonly SLOTS="${TESTQ_SLOTS:-1}"
+readonly HEARTBEAT="${TESTQ_HEARTBEAT:-30}"
 
 # `ts -S` starts the daemon if it isn't up, and pins the slot count if it is.
 # Both are idempotent, so this is safe to call on every invocation.
 ensure_server() {
   ts -S "$SLOTS" >/dev/null 2>&1 \
     || die "could not start or reach the queue daemon at $TS_SOCKET"
+}
+
+# `ts -l` is one header line plus one line per job; anything past the header
+# that is not "finished" is either running or waiting ahead of us.
+#
+# Pass our own label once the job is enqueued, otherwise we count OURSELF and
+# report "ahead=1" on an empty queue -- a status tool that overstates the
+# wait teaches the caller to ignore it.
+queue_ahead() {
+  local exclude="${1:-}"
+  if [[ -n "$exclude" ]]; then
+    ts -l 2>/dev/null | tail -n +2 | grep -vF "[$exclude]" | grep -cv '^[0-9]* *finished' || true
+  else
+    ts -l 2>/dev/null | tail -n +2 | grep -cv '^[0-9]* *finished' || true
+  fi
+}
+
+# State of the job carrying our label. Labels render as "[label]command" in
+# the Command column, so a fixed-string match on "[label]" is unambiguous.
+# Empty means "not enqueued yet" -- NOT "gone"; the caller must not treat the
+# two as the same or it will stop watching before the job ever appears.
+state_by_label() {
+  ts -l 2>/dev/null | grep -F "[$1]" | head -1 | awk '{print $2}'
+}
+
+# How many slots this command should occupy. Heavy = exclusive.
+# `cargo +nightly test` puts the toolchain first, so skip a leading `+`.
+job_weight() {
+  local -a w=("$@")
+  local i base sub
+  for (( i = 1; i <= $#w; i++ )); do
+    base="${w[i]:t}"
+    sub="${w[i+1]:-}"
+    [[ "$sub" == +* ]] && sub="${w[i+2]:-}"
+    case "$base" in
+      cargo)
+        case "$sub" in
+          nextest|test|bench|miri) print -- "$SLOTS"; return ;;
+        esac
+        print -- 1; return ;;
+      just)
+        case "$sub" in
+          test*|bench*) print -- "$SLOTS"; return ;;
+        esac
+        print -- 1; return ;;
+    esac
+  done
+  print -- 1
 }
 
 case "${1:-}" in
@@ -117,24 +204,66 @@ case "${1:-}" in
   --kill)
     ts -K 2>/dev/null && print "$SELF: queue daemon stopped" || print "$SELF: no queue daemon running"
     exit 0 ;;
-  --) shift ;;
-  "") die "nothing to run. See '$SELF --help'." ;;
 esac
 
+EVENTS=0
+if [[ "${1:-}" == "--events" ]]; then EVENTS=1; shift; fi
+[[ "${1:-}" == "--" ]] && shift
 [[ $# -gt 0 ]] || die "nothing to run. See '$SELF --help'."
 
 ensure_server
 
-# Tell the caller WHY it is blocked, rather than looking hung. `ts -l` lists
-# one header line plus one line per job, so anything past the header that is
-# not "finished" is either running or waiting ahead of us.
-ahead=$(ts -l 2>/dev/null | tail -n +2 | grep -cv '^[0-9]* *finished' || true)
+LABEL="tq-$$-${RANDOM}"
+WEIGHT="${TESTQ_WEIGHT:-$(job_weight "$@")}"
+(( WEIGHT > SLOTS )) && WEIGHT=$SLOTS
+(( WEIGHT < 1 )) && WEIGHT=1
+
+# --- events mode: detached submission, one line per state transition ---------
+if (( EVENTS )); then
+  id="$(TESTQ_ACTIVE=1 ts -L "$LABEL" -N "$WEIGHT" "$@")" \
+    || die "could not enqueue job"
+  print "QUEUED id=$id ahead=$(queue_ahead "$LABEL") label=$LABEL slots=$SLOTS weight=$WEIGHT"
+  t0=$SECONDS
+  while [[ "$(ts -s "$id" 2>/dev/null)" == "queued" ]]; do sleep 1; done
+  print "RUNNING id=$id waited=$((SECONDS - t0))s"
+  t1=$SECONDS
+  ts -w "$id" >/dev/null 2>&1
+  rc=$?
+  print "DONE id=$id exit=$rc elapsed=$((SECONDS - t1))s out=$(ts -o "$id" 2>/dev/null)"
+  exit $rc
+fi
+
+# --- normal mode: transparent, with a heartbeat while we wait ----------------
+ahead="$(queue_ahead)"
 if (( ahead > 0 )); then
   print -u2 "$SELF: $ahead job(s) ahead of you; waiting for a free slot (slots: $SLOTS)..."
 fi
+
+# The heartbeat must start BEFORE the blocking `ts -nf`, so it necessarily
+# starts before the job is enqueued -- hence "empty state means keep waiting".
+# The parent kills it once `ts -nf` returns, so it cannot outlive the job.
+HB_PID=0
+if (( HEARTBEAT > 0 )) && (( ahead > 0 )); then
+  (
+    t0=$SECONDS
+    while :; do
+      sleep "$HEARTBEAT"
+      st="$(state_by_label "$LABEL")"
+      [[ "$st" == "running" || "$st" == "finished" ]] && exit 0
+      print -u2 "$SELF: still queued — $((SECONDS - t0))s elapsed, $(queue_ahead "$LABEL") ahead (slots: $SLOTS)"
+    done
+  ) &
+  HB_PID=$!
+fi
+
+stop_heartbeat() { (( HB_PID > 0 )) && kill "$HB_PID" 2>/dev/null; return 0 }
+trap stop_heartbeat EXIT INT TERM
 
 # -n : inherit this process's stdout/stderr instead of capturing to a file
 # -f : don't detach -- wait for the slot, then run right here
 # Together they make the wrapper transparent: live output, real exit code,
 # caller's cwd and environment.
-TESTQ_ACTIVE=1 ts -nf "$@"
+TESTQ_ACTIVE=1 ts -nf -L "$LABEL" -N "$WEIGHT" "$@"
+rc=$?
+stop_heartbeat
+exit $rc
