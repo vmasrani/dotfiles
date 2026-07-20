@@ -72,3 +72,16 @@ command = "ruff-lsp"
 
 [language-server.ruff.config.settings]
 args = ["--ignore", "E501"]
+
+# rust-analyzer runs `cargo check` in the background. By default it uses the
+# SAME target dir as the terminal, and cargo takes an exclusive lock on it — so
+# every save could block an interactive `cargo build`/`nextest` on "Blocking
+# waiting for file lock on artifact directory". testq does not help here;
+# rust-analyzer never goes through the queue.
+#
+# `targetDir = true` gives it its own `target/rust-analyzer` subdir. Per the
+# rust-analyzer docs this "prevents rust-analyzer's cargo check and initial
+# build-script/proc-macro building from locking Cargo.lock at the expense of
+# duplicating build artifacts" — and on APFS that duplication is nearly free.
+[language-server.rust-analyzer.config.cargo]
+targetDir = true

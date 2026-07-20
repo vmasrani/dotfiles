@@ -178,6 +178,7 @@ export CLAUDE_CODE_NO_FLICKER=1
 #    hit rate at 1 GiB: 1.39%.
 export SCCACHE_DIR=/Volumes/external/sccache
 export SCCACHE_CACHE_SIZE=100G
+# export CARGO_INCREMENTAL=0
 
 # CARGO_INCREMENTAL is deliberately NOT exported here. The tradeoff:
 #
@@ -201,11 +202,29 @@ export SCCACHE_CACHE_SIZE=100G
 #
 # MEASURED, so we don't overclaim: with incremental off, a clean rebuild
 # of the SAME target dir went 6/6 sccache hits, 3.77s -> 1.33s. The same
-# code built into a DIFFERENT target dir got 0 hits — rustc's args embed
-# target-dir-absolute paths (--out-dir, -L, --extern), so sccache keys are
+# code built into a DIFFERENT target dir got 0 hits, so sccache keys are
 # path-specific. Practical upshot: sccache pays off on clean rebuilds,
 # branch switches and CI within a tree; it does NOT let two slots share
 # compile work. Each slot pays its own dependency build once.
+#
+# WHY it's path-specific (corrected 2026-07-20 — the earlier note here blamed
+# "--out-dir/-L/--extern paths embedded in rustc's args", which is WRONG):
+# sccache's generate_hash_key (src/compiler/rust.rs) explicitly STRIPS those
+# path args and hashes their file CONTENTS instead. The actual culprit is
+# further down the same function — it hashes the compile's `cwd` (comment in
+# source: "this will wind up in the rlib"), plus CARGO_* env vars like
+# CARGO_MANIFEST_DIR. Those differ per worktree, so the key differs.
+# SCCACHE_BASEDIRS does NOT fix this: it covers only the C/C++ preprocessor
+# path (upstream issue #2652); the Rust-side fix is still unmerged (PR #2678).
+#
+# RE-MEASURED 2026-07-20 on parot-core (573 crates, M4, warm sccache),
+# full cold `cargo build` of the workspace:
+#   incremental default (what this shell does)   71s
+#   CARGO_INCREMENTAL=0, sccache live            58s
+#   CARGO_INCREMENTAL=0 + APFS cp -c seeded dir  46s
+# So the interactive default costs ~13s per COLD target dir — once per
+# worktree, not once per edit. The hot single-file edit loop that motivated
+# keeping incremental was NOT measured; that reasoning stands unchallenged.
 # uwu shorcut
 alias ::='uwu-cli'
 alias :::='uwu'
