@@ -38,19 +38,6 @@
     ]
   },
   "model": "opus[1m]",
-  "autoMode": {
-    "environment": [
-      "$defaults",
-      "The user's development directory is /Volumes/external/dev on an always-connected external volume, symlinked as ~/dev (so the same project appears as both /Users/vmasrani/dev/... and /Volumes/external/dev/...). Treat everything under /Volumes/external as the user's own project files -- equivalent to paths under the home directory, not untrusted, removable, or system locations."
-    ]
-  },
-  "sandbox": {
-    "filesystem": {
-      "allowWrite": [
-        "/Volumes/external"
-      ]
-    }
-  },
   "hooks": {
     "PreToolUse": [
       {
@@ -107,7 +94,14 @@
     "skill-creator@claude-plugins-official": true,
     "telegram@claude-plugins-official": false
   },
-  "effortLevel": "xhigh",
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "/Volumes/external"
+      ]
+    }
+  },
+  "effortLevel": "high",
   "fastMode": true,
   "showClearContextOnPlanAccept": true,
   "skipDangerousModePermissionPrompt": true,
@@ -118,6 +112,12 @@
   "remoteControlAtStartup": true,
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "The user's development directory is /Volumes/external/dev on an always-connected external volume, symlinked as ~/dev (so the same project appears as both /Users/vmasrani/dev/... and /Volumes/external/dev/...). Treat everything under /Volumes/external as the user's own project files -- equivalent to paths under the home directory, not untrusted, removable, or system locations."
+    ]
+  },
   "feedbackSurveyState": {
     "lastShownTime": 1754286002006
   }
