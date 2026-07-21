@@ -38,6 +38,7 @@ FAILURE POSTURE
 """
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -62,6 +63,19 @@ from test_queue_guard import HEAVY_CARGO_VERBS, JUST_HEAVY_RE  # noqa: E402
 RG_VALUE_FLAGS = set("ABCefgjmMrtT")
 
 MARKER_COMMANDS = {"echo", "print", "printf"}
+
+# Manifests that can carry a dependency source swapped to a local checkout.
+DEP_MANIFESTS = {"pyproject.toml", "Cargo.toml"}
+
+# A dep whose LOCAL source is live: `name = { path = "../x" }`.
+LOCAL_DEP_RE = re.compile(r"^\s*(?P<name>[A-Za-z0-9_.-]+)\s*=\s*\{[^}]*\bpath\s*=", re.M)
+
+# The same dep's CANONICAL source, parked in a comment: `# name = { git = ... }`.
+# Requiring this pair is what keeps ordinary workspace path deps (vendored crates,
+# monorepo members -- committed on purpose, with no alternative source) from firing.
+PARKED_DEP_RE = re.compile(
+    r"^\s*#\s*(?P<name>[A-Za-z0-9_.-]+)\s*=\s*\{[^}]*\b(?:git|version|registry)\s*=", re.M
+)
 
 
 def _deny(reason):
@@ -143,6 +157,58 @@ def _dirty(path):
     """Count of uncommitted changes in a worktree, or None if unknowable."""
     out = _git(path, "status", "--porcelain")
     return None if out is None else len([ln for ln in out.splitlines() if ln.strip()])
+
+
+def _commit_all(rest):
+    """True if this `git commit` sweeps in tracked modifications (-a/--all).
+
+    Matters because with -a the content that lands is the WORKTREE copy, which
+    the index does not yet show -- checking only staged blobs would look at the
+    wrong bytes and wave the commit through.
+    """
+    for a in rest:
+        if a in ("-a", "--all"):
+            return True
+        if a.startswith("-") and not a.startswith("--") and "a" in a[1:]:
+            return True
+    return False
+
+
+def _manifests_in_commit(cwd, all_flag):
+    """Manifest paths this commit would record a CHANGE for, or None if git
+    can't answer.
+
+    Scoped to changed files on purpose: a repo whose HEAD already carries the
+    swap must not have every future commit blocked over a file it isn't touching.
+    """
+    staged = _git(cwd, "diff", "--cached", "--name-only")
+    if staged is None:
+        return None
+    paths = set(staged.split())
+    if all_flag:
+        unstaged = _git(cwd, "diff", "--name-only")
+        if unstaged is None:
+            return None
+        paths |= set(unstaged.split())
+    return [p for p in sorted(paths) if Path(p).name in DEP_MANIFESTS]
+
+
+def _content_to_be_committed(cwd, path, all_flag):
+    """The bytes this commit would record for `path`: the worktree copy when -a
+    will sweep it in, else the staged blob."""
+    if all_flag:
+        p = Path(cwd) / path
+        if p.exists():
+            return p.read_text(errors="replace")
+    return _git(cwd, "show", f":{path}")
+
+
+def _swapped_local_deps(text):
+    """Dep names whose local path source is LIVE while their canonical source
+    sits commented out -- the 'swapped for local work' shape."""
+    live = {m.group("name") for m in LOCAL_DEP_RE.finditer(text)}
+    parked = {m.group("name") for m in PARKED_DEP_RE.finditer(text)}
+    return sorted(live & parked)
 
 
 # --- rules -------------------------------------------------------------------
@@ -293,6 +359,56 @@ def check_git_destructive(tokens, heads, cwd):
                     )
 
 
+def check_local_dep_commit(tokens, heads, cwd):
+    """Committing a manifest whose dependency was swapped to a local checkout.
+
+    The working copy points a dep at `path = "../x"` for local development while
+    the real pinned source is commented out beside it. That is a working-copy
+    state, not a committable one -- and `git add -A` / `git commit -a` sweeps it
+    in without anyone deciding to. Observed twice in parot-stats: once shipping a
+    stale wire pin, once flipping the committed dep to a path source that broke a
+    downstream repo's rev pin ("has no subdirectory ../parot").
+
+    Silent, like every rule here: the commit succeeds, the tests pass locally
+    (the path dep is what you wanted locally), and the breakage surfaces only in
+    a consumer that resolves the manifest from git.
+    """
+    for _op, head in heads:
+        i = skip_env_assigns(tokens, head)
+        if i >= len(tokens) or tokens[i] != "git":
+            continue
+        sub, rest = _git_subcommand(args_until_operator(tokens, i + 1))
+        if sub != "commit":
+            continue
+
+        all_flag = _commit_all(rest)
+        manifests = _manifests_in_commit(cwd, all_flag)
+        if manifests is None:
+            continue  # not a repo, or git can't answer -- abstain
+
+        for path in manifests:
+            text = _content_to_be_committed(cwd, path, all_flag)
+            if not text:
+                continue
+            names = _swapped_local_deps(text)
+            if not names:
+                continue
+            deps = ", ".join(f"`{n}`" for n in names)
+            _deny(
+                f"BLOCKED: this commit would record {deps} in {path} pointing at a LOCAL "
+                "PATH while its pinned source sits commented out beside it -- the "
+                "'swapped for local work' shape, which belongs in the working copy, not "
+                "in a commit.\n"
+                "A path source does not survive the package being consumed as a git "
+                "dependency: the consumer resolves it relative to ITS OWN checkout, so "
+                "downstream pins break or are silently capped at a path dep too. Nothing "
+                "fails locally -- local is the one place the path dep is correct.\n"
+                f"Uncomment the pinned line in {path}, commit, then swap back for local "
+                "work. Stage explicit paths (`git add <file> ...`) rather than -A/-a, "
+                "which is how the swap gets swept in unnoticed."
+            )
+
+
 def main():
     raw = sys.stdin.read()
     if not raw.strip():
@@ -317,6 +433,7 @@ def main():
     check_piped_test_run(command, tokens, heads, cwd)
     check_commit_marker(tokens, heads, cwd)
     check_git_destructive(tokens, heads, cwd)
+    check_local_dep_commit(tokens, heads, cwd)
     sys.exit(0)
 
 

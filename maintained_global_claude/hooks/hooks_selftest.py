@@ -144,6 +144,84 @@ with tempfile.TemporaryDirectory() as td:
         "pass",
     )
 
+print("\n== bash_footgun_guard: local path-dep commit (real repo) ==")
+SWAPPED = """[tool.uv.sources]
+# parot = { git = "ssh://git@github.com/x/parot.git", rev = "ec3454c" }
+parot = { path = "../parot", editable = true }
+"""
+PINNED = """[tool.uv.sources]
+parot = { git = "ssh://git@github.com/x/parot.git", rev = "ec3454c" }
+# parot = { path = "../parot", editable = true }
+"""
+# A vendored/workspace path dep: committed on purpose, no parked alternative.
+WORKSPACE = """[dependencies]
+vers-vecs = { path = "vendor/vers-vecs" }
+serde = { version = "1.0", features = ["derive"] }
+"""
+
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td) / "repo"
+    root.mkdir()
+    sh = lambda *a, cwd=root: subprocess.run(  # noqa: E731
+        a, cwd=str(cwd), capture_output=True, text=True, check=True
+    )
+    sh("git", "init", "-q", "-b", "main")
+    sh("git", "config", "user.email", "t@t.t")
+    sh("git", "config", "user.name", "t")
+    (root / "pyproject.toml").write_text(PINNED)
+    sh("git", "add", "-A")
+    sh("git", "commit", "-qm", "init")
+
+    # Staged swap -- the exact shape that shipped twice.
+    (root / "pyproject.toml").write_text(SWAPPED)
+    sh("git", "add", "pyproject.toml")
+    expect(
+        "git commit with the swapped path dep STAGED",
+        decision('git commit -m "x"', cwd=str(root)),
+        "deny",
+    )
+    expect(
+        "git add -A && git commit (same swap)",
+        decision('git add -A && git commit -m "x"', cwd=str(root)),
+        "deny",
+    )
+
+    # Unstaged swap + `commit -am`: the index still looks clean, the worktree does not.
+    sh("git", "reset", "-q", "HEAD", "pyproject.toml")
+    expect(
+        "git commit -am with the swap only in the WORKTREE",
+        decision('git commit -am "x"', cwd=str(root)),
+        "deny",
+    )
+    expect(
+        "git commit (no -a) while the swap is unstaged -- not in this commit",
+        decision('git commit -m "x"', cwd=str(root)),
+        "pass",
+    )
+
+    # Restoring the pin must commit cleanly, or the guard is unusable.
+    (root / "pyproject.toml").write_text(PINNED)
+    sh("git", "add", "pyproject.toml")
+    expect(
+        "git commit restoring the pinned source",
+        decision('git commit -m "restore pin"', cwd=str(root)),
+        "pass",
+    )
+
+    # An ordinary workspace path dep has no parked alternative -> must not fire.
+    (root / "Cargo.toml").write_text(WORKSPACE)
+    sh("git", "add", "Cargo.toml")
+    expect(
+        "git commit with a plain workspace path dep",
+        decision('git commit -m "vendor"', cwd=str(root)),
+        "pass",
+    )
+    expect(
+        "git commit outside any repo",
+        decision('git commit -m "x"', cwd="/tmp"),
+        "pass",
+    )
+
 print("\n== test_queue_guard still rewrites after the refactor ==")
 proc = run_hook(
     "test_queue_guard.py",
