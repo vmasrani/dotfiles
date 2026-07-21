@@ -46,6 +46,7 @@ Why: a silent fallback turns a visible failure into an invisible one. Wrong, emp
 - **Silent mis-serve is the cardinal sin.** Returning wrong rows, an O(corpus) rescan where an O(1) lookup was promised, or degraded output the caller can't distinguish from a correct answer — all forbidden. Prefer a crash over a plausible-but-wrong result.
 - **Validate invariants up front; fail before doing work.** Corrupt-on-disk data, violated preconditions, a required service that's down → loud error *before* any computation, not a mid-flight panic or a quietly-wrong traversal.
 - **Stub the not-yet-implemented loudly.** An unimplemented branch is an explicit "not implemented" error with an exit code, never a fall-through to an older/slower code path.
+- **A test that cannot run must be SKIPPED VISIBLY, never quietly passed.** `if !license_ok() { return; }` at the top of a test registers as PASS while asserting nothing — an entire e2e suite, including the only tests exercising a live daemon over a real socket, reported green for months without a license key present. Use `#[ignore]` (Rust) / `pytest.skip` / `t.Skip` so it shows as *ignored*, or fail loud in CI. "Skipped" and "passed" must never be the same observable state.
 - **Delete escape hatches that re-enable the slow path.** Env vars, flags, or config toggles that silently switch to a degraded mode are themselves footguns — remove them rather than support two paths.
 
 **The one nuance — distinguish "not applicable" from "broken":**
@@ -115,6 +116,10 @@ then runs jobs **one at a time across every agent and every repo** — one globa
   exceeds the 10-minute shell-tool cap.
 - **It is transparent**: exit code, stdout/stderr, cwd and environment all pass through, so
   `testq X` behaves exactly like `X` — it just waits its turn.
+- **`testq --status` is the ground truth for a job's exit code.** Every job writes
+  `/tmp/testq-$UID-status/<label>.json` (exit_code, command, cwd, start/finish) from the
+  process that actually ran it — so it stays true even when a pipe downstream has replaced
+  `$?` with 0. Use it whenever a run's success is load-bearing.
 - **Slots default to 1** (10 cores / 16 GB; the 1 GB bench alone peaks ~7.5 GB RSS). Raise
   deliberately with `testq --slots N`, or persist via `TESTQ_SLOTS` in `~/.zshenv`.
 
@@ -134,11 +139,24 @@ total wall-clock (it was always N suites of work) and makes every run fast and t
 - **Each slot sets `CARGO_INCREMENTAL=0`** — sccache cannot cache incremental compilations and silently skips them. Do NOT set it globally; the interactive shell keeps incremental deliberately. MEASURED cost of that choice (2026-07-20, cold build of parot-core): incremental-default **71 s** vs `CARGO_INCREMENTAL=0` **58 s**. So the interactive default costs ~13 s per COLD target dir — once per worktree, not once per edit. The hot single-file-edit loop that justifies keeping incremental was NOT measured; don't flip the global default citing the 13 s until it is.
 - **sccache is path-specific because of `cwd`, not `--out-dir`.** Its `generate_hash_key` (`src/compiler/rust.rs`) strips `--out-dir`/`-L`/`--extern` paths and hashes their contents; it then hashes the compile's `cwd` plus `CARGO_*` vars, which differ per worktree. Consequence: two worktrees never share sccache work, confirmed by measurement (rebuilding already-compiled crates into a fresh target dir drove the cumulative Rust hit rate DOWN). `SCCACHE_BASEDIRS` does not fix this — it covers only the C/C++ path (issue #2652); the Rust fix is unmerged (PR #2678). Don't chase this; it's an upstream gap.
 
+# Evidence discipline — a green is a claim, not proof
+
+Every rule here comes from a failure that produced **confident, plausible, wrong output instead of an error**. That is the class worth engineering against: a crash teaches you something, these teach you something false. Some are enforced by hooks (`bash_footgun_guard.py` blocks; `test_count_guard.py` reconciles) — the hook explains itself when it fires, and its presence does not excuse you from the habit.
+
+- **Reconcile the test COUNT against a baseline, every run.** A suite once reported `742 tests run: 742 passed`, no errors — and was running a binary that contained none of the 9 tests just added (the next run said 751; 751 − 742 = 9 exactly). The summary was accurate about what it ran. Only the arithmetic caught it. Keep an explicit anchor (`main @ 4ee8817 = 1502`) and reconcile every subsequent run against it. A count is hard to fake accidentally; a "N passed" line is not. **A count that goes DOWN without deletions means the binary does not contain your code** — force a rebuild, don't re-read the summary.
+- **Never read a summary line as proof.** Grep the output explicitly: `rg -n 'FAIL|test run failed|^error'`.
+- **Never pipe a test or build run.** `cmd | tail -N` exits with *tail's* status — always 0 — so a run with 3 failures reports "completed (exit code 0)"; and the truncation throws away the list of which tests ran, which is the only evidence distinguishing a real green from a stale binary. Capture in full, then read the file: `<cmd> > /tmp/run.log 2>&1; echo "exit=$?"; tail -40 /tmp/run.log`. Under the queue, `testq --status` records the true exit code where no pipe can launder it.
+- **Verify a test filter selected what you think it did.** `-E 'test(stopword)'` matched **0** of 8 tests whose names contain `stopword`, while positional filters (`cargo nextest run -p foo stopword`) matched them and exposed a real failure. A pass over zero tests is a pass. Prefer positional filters ad hoc; with an expression, confirm a non-zero *expected* count first.
+- **Anchor the working directory.** cwd persists between shell calls but a `cd` inside a backgrounded compound command does not apply afterwards, so with work spread across a main tree and several worktrees a build silently runs in the wrong one. Absolute `cd` at the head of every build command, or prefix `pwd &&` so the output records where it ran.
+- **A conditional action needs a conditional marker.** `git commit …; echo "=== committed ==="` prints the marker even when the tree was clean and nothing was committed — and the `git log -1` that follows shows someone else's commit. Compare `git rev-parse HEAD` before and after, or guard: `git diff --cached --quiet || git commit`.
+- **Re-run the full suite on the MERGED result.** Per-branch greens do not cover the combination; two independently-correct branches (a format bump and a wire bump) can land hours apart and be tested together by nobody.
+
 # Workflow defaults
 
 - **TDD is the default** for any non-trivial change. Plans lead with an exhaustive failing-test suite (happy path, every documented edge case, boundaries, failure modes, and the real-world input that triggered the bug — not a synthetic substitute), then implementation, then a full-suite verification pass: a test "sandwich" with tests on both ends.
 - **Verbal plan approval counts.** If ExitPlanMode is rejected but the user replies "implement this" / "proceed" / "go ahead", treat that as plan approval and start executing immediately — don't re-attempt ExitPlanMode or stall for UI approval.
 - **Use git worktrees for non-trivial implementation work** so main working trees stay untouched and subagents can run in parallel without stepping on each other. For path-dep'd sibling repos, create matching worktrees under one parent dir so relative deps still resolve.
+- **Never build in, or `cp` out of, a tree another session has uncommitted work in.** Building there compiles their half-finished change alongside yours, so a green does not mean "my change is correct" — it means nothing at all. Copying files out captures their *intermediate draft*, which resurfaces later as a merge conflict where neither side is your work. Relocate with `git stash` / `git diff | git apply` scoped to files you actually modified, and diff against `HEAD` before copying. Check with `git -C <tree> status --porcelain` first.
 - **Git cleanup is local-only by default.** "Clean up branches/worktrees" means `git worktree remove`, `git branch -d`, `git fetch --prune`. Never delete remote branches (`git push origin --delete`) unless explicitly told. Never delete unmerged work.
 
 # Design doctrine
@@ -378,7 +396,7 @@ flat |= parent.nested_field.model_dump(by_alias=True)
 - always try to make the bash scripts idempotent, so they can be run multiple times safely. if the script contains multiple "stages", make each stage idempotent
 - always use fd instead of find
 - always use rg instead of grep
-  - **NEVER port grep's `-r` to `rg`.** In ripgrep `-r`/`--replace` takes an argument and silently rewrites every match to it — so `rg -rn PATTERN` means `--replace=n` (matches become the literal `n`), `rg -rln` → `ln`, `rg -rl` → `l`. This produces plausible-but-wrong output (identifiers like `blake3::hash`→`ln::hash`, `fn select1`→`ln`), NOT an error. Recursion is rg's DEFAULT — no flag needed. Use `rg -n PATTERN` for line numbers, `rg -l PATTERN` for filenames only. `-l` and `-n` are mutually exclusive; never combine them.
+  - **NEVER port grep's `-r` to `rg`.** (Now blocked by a PreToolUse hook — this rule was in this file, in context, and was hit anyway.) In ripgrep `-r`/`--replace` takes an argument and silently rewrites every match to it — so `rg -rn PATTERN` means `--replace=n` (matches become the literal `n`), `rg -rln` → `ln`, `rg -rl` → `l`. This produces plausible-but-wrong output (identifiers like `blake3::hash`→`ln::hash`, `fn select1`→`ln`), NOT an error. Recursion is rg's DEFAULT — no flag needed. Use `rg -n PATTERN` for line numbers, `rg -l PATTERN` for filenames only. `-l` and `-n` are mutually exclusive; never combine them.
 - always use `eza --tree` over `tree`
 
 # Front end development guidelines

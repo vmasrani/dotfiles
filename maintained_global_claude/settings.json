@@ -45,6 +45,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "/usr/bin/python3 ~/.claude/hooks/bash_footgun_guard.py"
+          },
+          {
+            "type": "command",
             "command": "/usr/bin/python3 ~/.claude/hooks/test_queue_guard.py"
           }
         ]
@@ -57,6 +61,15 @@
           {
             "type": "command",
             "command": "uv run ~/.claude/hooks/post_tool_use.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 ~/.claude/hooks/test_count_guard.py"
           }
         ]
       }

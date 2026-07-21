@@ -36,6 +36,7 @@
 #   testq --events <command>  same, but emit machine-readable state lines
 #   testq -l | --list         show the queue (waiting / running / finished)
 #   testq --watch             live-refreshing queue view
+#   testq --status [label]    show a job's recorded outcome (default: most recent)
 #   testq --slots [N]         show, or set, how many jobs run at once
 #   testq --clear             forget finished jobs
 #   testq --kill              stop the queue daemon (does not kill a running job)
@@ -90,6 +91,18 @@
 #   9-minute suite for no resource reason. Override per-invocation with
 #   TESTQ_WEIGHT=<n>.
 #
+# STATUS FILE -- GROUND TRUTH FOR THE EXIT CODE
+#   Every job writes $TESTQ_STATUS_DIR/<label>.json (default
+#   /tmp/testq-$UID-status), holding label, command, cwd, start/finish time and
+#   the real exit_code. Read it with `testq --status`.
+#
+#   WHY: a pipe destroys the exit code. `cargo nextest run | tail -25` exits
+#   with TAIL's status -- always 0 -- so a run with three failing tests reports
+#   "completed (exit code 0)". Anything downstream that trusts `$?` is then
+#   confidently wrong. The status file is written by the process that actually
+#   ran the command, before any pipe can launder it, so it stays true no matter
+#   what the caller wrapped around us.
+#
 # RE-ENTRANCY
 #   A queued job runs with TESTQ_ACTIVE=1. If testq sees that set it runs the
 #   command directly instead of enqueuing it. Without this, a queued `just
@@ -109,7 +122,7 @@ die() { print -u2 "$SELF: $*"; exit 1 }
 # would look like a flag, fall through, and deadlock on its parent's slot.
 if [[ -n "${TESTQ_ACTIVE:-}" ]]; then
   case "${1:-}" in
-    -h|--help|-l|--list|status|--watch|--slots|--clear|--kill|"") ;;
+    -h|--help|-l|--list|status|--status|--watch|--slots|--clear|--kill|"") ;;
     --events) shift; [[ $# -gt 0 ]] && exec "$@" ;;
     --) shift; [[ $# -gt 0 ]] && exec "$@" ;;
     *)  exec "$@" ;;
@@ -133,19 +146,24 @@ ensure_server() {
     || die "could not start or reach the queue daemon at $TS_SOCKET"
 }
 
-# `ts -l` is one header line plus one line per job; anything past the header
-# that is not "finished" is either running or waiting ahead of us.
-#
-# Pass our own label once the job is enqueued, otherwise we count OURSELF and
-# report "ahead=1" on an empty queue -- a status tool that overstates the
-# wait teaches the caller to ignore it.
+# `ts -l` is one header line plus one line per job. BEFORE we are enqueued,
+# every queued-or-running job is by definition ahead of us, so a plain count
+# is correct here -- and only here.
 queue_ahead() {
-  local exclude="${1:-}"
-  if [[ -n "$exclude" ]]; then
-    ts -l 2>/dev/null | tail -n +2 | grep -vF "[$exclude]" | grep -cv '^[0-9]* *finished' || true
-  else
-    ts -l 2>/dev/null | tail -n +2 | grep -cv '^[0-9]* *finished' || true
-  fi
+  ts -l 2>/dev/null | tail -n +2 | awk '$2 == "queued" || $2 == "running"' | wc -l | tr -d ' '
+}
+
+# Jobs genuinely ahead of OURS: queued-or-running with a LOWER id.
+#
+# WHY NOT "every unfinished job except mine": that also counts jobs submitted
+# AFTER mine. Observed: job 150 running, 151 mine, 152 submitted later -- my
+# wait line went "1 ahead" then "2 ahead" while only 150 was ever ahead. A
+# position indicator that moves BACKWARDS makes a bounded wait read as
+# unbounded, which is what provokes a caller into re-running the job.
+jobs_ahead_of() {
+  ts -l 2>/dev/null | tail -n +2 \
+    | awk -v id="$1" '($1+0) < (id+0) && ($2 == "queued" || $2 == "running")' \
+    | wc -l | tr -d ' '
 }
 
 # State of the job carrying our label. Labels render as "[label]command" in
@@ -154,6 +172,42 @@ queue_ahead() {
 # two as the same or it will stop watching before the job ever appears.
 state_by_label() {
   ts -l 2>/dev/null | grep -F "[$1]" | head -1 | awk '{print $2}'
+}
+
+# Our job id, once ts has accepted it. Empty until then (see above).
+id_by_label() {
+  ts -l 2>/dev/null | grep -F "[$1]" | head -1 | awk '{print $1}'
+}
+
+# --- status sidecar ----------------------------------------------------------
+STATUS_DIR="${TESTQ_STATUS_DIR:-/tmp/testq-${UID}-status}"
+
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\t'/\\t}"
+  print -r -- "$s"
+}
+
+# Called once at start (phase=running, exit_code null) and once at the end.
+# Writing twice means an interrupted job leaves evidence it ever started,
+# instead of leaving nothing and looking like it was never submitted.
+write_status() {
+  local phase="$1" rc="${2:-null}"
+  mkdir -p "$STATUS_DIR" 2>/dev/null || return 0
+  print -r -- "{
+  \"label\": \"$(json_escape "$LABEL")\",
+  \"phase\": \"$phase\",
+  \"exit_code\": $rc,
+  \"command\": \"$(json_escape "$CMD_STR")\",
+  \"cwd\": \"$(json_escape "$PWD")\",
+  \"started\": \"$STARTED_AT\",
+  \"finished\": \"${FINISHED_AT:-}\",
+  \"slots\": $SLOTS,
+  \"weight\": $WEIGHT
+}" > "$STATUS_DIR/$LABEL.json" 2>/dev/null || true
 }
 
 # How many slots this command should occupy. Heavy = exclusive.
@@ -190,6 +244,15 @@ case "${1:-}" in
   --watch)
     ensure_server
     while :; do clear; print "queue: $TS_SOCKET  (slots: $SLOTS)"; print; ts -l; sleep 2; done ;;
+  --status)
+    if [[ -n "${2:-}" ]]; then
+      [[ -f "$STATUS_DIR/$2.json" ]] || die "no status recorded for label '$2' (looked in $STATUS_DIR)"
+      exec cat "$STATUS_DIR/$2.json"
+    fi
+    LATEST=$(ls -t "$STATUS_DIR"/*.json 2>/dev/null | head -1)
+    [[ -n "$LATEST" ]] || die "no job has recorded status yet (looked in $STATUS_DIR)"
+    print -u2 "$SELF: $LATEST"
+    exec cat "$LATEST" ;;
   --slots)
     ensure_server
     if [[ -n "${2:-}" ]]; then
@@ -217,19 +280,26 @@ LABEL="tq-$$-${RANDOM}"
 WEIGHT="${TESTQ_WEIGHT:-$(job_weight "$@")}"
 (( WEIGHT > SLOTS )) && WEIGHT=$SLOTS
 (( WEIGHT < 1 )) && WEIGHT=1
+CMD_STR="${(j: :)${(qq)@}}"  # requote each arg: a record you can paste back and re-run
+STARTED_AT="$(date +%Y-%m-%dT%H:%M:%S%z)"
+FINISHED_AT=""
 
 # --- events mode: detached submission, one line per state transition ---------
 if (( EVENTS )); then
   id="$(TESTQ_ACTIVE=1 ts -L "$LABEL" -N "$WEIGHT" "$@")" \
     || die "could not enqueue job"
-  print "QUEUED id=$id ahead=$(queue_ahead "$LABEL") label=$LABEL slots=$SLOTS weight=$WEIGHT"
+  write_status queued
+  print "QUEUED id=$id ahead=$(jobs_ahead_of "$id") label=$LABEL slots=$SLOTS weight=$WEIGHT"
   t0=$SECONDS
   while [[ "$(ts -s "$id" 2>/dev/null)" == "queued" ]]; do sleep 1; done
+  write_status running
   print "RUNNING id=$id waited=$((SECONDS - t0))s"
   t1=$SECONDS
   ts -w "$id" >/dev/null 2>&1
   rc=$?
-  print "DONE id=$id exit=$rc elapsed=$((SECONDS - t1))s out=$(ts -o "$id" 2>/dev/null)"
+  FINISHED_AT="$(date +%Y-%m-%dT%H:%M:%S%z)"
+  write_status finished "$rc"
+  print "DONE id=$id exit=$rc elapsed=$((SECONDS - t1))s out=$(ts -o "$id" 2>/dev/null) status=$STATUS_DIR/$LABEL.json"
   exit $rc
 fi
 
@@ -250,7 +320,9 @@ if (( HEARTBEAT > 0 )) && (( ahead > 0 )); then
       sleep "$HEARTBEAT"
       st="$(state_by_label "$LABEL")"
       [[ "$st" == "running" || "$st" == "finished" ]] && exit 0
-      print -u2 "$SELF: still queued — $((SECONDS - t0))s elapsed, $(queue_ahead "$LABEL") ahead (slots: $SLOTS)"
+      my_id="$(id_by_label "$LABEL")"
+      if [[ -n "$my_id" ]]; then ahead_now="$(jobs_ahead_of "$my_id")"; else ahead_now="?"; fi
+      print -u2 "$SELF: still queued — $((SECONDS - t0))s elapsed, $ahead_now ahead (slots: $SLOTS)"
     done
   ) &
   HB_PID=$!
@@ -259,6 +331,9 @@ fi
 stop_heartbeat() { (( HB_PID > 0 )) && kill "$HB_PID" 2>/dev/null; return 0 }
 trap stop_heartbeat EXIT INT TERM
 
+write_status running
+print -u2 "$SELF: status file: $STATUS_DIR/$LABEL.json (real exit code, survives any pipe)"
+
 # -n : inherit this process's stdout/stderr instead of capturing to a file
 # -f : don't detach -- wait for the slot, then run right here
 # Together they make the wrapper transparent: live output, real exit code,
@@ -266,4 +341,6 @@ trap stop_heartbeat EXIT INT TERM
 TESTQ_ACTIVE=1 ts -nf -L "$LABEL" -N "$WEIGHT" "$@"
 rc=$?
 stop_heartbeat
+FINISHED_AT="$(date +%Y-%m-%dT%H:%M:%S%z)"
+write_status finished "$rc"
 exit $rc
