@@ -91,9 +91,18 @@ def needs_queue(command: str) -> bool:
     return heavy
 
 
-def queued(command: str) -> str:
-    """Wrap the whole command as a single queued job, quoting-safe."""
-    return f"testq zsh -c {shlex.quote(command)}"
+def queued(command: str, session: str = "") -> str:
+    """Wrap the whole command as a single queued job, quoting-safe.
+
+    The session id is passed through as TESTQ_SESSION so the queue can tell
+    whose jobs are whose. It uses that for two things a bare PID cannot support:
+    `--last` resolves to the caller's OWN most recent job even while other
+    agents submit concurrently, and scheduling can round-robin across sessions
+    so one agent's fan-out cannot starve everyone else. Without it every tool
+    call looks like a different submitter, because each one is a new shell.
+    """
+    prefix = f"TESTQ_SESSION={shlex.quote(session)} " if session else ""
+    return f"{prefix}testq zsh -c {shlex.quote(command)}"
 
 
 def main() -> None:
@@ -113,7 +122,7 @@ def main() -> None:
     # Replace the ENTIRE tool input (updatedInput is a replacement, not a patch),
     # preserving sibling fields like description / timeout / run_in_background.
     new_input = dict(tool_input)
-    new_input["command"] = queued(command)
+    new_input["command"] = queued(command, str(data.get("session_id") or ""))
 
     print(
         json.dumps(

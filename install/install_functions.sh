@@ -510,6 +510,11 @@ install_shellcheck() {
 	install_on_brew_or_mac "shellcheck"
 }
 
+# Test framework for the shell tools in tools/ (see tools/tests/*.bats).
+install_bats() {
+	install_on_brew_or_mac "bats-core"
+}
+
 install_claude_code_cli() {
 	# Install via npm
 	curl -fsSL https://claude.ai/install.sh | bash

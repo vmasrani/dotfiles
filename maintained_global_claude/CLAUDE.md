@@ -107,35 +107,54 @@ Also scale the amount of thinking/reasoning effort to the task — minimal delib
 **Heavy cargo work is queued machine-wide, automatically — do NOT prefix anything yourself.**
 A PreToolUse hook (`~/.claude/hooks/test_queue_guard.py`) rewrites any
 `cargo nextest|test|build|check|clippy|bench|install` or `just test*|bench*|lint` command
-into `testq zsh -c '<the command>'`. `testq` (`~/dotfiles/tools/testq`, over task-spooler)
-then runs jobs **one at a time across every agent and every repo** — one global socket.
+into `TESTQ_SESSION=<id> testq zsh -c '<the command>'`. `testq` (`~/dotfiles/tools/testq`,
+over task-spooler) then schedules jobs **across every agent and every repo** — one global
+socket.
 
 - **A pause before output is the QUEUE, not a hang.** `testq -l` shows what is running and
-  what is waiting ahead of you. Never "work around" a slow start by re-running.
+  what is waiting; the wait line names the job blocking you and estimates the remaining
+  time from that command's median runtime. Never "work around" a slow start by re-running.
 - **Run long suites detached** (`run_in_background`). Queue wait + suite time routinely
   exceeds the 10-minute shell-tool cap.
-- **It is transparent**: exit code, stdout/stderr, cwd and environment all pass through, so
-  `testq X` behaves exactly like `X` — it just waits its turn.
-- **`testq --status` is the ground truth for a job's exit code.** Every job writes
-  `/tmp/testq-$UID-status/<label>.json` (exit_code, command, cwd, start/finish) from the
-  process that actually ran it — so it stays true even when a pipe downstream has replaced
-  `$?` with 0. Use it whenever a run's success is load-bearing.
-- **Slots default to 1** (10 cores / 16 GB; the 1 GB bench alone peaks ~7.5 GB RSS). Raise
-  deliberately with `testq --slots N`, or persist via `TESTQ_SLOTS` in `~/.zshenv`.
+- **It is transparent**: exit code, stdout/stderr (separately), stdin, cwd and environment
+  all pass through, so `testq X` behaves exactly like `X` — it just waits its turn.
+- **`| tail` destroys the exit code — ask the queue instead.** A piped suite returns
+  *tail's* status, so failing tests read as "exit code 0". Every job records its real
+  result: `testq --exit-code --last`, or `testq --status --last` for the whole record
+  (command, cwd, weight, timings, exit). Use it before claiming a suite passed.
+- **Jobs are weighted, not counted.** `TESTQ_BUDGET` (default 12, in `~/.zshenv`) is a unit
+  budget; each job declares its cost — check/clippy/build 3, test/nextest 9, bench/miri 12.
+  The units are a relative scale, not measured GB: they are chosen so the arithmetic gives
+  the policy — one suite and one `cargo check` overlap, two suites never do, a bench runs
+  alone. `testq --explain <cmd>` shows what anything would weigh. Do not raise the budget
+  without measuring; suite-plus-check peak RSS has never been recorded.
+  (`TESTQ_SLOTS` is obsolete and is ignored with a warning.)
+- **Duplicate work is coalesced.** When several agents submit a byte-identical command in
+  the same worktree with an unchanged tree, only the first runs; the rest attach to it and
+  receive its output and exit code. The key includes HEAD plus a dirty-file fingerprint, so
+  a tree that has moved never coalesces. `TESTQ_NO_DEDUP=1` opts out.
 
-Why serialize: cargo takes an **exclusive lock on `target/` during compilation**, so agents
-sharing a target dir never compiled in parallel anyway — they queued on "Blocking waiting
-for file lock on artifact directory". And N concurrent suites oversubscribe the CPU and
-blow the RAM budget, so each runs slower and some never finish at all. Serializing costs no
-total wall-clock (it was always N suites of work) and makes every run fast and terminating.
+Why suites stay exclusive: cargo takes an **exclusive lock on `target/` during
+compilation**, so agents sharing a target dir never compiled in parallel anyway — they
+queued on "Blocking waiting for file lock on artifact directory". And N concurrent suites
+oversubscribe the CPU and blow the RAM budget, so each runs slower and some never finish at
+all. Serializing them costs no total wall-clock (it was always N suites of work) and makes
+every run fast and terminating.
+
+Why cheap jobs no longer wait: that argument is about *suites*, and it was over-applied. A
+`cargo check` costs ~3 GB and finishes in seconds; making it queue behind a 9-minute suite
+bought no safety, and the caller waiting on it was usually a human. The unit budget keeps
+the suite-exclusivity property exactly (two 9s do not fit in 12) while letting the cheap job
+through. The cost is real and is not free: a suite already runs at ~9x parallelism on 10
+cores, so a concurrent check does take cores from it.
 
 - **Default: agents write, the lead builds.** Subagents edit code; ONE process compiles and runs the suite. Costs no extra disk and fixes the trust problem — you re-verify anyway, and an agent's "all tests green" is a claim, not evidence.
-- **Test-execution fan-out is now bounded by the slot count.** `cargo nextest archive --workspace --archive-file /tmp/t.tar.zst` then per-agent `cargo nextest run --archive-file …` still avoids N compiles, but those runs are queued too, so at 1 slot they execute serially. Raise slots first if you actually want that fan-out.
-- **`cargo-slot` is for the raised-slot case ONLY — it is pointless at 1 slot.** It exists to dodge the `target/` lock during *concurrent* builds; serialized jobs have no lock to dodge, so a private target dir buys nothing. Under the default queue, agents should SHARE one warm `target/`. If you do raise slots: `cargo-slot <agent-name> cargo nextest run --workspace` — the slot name IS the allocation key (deterministic, no counter, no race); slots live per-project under `/Volumes/external/.cargo-targets`, capped at 8; `cargo-slot --list`, `--reclaim <slot>`, `--reclaim-all`, `--help`.
+- **Test-execution fan-out is bounded by the budget.** `cargo nextest archive --workspace --archive-file /tmp/t.tar.zst` then per-agent `cargo nextest run --archive-file …` still avoids N compiles, but each run weighs 9, so they execute one at a time. Raise `TESTQ_BUDGET` first if you actually want that fan-out — and read the RAM bullet below before you do.
+- **`cargo-slot` is for the raised-budget case ONLY — it is pointless at the default.** It exists to dodge the `target/` lock during *concurrent* builds of one worktree; jobs that never overlap have no lock to dodge, so a private target dir buys nothing. Agents should SHARE one warm `target/` per worktree. If you do raise the budget: `cargo-slot <agent-name> cargo nextest run --workspace` — the slot name IS the allocation key (deterministic, no counter, no race); slots live per-project under `/Volumes/external/.cargo-targets`, capped at 8; `cargo-slot --list`, `--reclaim <slot>`, `--reclaim-all`, `--help`.
 - **Slot disk cost is gone; the slot BUILD cost is only ~21% cheaper (MEASURED 2026-07-20).** `/Volumes/external` is APFS now, so a slot can be seeded by CoW clone from a warm `target/`: 4.1 GB cloned in **0.59 s at zero bytes**, and cargo fully accepts a relocated target dir (rebuild in the clone: **0 crates, 0.70 s** — cargo officially hashes fingerprints relative to the target root, cargo#8817). It works cross-worktree too: a *different* worktree building into a clone of main's warm dir rebuilt the same 147 crates in 45.9 s. **But the payoff is modest.** Head-to-head on parot-core (573 crates, identical conditions): empty dir **58 s / 452 crates** vs CoW-seeded **46 s / 161 crates**. Twelve seconds. Seed a new worktree by hand with `cp -c -R` when convenient; do NOT build orchestration around this. `cargo-slot` still does `mkdir -p` (`tools/cargo-slot:194`) and that is fine.
-- **A full cold build of a 573-crate workspace is ~58 s on the M4** (three independent runs: 59.8 / 58 / 58). Size optimizations against that number before assuming compilation is the bottleneck — it usually isn't. Suite wall-clock at 1 testq slot dominates.
+- **A full cold build of a 573-crate workspace is ~58 s on the M4** (three independent runs: 59.8 / 58 / 58). Size optimizations against that number before assuming compilation is the bottleneck — it usually isn't. Suite wall-clock dominates, since suites still run one at a time.
 - **Clippy does NOT thrash build artifacts — do not "fix" this.** Cargo sets `RUSTC_WORKSPACE_WRAPPER=clippy-driver`, which per the stable Cargo docs "affects the filename hash so that artifacts produced by the wrapper are cached separately". MEASURED: `build → clippy → build` in ONE shared target dir recompiled **0 crates** on the second build. A separate `target/clippy` dir buys nothing. Dependencies are never rewrapped, so clippy reuses them (it compiled only 27 of 573).
-- **Raising slots is still gated on RAM/CPU, not disk.** 10 cores / 16 GB, the 1 GB bench alone peaks ~7.5 GB RSS — N concurrent suites oversubscribe and thrash regardless of how cheap their target dirs are. That argument is untouched by the filesystem change and remains the binding constraint.
+- **Raising the budget is still gated on RAM/CPU, not disk.** 10 cores / 16 GB, the 1 GB bench alone peaks ~7.5 GB RSS — N concurrent suites oversubscribe and thrash regardless of how cheap their target dirs are. That argument is untouched by the filesystem change and remains the binding constraint. The weight table (nextest 9, budget 12) is what encodes it; change one and you must re-derive the other.
 - **Each slot sets `CARGO_INCREMENTAL=0`** — sccache cannot cache incremental compilations and silently skips them. Do NOT set it globally; the interactive shell keeps incremental deliberately. MEASURED cost of that choice (2026-07-20, cold build of parot-core): incremental-default **71 s** vs `CARGO_INCREMENTAL=0` **58 s**. So the interactive default costs ~13 s per COLD target dir — once per worktree, not once per edit. The hot single-file-edit loop that justifies keeping incremental was NOT measured; don't flip the global default citing the 13 s until it is.
 - **sccache is path-specific because of `cwd`, not `--out-dir`.** Its `generate_hash_key` (`src/compiler/rust.rs`) strips `--out-dir`/`-L`/`--extern` paths and hashes their contents; it then hashes the compile's `cwd` plus `CARGO_*` vars, which differ per worktree. Consequence: two worktrees never share sccache work, confirmed by measurement (rebuilding already-compiled crates into a fresh target dir drove the cumulative Rust hit rate DOWN). `SCCACHE_BASEDIRS` does not fix this — it covers only the C/C++ path (issue #2652); the Rust fix is unmerged (PR #2678). Don't chase this; it's an upstream gap.
 

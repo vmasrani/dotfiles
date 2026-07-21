@@ -41,20 +41,25 @@ export GOG_KEYRING_PASSWORD="$(security find-generic-password -s gog-keyring -a 
 # in different repos share a single queue instead of one queue each.
 export TS_SOCKET="/tmp/testq-${UID}.sock"
 # `:-` matters. .zshenv is sourced by EVERY zsh, including non-interactive
-# `zsh -c`, so a bare `export TESTQ_SLOTS=2` runs AFTER a caller's assignment
-# prefix and silently clobbers it -- `TESTQ_SLOTS=4 testq ...` was a no-op,
-# and `testq --slots N`'s own "export to persist" advice was undone by the
+# `zsh -c`, so a bare `export TESTQ_BUDGET=12` runs AFTER a caller's assignment
+# prefix and silently clobbers it -- `TESTQ_BUDGET=24 testq ...` was a no-op,
+# and `testq --budget N`'s own "export to persist" advice was undone by the
 # next shell. Defaulting instead of assigning lets an explicit value survive.
 #
-# Why 2 and not more (raised from 1, 2026-07-20): the -N weighting in testq
-# makes HEAVY jobs (nextest/test/bench, just test*) request ALL slots, so a
-# suite still runs exclusively at any slot count -- the two-suites-at-once RAM
-# cliff (2x15GB > 13GB usable) simply cannot occur. The slot count only sets
-# how many LIGHT jobs (check/clippy/build) overlap. On this 16 GB box two
-# concurrent light builds are safe; three can approach the ceiling if they all
-# peak together. So 2 buys agent-parallel light work at no suite-RAM risk.
-# Bump to 3 here if light-job parallelism matters more than the margin.
-export TESTQ_SLOTS="${TESTQ_SLOTS:-2}"
+# TESTQ_BUDGET counts UNITS, not jobs (it replaced TESTQ_SLOTS on 2026-07-20).
+# Each job declares a cost -- check/clippy/build 3, test/nextest 9, bench/miri
+# 12 -- and the queue admits until the budget fills. The units are a RELATIVE
+# scale chosen so the arithmetic enforces the policy: at 12, one suite plus one
+# check fits, two suites (18) never do, and a bench runs alone. So a 20-second
+# `cargo check` stops waiting out a 9-minute suite for no resource reason,
+# while the suite-exclusivity that justified this queue is untouched.
+# `testq --explain <cmd>` shows what any command would weigh.
+#
+# Do NOT raise this without measuring first. 13 GB usable is the ceiling, a
+# suite already saturates 10 cores on its own, and the peak RSS of a suite plus
+# a concurrent check has never actually been recorded -- so extra concurrency
+# would be bought from suite wall-clock and from unverified RAM headroom.
+export TESTQ_BUDGET="${TESTQ_BUDGET:-12}"
 export TESTQ_HEARTBEAT="${TESTQ_HEARTBEAT:-30}"
 
 # The `cargo` shim (~/dotfiles/tools/shims/cargo) must precede ~/.cargo/bin so

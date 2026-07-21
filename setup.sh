@@ -94,6 +94,7 @@ install_if_missing ty install_ty # Ty CLI tool via uv
 
 # install language servers (must be after npm and cargo installation)
 install_if_missing shellcheck install_shellcheck # Shell script linter
+install_if_missing bats install_bats # Shell test framework (tools/tests/*.bats)
 install_if_missing ruff install_ruff # Python linter and formatter (Astral)
 install_if_missing sourcery install_sourcery # AI-powered Python code reviewer
 install_if_missing biome install_biome # JS/TS linter and formatter

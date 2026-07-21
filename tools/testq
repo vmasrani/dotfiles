@@ -11,119 +11,142 @@
 #
 #   MEASURED 2026-07-20 on parot-core (2,269 tests): one `cargo nextest run`
 #   consumed 2,930s of CPU against 323s of wall clock -- ~9x parallelism on
-#   10 cores. A single suite ALREADY saturates the machine. There is no
-#   headroom for a second concurrent job, so two suites do not finish sooner
-#   in aggregate; they split the cores and both finish late instead of one
-#   finishing early. That is the measured case for this queue existing.
+#   10 cores. A single suite ALREADY saturates the machine.
 #
-#   This is a thin wrapper over task-spooler (`ts`), which is a real job
-#   queue daemon -- FIFO ordering, a slot count, job listing, output capture.
-#   The wrapper exists to pin ONE global socket (so every agent in every repo
-#   shares the same queue), to fix the slot count, and to make the whole
-#   thing a transparent command prefix.
+#   This is a thin wrapper over task-spooler (`ts`), which is a real job queue
+#   daemon -- FIFO ordering, weighted admission, job listing, output capture.
+#   The wrapper pins ONE global socket (so every agent in every repo shares the
+#   same queue), sets the unit budget, keeps the job record `ts` does not, and
+#   makes the whole thing a transparent command prefix.
 #
 # RELATIONSHIP TO cargo-slot -- THEY SOLVE OPPOSITE PROBLEMS, DON'T COMBINE
 #   cargo-slot gives each agent its OWN target dir so agents can compile
 #   CONCURRENTLY (cargo takes an exclusive lock on target/).
-#   testq makes agents compile SERIALLY.
-#   If jobs are serialized there is no lock to contend for, so a private
-#   target dir buys nothing. Under testq, agents should SHARE one warm
-#   target/. Use cargo-slot only when you have deliberately raised the slot
-#   count above 1 and want those concurrent jobs to actually build in parallel.
+#   testq decides WHICH jobs may overlap at all.
+#   Under testq, agents should SHARE one warm target/ per worktree. Use
+#   cargo-slot only when you want two builds of the SAME worktree at once.
 #
 # USAGE
-#   testq <command...>        wait for a free slot, then run <command> here
-#   testq --events <command>  same, but emit machine-readable state lines
-#   testq -l | --list         show the queue (waiting / running / finished)
-#   testq --watch             live-refreshing queue view
-#   testq --status [label]    show a job's recorded outcome (default: most recent)
-#   testq --slots [N]         show, or set, how many jobs run at once
-#   testq --clear             forget finished jobs
-#   testq --kill              stop the queue daemon (does not kill a running job)
+#   testq <command...>             wait for capacity, then run <command> here
+#   testq --priority <cmd...>      same, but jump the queue
+#   testq --events <cmd...>        emit machine-readable state lines
+#   testq -l | --list              show the queue (waiting / running / finished)
+#   testq --watch                  live-refreshing queue view
+#   testq --status [id|--last]     show the full job record (exit code, timings)
+#   testq --exit-code [id|--last]  print just that job's exit code
+#   testq --explain <cmd...>       show how a command would be weighted
+#   testq --ahead                  how many jobs a new submission waits for
+#   testq --budget [N]             show, or set, the concurrency budget
+#   testq --clear                  forget finished jobs
+#   testq --kill                   stop the queue daemon (not a running job)
 #
 # EXAMPLES
 #   testq cargo nextest run --workspace
-#   testq just test
 #   testq -- cargo build --release        # `--` if the command starts with a flag
-#   testq --events just test              # for Monitor / notification callers
+#   testq --exit-code --last              # ground truth after piping output
 #
 # SEMANTICS
-#   Blocks until a slot frees, then runs the command IN THIS PROCESS: stdout
-#   and stderr stream live, the exit code is the command's own, and the job
-#   inherits this shell's cwd and environment. It is a queue, not a sandbox --
-#   `testq X` behaves exactly like `X`, only it waits its turn.
+#   Blocks until there is capacity, then runs the command IN THIS PROCESS:
+#   stdout and stderr stream live and stay separate, the exit code is the
+#   command's own, and the job inherits this shell's cwd, stdin and
+#   environment. It is a queue, not a sandbox -- `testq X` behaves exactly like
+#   `X`, only it waits its turn.
 #
 #   Because it BLOCKS, a caller with a timeout (an agent's shell tool caps at
-#   10 minutes) should run it detached / in the background: the queue wait
-#   plus the suite itself will routinely exceed any short timeout.
+#   10 minutes) should run it detached / in the background.
+#
+# EXIT CODES ARE RECORDED, NOT JUST RETURNED
+#   `testq cmd | tail` returns TAIL's status, so a suite with failing tests
+#   reads as "exit code 0". That is a shell fact no wrapper can change -- so
+#   every job also writes a record, and the code can be read back afterwards:
+#
+#       testq cargo nextest run --workspace 2>&1 | tail -20
+#       testq --exit-code --last            # <- ground truth
+#
+#   `testq --status --last` shows the whole record: command, cwd, weight,
+#   queued/started/finished times and the exit code.
+#
+# THE CONCURRENCY BUDGET (-N weighting)
+#   Jobs declare a cost in UNITS and the queue admits jobs until TESTQ_BUDGET
+#   (default 12) is full. A unit is a RELATIVE cost, not a measured quantity of
+#   anything -- the numbers were chosen so that the arithmetic enforces the
+#   policy, and that is all they mean:
+#
+#       fmt, doc, metadata        1
+#       check, clippy, build      3
+#       test, nextest             9
+#       bench, miri              12
+#
+#   The safety property falls out of the arithmetic: one suite plus one check
+#   fits (12), two suites never do (18), a bench runs alone. That is the point
+#   -- a 20-second `cargo check` no longer waits out a 9-minute suite, which is
+#   the worst thing about a flat FIFO.
+#
+#   The cost, stated plainly: a suite already runs at ~9x parallelism on 10
+#   cores (MEASURED 2026-07-20), so a concurrent check does steal cores from it.
+#   Trading a few percent of suite wall-clock for a 9-minute-to-30-second drop
+#   in check latency is the right trade for work someone is waiting on; it is
+#   not free.
+#
+#   NOT YET MEASURED, and the thing to measure before raising the budget:
+#   the peak RSS of a suite and of a concurrent check, together, against the
+#   ~13 GB usable. The known figures are the 1 GB bench at ~7.5 GB peak and the
+#   suite's 9x CPU parallelism; the suite's own RSS ceiling has not been
+#   recorded. Until it is, treat 12 as the maximum, not a starting point.
+#
+#   Override per-invocation with TESTQ_WEIGHT=<n>. See `testq --explain`.
+#
+# WHY NOT FAST-PATH AN EMPTY QUEUE
+#   "Nothing is running, so just exec directly" is a check-then-act race: two
+#   agents both observe an empty queue and both start heavy jobs, unaccounted,
+#   which is exactly the collision this exists to prevent. The saving would be
+#   a few milliseconds of socket round-trip against jobs measured in minutes.
+#   Deliberately not implemented.
 #
 # HEARTBEAT
-#   While waiting for a slot, a "still queued" line goes to stderr every
-#   TESTQ_HEARTBEAT seconds (default 30; set 0 to disable). Without it the
-#   wrapper prints one line and then goes silent for however long the queue
-#   is -- which reads as a hang, and provokes callers into polling `testq -l`
-#   or, worse, re-running the job.
+#   While waiting, a "still queued" line goes to stderr every TESTQ_HEARTBEAT
+#   seconds (default 30; 0 disables). It names the job blocking you and
+#   estimates the wait from that command's median runtime. Without it the
+#   wrapper goes silent for however long the queue is -- which reads as a hang
+#   and provokes callers into re-running the job. TESTQ_QUIET=1 silences it.
 #
 # --events MODE
 #   For callers that want NOTIFICATIONS rather than live output (an agent's
-#   Monitor tool turns each stdout line into an event). Emits one line per
-#   state transition:
+#   Monitor tool turns each stdout line into an event):
 #
-#     QUEUED id=7 ahead=2 label=tq-1234-… slots=1
+#     QUEUED id=7 ahead=2 label=tq-1234-… budget=12 weight=9
 #     RUNNING id=7 waited=312s
 #     DONE id=7 exit=0 elapsed=522s out=/tmp/ts-out.XXXX
 #
 #   TRADEOFF, on purpose: events mode submits the job DETACHED, so the
-#   command's own stdout/stderr are captured to `out=` instead of streaming
-#   live. You get notifications or you get streaming, not both -- Monitor
-#   would otherwise interleave the job's output with the event lines and
-#   every log line would become a notification. The exit code is still the
-#   command's own.
-#
-# SLOT WEIGHTING (-N)
-#   Heavy jobs (cargo nextest/test/bench/miri, just test*/bench*) request ALL
-#   slots, so they still run exclusively. Everything else -- check, clippy,
-#   build -- requests one slot and can overlap with other light jobs.
-#
-#   At the default TESTQ_SLOTS=1 this changes NOTHING: every job weighs 1 and
-#   runs alone exactly as before. It only takes effect if you raise the slot
-#   count, where it stops a 3-second `cargo check` from waiting behind a
-#   9-minute suite for no resource reason. Override per-invocation with
-#   TESTQ_WEIGHT=<n>.
-#
-# STATUS FILE -- GROUND TRUTH FOR THE EXIT CODE
-#   Every job writes $TESTQ_STATUS_DIR/<label>.json (default
-#   /tmp/testq-$UID-status), holding label, command, cwd, start/finish time and
-#   the real exit_code. Read it with `testq --status`.
-#
-#   WHY: a pipe destroys the exit code. `cargo nextest run | tail -25` exits
-#   with TAIL's status -- always 0 -- so a run with three failing tests reports
-#   "completed (exit code 0)". Anything downstream that trusts `$?` is then
-#   confidently wrong. The status file is written by the process that actually
-#   ran the command, before any pipe can launder it, so it stays true no matter
-#   what the caller wrapped around us.
+#   command's own output is captured to `out=` instead of streaming live. You
+#   get notifications or you get streaming, not both.
 #
 # RE-ENTRANCY
 #   A queued job runs with TESTQ_ACTIVE=1. If testq sees that set it runs the
 #   command directly instead of enqueuing it. Without this, a queued `just
-#   test` whose recipe itself calls testq would wait forever for the single
-#   slot its own parent is holding -- a guaranteed self-deadlock at 1 slot.
+#   test` whose recipe itself calls testq would wait forever for the capacity
+#   its own parent is holding -- a guaranteed self-deadlock.
 
 emulate -L zsh
-setopt no_unset pipe_fail
+# no_multios matters: with zsh's default MULTIOS, `2>&1 1>&3` does not move a
+# stream, it TEES it, so the capture path below would silently copy stdout into
+# the stderr file and a caller's `2>/dev/null` would start eating real output.
+setopt no_unset pipe_fail no_multios
 
 readonly SELF="${0:t}"
 
 die() { print -u2 "$SELF: $*"; exit 1 }
 
 # --- already inside a queued job: run directly, never re-enqueue -------------
-# Management subcommands still work normally in here; only an actual command
-# bypasses the queue. `--` must be handled explicitly, else `testq -- cargo x`
-# would look like a flag, fall through, and deadlock on its parent's slot.
+# Management subcommands still work in here; only an actual command bypasses
+# the queue. `--` must be handled explicitly, else `testq -- cargo x` would
+# look like a flag, fall through, and deadlock on its parent's capacity.
 if [[ -n "${TESTQ_ACTIVE:-}" ]]; then
   case "${1:-}" in
-    -h|--help|-l|--list|status|--status|--watch|--slots|--clear|--kill|"") ;;
-    --events) shift; [[ $# -gt 0 ]] && exec "$@" ;;
+    -h|--help|-l|--list|status|--watch|--slots|--budget|--clear|--kill) ;;
+    --status|--exit-code|--explain|--ahead|--ahead-of|"") ;;
+    --events|--priority) shift; [[ $# -gt 0 ]] && exec "$@" ;;
     --) shift; [[ $# -gt 0 ]] && exec "$@" ;;
     *)  exec "$@" ;;
   esac
@@ -131,88 +154,151 @@ fi
 
 command -v ts >/dev/null 2>&1 || die "task-spooler is not installed -- run: brew install task-spooler"
 
+# ── state layer ──────────────────────────────────────────────────────────────
+# `ts` tracks a job list; it does not track cwd, target dir, submitter, weight
+# class or exit history. Everything built on top -- the exit-code ground truth,
+# the ETA, abandon reaping, anti-affinity -- needs those, so testq keeps its own
+# record beside the queue.
+#
+# Records are APPEND-ONLY `key=value` lines and readers take the LAST value for
+# a key. Two writers (this process and its background supervisor) can therefore
+# both update one record with no locking and no lost updates.
+readonly STATE="${TESTQ_STATE:-${XDG_CACHE_HOME:-$HOME/.cache}/testq}"
+readonly JOBS="$STATE/jobs"
+readonly BY_ID="$STATE/by-id"
+readonly LASTD="$STATE/last"
+readonly HISTORY="$STATE/history.tsv"
+
+state_init() { mkdir -p "$JOBS" "$BY_ID" "$LASTD" 2>/dev/null || true }
+
+# One record (plus captured output) per job, forever, would quietly turn into
+# thousands of files and an unbounded history. Prune on submission, at most
+# once a day, so the cost never lands on an interactive `--status`.
+prune_state() {
+  local stamp="$STATE/.pruned"
+  [[ -f "$stamp" && -z "$(find "$stamp" -mtime +1 2>/dev/null)" ]] && return 0
+  : >"$stamp"
+  find "$JOBS" "$BY_ID" -type f -mtime +7 -delete 2>/dev/null
+  if [[ -r "$HISTORY" ]] && (( $(wc -l <"$HISTORY") > 5000 )); then
+    tail -n 2000 "$HISTORY" >"$HISTORY.new" 2>/dev/null && mv "$HISTORY.new" "$HISTORY"
+  fi
+  return 0
+}
+
+# Exact whole-line membership. Substring matching would be wrong in both places
+# this is used: /repo/target substring-matches /repo/target2, and one session id
+# can be a prefix of another -- either would silently mis-schedule.
+contains_line() { print -r -- "$1" | grep -qxF -- "$2" }
+
+# Who submitted this. `--last` means "the job *I* just ran", so this key has to
+# survive the very shape the feature exists for: `testq cmd | tail` puts testq
+# in a subshell, so $PPID is that subshell -- gone by the time you ask for the
+# exit code. In order of reliability:
+#   1. TESTQ_SESSION -- injected by the PreToolUse hook, stable across an
+#      agent's tool calls, and the only key that distinguishes concurrent agents.
+#   2. the controlling tty -- stable for a human, across pipelines and subshells.
+#   3. the process group -- stable across pipelines in non-interactive shells.
+#   4. $PPID -- last resort.
+compute_session() {
+  [[ -n "${TESTQ_SESSION:-}" ]] && { print -r -- "$TESTQ_SESSION"; return }
+  local t g
+  t=$(ps -o tty= -p $$ 2>/dev/null | tr -d ' ')
+  [[ -n "$t" && "$t" != "??" && "$t" != "?" ]] && { print -r -- "tty-${t//\//-}"; return }
+  g=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+  [[ -n "$g" && "$g" != 0 ]] && { print -r -- "pgid-$g"; return }
+  print -r -- "shell-$PPID"
+}
+readonly SESSION="$(compute_session)"
+session_id() { print -r -- "$SESSION" }
+
+rec_put() { print -r -- "$2=$3" >>"$1" 2>/dev/null || true }
+
+# Last value wins, so a later append supersedes an earlier one. A value may
+# itself contain '=', hence the substr rather than a field split.
+rec_get() {
+  [[ -r "$1" ]] || return 1
+  local v
+  v=$(awk -v k="$2" 'index($0, k "=")==1 {v=substr($0, length(k)+2); f=1} END{if(f) print v}' "$1")
+  [[ -n "$v" ]] || return 1
+  print -r -- "$v"
+}
+
+# A job id -> its record path. Also accepts a label, and `--last` (the most
+# recent submission from THIS session, so concurrent agents never read each
+# other's job by accident).
+rec_path() {
+  local ref="${1:-}"
+  [[ "$ref" == "--last" || -z "$ref" ]] && ref="$(cat "$LASTD/$(session_id)" 2>/dev/null || true)"
+  [[ -n "$ref" ]] || return 1
+  [[ -f "$BY_ID/$ref" ]] && { print -r -- "$JOBS/$(cat "$BY_ID/$ref")"; return 0 }
+  [[ -f "$JOBS/$ref" ]] && { print -r -- "$JOBS/$ref"; return 0 }
+  return 1
+}
+
 # ONE socket for the whole machine, independent of cwd, project or shell.
 # That single fact is what makes the queue global across agents and repos.
 export TS_SOCKET="${TESTQ_SOCKET:-/tmp/testq-${UID}.sock}"
 export TS_MAXFINISHED="${TESTQ_MAXFINISHED:-50}"
 
-readonly SLOTS="${TESTQ_SLOTS:-1}"
+# TESTQ_SLOTS was a flat job count; TESTQ_BUDGET is a unit budget. Reading an
+# old slot count AS a budget would silently make every job exclusive again -- a
+# nextest weighs 9, so a budget of 2 clamps it to 2 and nothing ever overlaps,
+# which is exactly the head-of-line blocking this version removes. So it is
+# ignored, loudly, rather than misinterpreted quietly.
+if [[ -z "${TESTQ_BUDGET:-}" && -n "${TESTQ_SLOTS:-}" ]]; then
+  print -u2 "$SELF: TESTQ_SLOTS is obsolete and was IGNORED (it counted jobs; the budget counts units). Using the default 12. Set TESTQ_BUDGET in ~/.zshenv."
+fi
+readonly BUDGET="${TESTQ_BUDGET:-12}"
 readonly HEARTBEAT="${TESTQ_HEARTBEAT:-30}"
+readonly QUIET="${TESTQ_QUIET:-}"
 
-# `ts -S` starts the daemon if it isn't up, and pins the slot count if it is.
+# `ts -S` starts the daemon if it isn't up, and pins the budget if it is.
 # Both are idempotent, so this is safe to call on every invocation.
 ensure_server() {
-  ts -S "$SLOTS" >/dev/null 2>&1 \
+  ts -S "$BUDGET" >/dev/null 2>&1 \
     || die "could not start or reach the queue daemon at $TS_SOCKET"
 }
 
-# `ts -l` is one header line plus one line per job. BEFORE we are enqueued,
-# every queued-or-running job is by definition ahead of us, so a plain count
-# is correct here -- and only here.
-queue_ahead() {
-  ts -l 2>/dev/null | tail -n +2 | awk '$2 == "queued" || $2 == "running"' | wc -l | tr -d ' '
+# ── queue introspection ──────────────────────────────────────────────────────
+# `ts -l` is a header line plus one line per job; state is the second column.
+# Everything here parses by COLUMN, never by searching the command text, so a
+# job whose command happens to contain the word "running" cannot skew a count.
+
+# How many jobs will consume capacity before a NEW submission does.
+queue_depth() {
+  ts -l 2>/dev/null | tail -n +2 |
+    awk '$2=="queued" || $2=="running" {n++} END{print n+0}'
 }
 
-# Jobs genuinely ahead of OURS: queued-or-running with a LOWER id.
+# Jobs strictly AHEAD of job $1 in run order.
 #
-# WHY NOT "every unfinished job except mine": that also counts jobs submitted
-# AFTER mine. Observed: job 150 running, 151 mine, 152 submitted later -- my
-# wait line went "1 ahead" then "2 ahead" while only 150 was ever ahead. A
-# position indicator that moves BACKWARDS makes a bounded wait read as
-# unbounded, which is what provokes a caller into re-running the job.
-jobs_ahead_of() {
-  ts -l 2>/dev/null | tail -n +2 \
-    | awk -v id="$1" '($1+0) < (id+0) && ($2 == "queued" || $2 == "running")' \
-    | wc -l | tr -d ' '
+# THE BUG THIS REPLACES: the old version counted every unfinished job except
+# your own, so a job submitted BEHIND you also incremented your count. The
+# number grew as the queue grew, which reads as losing ground and makes a
+# bounded wait feel unbounded. Run order is job-id order, so only lower ids can
+# be ahead of us.
+queue_ahead_of() {
+  ts -l 2>/dev/null | tail -n +2 |
+    awk -v me="$1" '($2=="queued" || $2=="running") && ($1+0) < (me+0) {n++} END{print n+0}'
 }
 
-# State of the job carrying our label. Labels render as "[label]command" in
-# the Command column, so a fixed-string match on "[label]" is unambiguous.
-# Empty means "not enqueued yet" -- NOT "gone"; the caller must not treat the
-# two as the same or it will stop watching before the job ever appears.
-state_by_label() {
-  ts -l 2>/dev/null | grep -F "[$1]" | head -1 | awk '{print $2}'
+ids_in_state() {
+  ts -l 2>/dev/null | tail -n +2 | awk -v s="$1" '$2==s {print $1}'
 }
 
-# Our job id, once ts has accepted it. Empty until then (see above).
+state_of_id() { ts -s "$1" 2>/dev/null || true }
+
+# Empty means "not enqueued yet" -- NOT "gone". A caller must not treat the two
+# as the same or it will stop watching before the job ever appears.
 id_by_label() {
-  ts -l 2>/dev/null | grep -F "[$1]" | head -1 | awk '{print $1}'
+  ts -l 2>/dev/null | tail -n +2 | awk -v l="[$1]" 'index($0, l) {print $1; exit}'
 }
 
-# --- status sidecar ----------------------------------------------------------
-STATUS_DIR="${TESTQ_STATUS_DIR:-/tmp/testq-${UID}-status}"
-
-json_escape() {
-  local s="$1"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  s="${s//$'\t'/\\t}"
-  print -r -- "$s"
-}
-
-# Called once at start (phase=running, exit_code null) and once at the end.
-# Writing twice means an interrupted job leaves evidence it ever started,
-# instead of leaving nothing and looking like it was never submitted.
-write_status() {
-  local phase="$1" rc="${2:-null}"
-  mkdir -p "$STATUS_DIR" 2>/dev/null || return 0
-  print -r -- "{
-  \"label\": \"$(json_escape "$LABEL")\",
-  \"phase\": \"$phase\",
-  \"exit_code\": $rc,
-  \"command\": \"$(json_escape "$CMD_STR")\",
-  \"cwd\": \"$(json_escape "$PWD")\",
-  \"started\": \"$STARTED_AT\",
-  \"finished\": \"${FINISHED_AT:-}\",
-  \"slots\": $SLOTS,
-  \"weight\": $WEIGHT
-}" > "$STATUS_DIR/$LABEL.json" 2>/dev/null || true
-}
-
-# How many slots this command should occupy. Heavy = exclusive.
-# `cargo +nightly test` puts the toolchain first, so skip a leading `+`.
-job_weight() {
+# ── weight classification ────────────────────────────────────────────────────
+# Units are a relative cost scale, not measured GB; see the header for the table
+# and the tradeoff. `cargo +nightly test` puts the toolchain first, so a leading
+# `+` is skipped. Prints "<class> <weight>".
+classify() {
   local -a w=("$@")
   local i base sub
   for (( i = 1; i <= $#w; i++ )); do
@@ -222,19 +308,218 @@ job_weight() {
     case "$base" in
       cargo)
         case "$sub" in
-          nextest|test|bench|miri) print -- "$SLOTS"; return ;;
+          bench|miri)   print -- "$sub 12"; return ;;
+          test|nextest) print -- "$sub 9";  return ;;
+          build|check|clippy|doc|install|rustc)
+                        print -- "$sub 3";  return ;;
         esac
-        print -- 1; return ;;
+        print -- "cargo-light 1"; return ;;
       just)
         case "$sub" in
-          test*|bench*) print -- "$SLOTS"; return ;;
+          bench*) print -- "just-bench 12"; return ;;
+          test*)  print -- "just-test 9";   return ;;
+          lint*)  print -- "just-lint 3";   return ;;
         esac
-        print -- 1; return ;;
+        print -- "just-light 1"; return ;;
     esac
   done
-  print -- 1
+  print -- "other 1"
 }
 
+# ── duration history ─────────────────────────────────────────────────────────
+# Every completion appends one row, so the queue can answer "is this worth
+# waiting for" rather than just "please wait".
+history_append() {
+  print -r -- "$1\t$2\t$3\t$4" >>"$HISTORY" 2>/dev/null || true
+}
+
+# Median duration for a command key, falling back to its weight class. Absent
+# history returns FAILURE -- callers must render that as "unknown", never as 0,
+# or a first-ever job would advertise an ETA of zero seconds.
+history_median() {
+  local class="$1" cmdkey="${2:-}" vals
+  [[ -r "$HISTORY" ]] || return 1
+  vals=$(awk -F'\t' -v k="$cmdkey" '$2==k {print $3}' "$HISTORY" 2>/dev/null)
+  [[ -n "$vals" ]] || vals=$(awk -F'\t' -v c="$class" '$1==c {print $3}' "$HISTORY" 2>/dev/null)
+  [[ -n "$vals" ]] || return 1
+  print -r -- "$vals" | sort -n | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}'
+}
+
+# A stable identity for "the same command in the same place", used to look up
+# how long this kind of job usually takes.
+cmd_key() { print -r -- "$PWD $*" | shasum | cut -c1-12 }
+
+# Where cargo will take its exclusive artifact lock. Two jobs sharing this
+# cannot really compile at once whatever the queue says.
+target_dir_of() {
+  [[ -n "${CARGO_TARGET_DIR:-}" ]] && { print -r -- "$CARGO_TARGET_DIR"; return }
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || root="$PWD"
+  print -r -- "$root/target"
+}
+
+# ── abandon reaping ──────────────────────────────────────────────────────────
+# An agent's shell tool SIGKILLs its process group on timeout, so no trap fires
+# and the queued job outlives its submitter -- it eventually runs, for nobody,
+# holding capacity someone else could use. Every submission sweeps for those.
+#
+# A job with no record predates this version or came from elsewhere: leave it
+# alone. Reaping something we cannot identify is worse than leaving it.
+reap_abandoned() {
+  local id recfile pid
+  for id in ${(f)"$(ids_in_state queued)"}; do
+    recfile=$(rec_path "$id" 2>/dev/null) || continue
+    pid=$(rec_get "$recfile" pid) || continue
+    kill -0 "$pid" 2>/dev/null && continue
+    ts -r "$id" >/dev/null 2>&1 && rec_put "$recfile" reaped "$(date +%s)"
+  done
+}
+
+# ── deduplication of concurrent identical work ───────────────────────────────
+# When N agents verify the same branch, several submit a byte-identical command
+# against an unchanged tree. Only the first needs to run; the rest can watch.
+#
+# WHAT "IDENTICAL" HAS TO MEAN, given that returning a stale result the caller
+# cannot distinguish from a fresh one is the worst thing this tool could do:
+# same cwd, same argv, same HEAD, same dirty-file fingerprint, same build-shaping
+# environment. All of that goes INTO the key, so a tree that has moved simply
+# produces a different key and coalesces with nothing -- there is no separate
+# "is it still valid" check to get wrong.
+#
+# THE CONTRACT, precisely: a follower gets the result of a run of this exact
+# command against this exact tree state, started at the moment its own run would
+# have started. Coalescing only ever happens with a leader that is still
+# running -- the leader removes its claim the instant it finishes, so this is a
+# concurrency optimisation, never a result cache that can serve yesterday's
+# answer.
+#
+# NOT ELIGIBLE, deliberately: interactive (tty) callers, which keep the fully
+# transparent path; anything outside a git repo, since without a fingerprint
+# there is no way to know the tree is unchanged and guessing is not an option.
+readonly DEDUP="$STATE/dedup"
+
+dedup_eligible() {
+  [[ -z "${TESTQ_NO_DEDUP:-}" ]] || return 1
+  [[ ! -t 1 ]] || return 1
+  git rev-parse --show-toplevel >/dev/null 2>&1
+}
+
+# HEAD plus the identity of every dirty/untracked file. Size+mtime rather than
+# content: cheap, and it cannot miss an edit, which is the direction that
+# matters. An unreadable or enormous working tree returns failure -- and failure
+# means "run it for real", never "assume unchanged".
+tree_fingerprint() {
+  local head files n
+  head=$(git rev-parse HEAD 2>/dev/null) || return 1
+  files=$(git ls-files -m -o --exclude-standard 2>/dev/null) || return 1
+  n=$(print -r -- "$files" | grep -c . || true)
+  (( n > 1000 )) && return 1
+  # `if`, not `[[ ... ]] &&`: a false `&&` would make the brace group exit
+  # non-zero, and under pipe_fail that becomes the whole pipeline's status --
+  # so a perfectly CLEAN tree would report "no fingerprint" and silently
+  # disable dedup exactly when it is most likely to apply.
+  {
+    print -r -- "$head"
+    if [[ -n "$files" ]]; then
+      print -r -- "$files" | while IFS= read -r f; do
+        stat -f '%N %m %z' -- "$f" 2>/dev/null || print -r -- "$f UNREADABLE"
+      done
+    fi
+  } | shasum | cut -c1-16
+}
+
+# Variables that change what a build PRODUCES. Two runs that differ here are not
+# the same job however identical their argv.
+dedup_env() {
+  local v
+  for v in CARGO_TARGET_DIR CARGO_INCREMENTAL RUSTFLAGS RUSTDOCFLAGS \
+           RUSTC_WRAPPER RUSTUP_TOOLCHAIN RUST_LOG CARGO_BUILD_JOBS; do
+    print -r -- "$v=$(printenv "$v" 2>/dev/null || true)"
+  done
+}
+
+dedup_key() {
+  local fp
+  fp=$(tree_fingerprint) || return 1
+  {
+    print -r -- "$PWD"
+    print -r -- "${(j: :)${(q+)@}}"
+    print -r -- "$fp"
+    dedup_env
+  } | shasum | cut -c1-24
+}
+
+# Attach to a running leader: stream back exactly what it produced and report
+# its code in FOLLOW_RC. Returns 1 if there is nothing safe to attach to, in
+# which case the caller runs the job for real.
+#
+# The result comes back through a global rather than stdout on purpose: this
+# function's whole job is to WRITE the leader's output to the real stdout and
+# stderr, so it must not be called in a command substitution that would capture
+# exactly the bytes it exists to emit.
+FOLLOW_RC=0
+dedup_follow() {
+  local key="$1" leader lrec lpid code
+  leader=$(cat "$DEDUP/$key/leader" 2>/dev/null) || return 1
+  [[ -n "$leader" ]] || return 1
+  lrec="$JOBS/$leader"
+  [[ -r "$lrec" ]] || return 1
+  lpid=$(rec_get "$lrec" pid) || return 1
+
+  say "identical job already running (${leader}); attaching instead of queueing a duplicate"
+  while :; do
+    code=$(rec_get "$lrec" exit) && break
+    # A leader that died without recording an exit leaves nothing to attach to.
+    kill -0 "$lpid" 2>/dev/null || return 1
+    sleep 1
+  done
+
+  [[ -r "$JOBS/$leader.out" ]] && cat "$JOBS/$leader.out"
+  [[ -r "$JOBS/$leader.err" ]] && cat "$JOBS/$leader.err" >&2
+  rec_put "$RECORD" deduped_from "$leader"
+  rec_put "$RECORD" started  "$(date +%s)"
+  rec_put "$RECORD" finished "$(date +%s)"
+  rec_put "$RECORD" exit "$code"
+  FOLLOW_RC="$code"
+}
+
+# ── the waiting message ──────────────────────────────────────────────────────
+# "waiting for a free slot" does not say who holds it, and the decision the
+# caller is actually making is "is this worth waiting for". So name the blocker
+# and estimate, from its own history, how much longer it has.
+describe_blocker() {
+  local id recfile cmd cwd started class key med elapsed est desc now
+  id=$(ids_in_state running | head -1)
+  [[ -n "$id" ]] || return 1
+  now=$(date +%s)
+
+  recfile=$(rec_path "$id" 2>/dev/null) || { print -r -- "job $id"; return 0 }
+  cmd=$(rec_get "$recfile" cmd)     || cmd="?"
+  cwd=$(rec_get "$recfile" cwd)     || cwd=""
+  started=$(rec_get "$recfile" started) || started=""
+  class=$(rec_get "$recfile" class) || class=""
+  key=$(rec_get "$recfile" cmdkey)  || key=""
+
+  desc="job $id (${cwd:t}: ${cmd:0:60}"
+  if [[ -n "$started" ]]; then
+    elapsed=$(( now - started ))
+    desc="$desc, running ${elapsed}s"
+  fi
+  if med=$(history_median "$class" "$key"); then
+    desc="$desc; median ${med}s"
+    if [[ -n "$started" ]]; then
+      est=$(( med - elapsed ))
+      (( est < 0 )) && est=0
+    fi
+  fi
+  desc="$desc)"
+  [[ -n "${est:-}" ]] && desc="$desc — est. ${est}s"
+  print -r -- "$desc"
+}
+
+say() { [[ -n "$QUIET" ]] || print -u2 "$SELF: $*" }
+
+# ── management subcommands ───────────────────────────────────────────────────
 case "${1:-}" in
   -h|--help)
     sed -n '/^# USAGE/,/^# RE-ENTRANCY/p' "$0" | sed 's/^# \?//'
@@ -243,23 +528,15 @@ case "${1:-}" in
     ensure_server; exec ts -l ;;
   --watch)
     ensure_server
-    while :; do clear; print "queue: $TS_SOCKET  (slots: $SLOTS)"; print; ts -l; sleep 2; done ;;
-  --status)
-    if [[ -n "${2:-}" ]]; then
-      [[ -f "$STATUS_DIR/$2.json" ]] || die "no status recorded for label '$2' (looked in $STATUS_DIR)"
-      exec cat "$STATUS_DIR/$2.json"
-    fi
-    LATEST=$(ls -t "$STATUS_DIR"/*.json 2>/dev/null | head -1)
-    [[ -n "$LATEST" ]] || die "no job has recorded status yet (looked in $STATUS_DIR)"
-    print -u2 "$SELF: $LATEST"
-    exec cat "$LATEST" ;;
-  --slots)
+    while :; do clear; print "queue: $TS_SOCKET  (budget: $BUDGET units)"; print; ts -l; sleep 2; done ;;
+  --budget|--slots)
+    [[ "$1" == "--slots" ]] && print -u2 "$SELF: --slots is deprecated; it now sets the unit BUDGET (see --help)."
     ensure_server
     if [[ -n "${2:-}" ]]; then
-      ts -S "$2" || die "could not set slots to $2"
-      print "$SELF: slots -> $2 (this session only; export TESTQ_SLOTS=$2 to persist)"
+      ts -S "$2" || die "could not set the budget to $2"
+      print "$SELF: budget -> $2 units (this session only; export TESTQ_BUDGET=$2 to persist)"
     else
-      print "$SELF: slots = $SLOTS  (socket: $TS_SOCKET)"
+      print "$SELF: budget = $BUDGET units  (socket: $TS_SOCKET)"
     fi
     exit 0 ;;
   --clear)
@@ -267,80 +544,301 @@ case "${1:-}" in
   --kill)
     ts -K 2>/dev/null && print "$SELF: queue daemon stopped" || print "$SELF: no queue daemon running"
     exit 0 ;;
+  --explain)
+    shift
+    [[ $# -gt 0 ]] || die "--explain needs a command"
+    read -r cls wt <<<"$(classify "$@")"
+    (( wt > BUDGET )) && wt=$BUDGET
+    print "class=$cls weight=$wt budget=$BUDGET"
+    print "at most $(( BUDGET / wt )) job(s) of this weight run at once"
+    exit 0 ;;
+  --ahead)
+    ensure_server; queue_depth; exit 0 ;;
+  --ahead-of)
+    [[ -n "${2:-}" ]] || die "--ahead-of needs a job id"
+    ensure_server; queue_ahead_of "$2"; exit 0 ;;
+  --status)
+    state_init
+    recfile=$(rec_path "${2:---last}") || die "no job record for '${2:---last}'"
+    exec cat "$recfile" ;;
+  --exit-code)
+    state_init
+    recfile=$(rec_path "${2:---last}") || die "no job record for '${2:---last}'"
+    code=$(rec_get "$recfile" exit) \
+      || die "that job has not finished; no exit code recorded yet"
+    print -r -- "$code"
+    exit 0 ;;
 esac
 
+# ── job submission ───────────────────────────────────────────────────────────
 EVENTS=0
-if [[ "${1:-}" == "--events" ]]; then EVENTS=1; shift; fi
+PRIORITY=0
+while true; do
+  case "${1:-}" in
+    --events)   EVENTS=1; shift ;;
+    --priority) PRIORITY=1; shift ;;
+    *) break ;;
+  esac
+done
 [[ "${1:-}" == "--" ]] && shift
 [[ $# -gt 0 ]] || die "nothing to run. See '$SELF --help'."
 
+state_init
+prune_state
 ensure_server
+reap_abandoned
 
 LABEL="tq-$$-${RANDOM}"
-WEIGHT="${TESTQ_WEIGHT:-$(job_weight "$@")}"
-(( WEIGHT > SLOTS )) && WEIGHT=$SLOTS
+read -r CLASS WEIGHT <<<"$(classify "$@")"
+[[ -n "${TESTQ_WEIGHT:-}" ]] && WEIGHT="$TESTQ_WEIGHT"
+(( WEIGHT > BUDGET )) && WEIGHT=$BUDGET
 (( WEIGHT < 1 )) && WEIGHT=1
-CMD_STR="${(j: :)${(qq)@}}"  # requote each arg: a record you can paste back and re-run
-STARTED_AT="$(date +%Y-%m-%dT%H:%M:%S%z)"
-FINISHED_AT=""
+
+# An interactive submission is a human waiting at a terminal, and it is the
+# most penalised caller in the system today -- background agent suites starve
+# the one job someone is actually watching. Give it the priority lane.
+[[ -t 1 ]] && PRIORITY=1
+
+RECORD="$JOBS/$LABEL"
+CMDKEY="$(cmd_key "$@")"
+: >"$RECORD"
+rec_put "$RECORD" label      "$LABEL"
+rec_put "$RECORD" pid        "$$"
+rec_put "$RECORD" session    "$(session_id)"
+rec_put "$RECORD" cwd        "$PWD"
+rec_put "$RECORD" target_dir "$(target_dir_of)"
+rec_put "$RECORD" cmd        "${(j: :)${(q+)@}}"
+rec_put "$RECORD" cmdkey     "$CMDKEY"
+rec_put "$RECORD" class      "$CLASS"
+rec_put "$RECORD" weight     "$WEIGHT"
+rec_put "$RECORD" budget     "$BUDGET"
+rec_put "$RECORD" priority   "$PRIORITY"
+rec_put "$RECORD" submitted  "$(date +%s)"
+print -r -- "$LABEL" >"$LASTD/$(session_id)" 2>/dev/null || true
 
 # --- events mode: detached submission, one line per state transition ---------
 if (( EVENTS )); then
   id="$(TESTQ_ACTIVE=1 ts -L "$LABEL" -N "$WEIGHT" "$@")" \
     || die "could not enqueue job"
-  write_status queued
-  print "QUEUED id=$id ahead=$(jobs_ahead_of "$id") label=$LABEL slots=$SLOTS weight=$WEIGHT"
-  t0=$SECONDS
-  while [[ "$(ts -s "$id" 2>/dev/null)" == "queued" ]]; do sleep 1; done
-  write_status running
-  print "RUNNING id=$id waited=$((SECONDS - t0))s"
-  t1=$SECONDS
+  rec_put "$RECORD" id "$id"
+  print -r -- "$LABEL" >"$BY_ID/$id" 2>/dev/null || true
+  (( PRIORITY )) && ts -u "$id" >/dev/null 2>&1
+  print "QUEUED id=$id ahead=$(queue_ahead_of "$id") label=$LABEL budget=$BUDGET weight=$WEIGHT"
+  t0=$(date +%s)
+  while [[ "$(state_of_id "$id")" == "queued" ]]; do sleep 1; done
+  rec_put "$RECORD" started "$(date +%s)"
+  print "RUNNING id=$id waited=$(( $(date +%s) - t0 ))s"
+  t1=$(date +%s)
   ts -w "$id" >/dev/null 2>&1
   rc=$?
-  FINISHED_AT="$(date +%Y-%m-%dT%H:%M:%S%z)"
-  write_status finished "$rc"
-  print "DONE id=$id exit=$rc elapsed=$((SECONDS - t1))s out=$(ts -o "$id" 2>/dev/null) status=$STATUS_DIR/$LABEL.json"
+  el=$(( $(date +%s) - t1 ))
+  rec_put "$RECORD" finished "$(date +%s)"
+  rec_put "$RECORD" exit "$rc"
+  rec_put "$RECORD" out "$(ts -o "$id" 2>/dev/null || true)"
+  history_append "$CLASS" "$CMDKEY" "$el" "$rc"
+  print "DONE id=$id exit=$rc elapsed=${el}s out=$(ts -o "$id" 2>/dev/null)"
   exit $rc
 fi
 
-# --- normal mode: transparent, with a heartbeat while we wait ----------------
-ahead="$(queue_ahead)"
-if (( ahead > 0 )); then
-  print -u2 "$SELF: $ahead job(s) ahead of you; waiting for a free slot (slots: $SLOTS)..."
+# --- coalesce with an identical in-flight job, if there is one ---------------
+# The claim is a directory, because mkdir is atomic: exactly one of N racing
+# submitters can create it, and that one is the leader. No lock file, no window.
+CAPTURE=0
+DEDUP_KEY=""
+if dedup_eligible && DEDUP_KEY=$(dedup_key "$@"); then
+  mkdir -p "$DEDUP" 2>/dev/null || true
+  if mkdir "$DEDUP/$DEDUP_KEY" 2>/dev/null; then
+    print -r -- "$LABEL" >"$DEDUP/$DEDUP_KEY/leader" 2>/dev/null || true
+    CAPTURE=1
+  elif dedup_follow "$DEDUP_KEY"; then
+    exit "$FOLLOW_RC"
+  else
+    # A claim with nothing usable behind it -- the leader was SIGKILLed before
+    # recording anything. Take it over rather than wait on a ghost forever.
+    print -r -- "$LABEL" >"$DEDUP/$DEDUP_KEY/leader" 2>/dev/null || true
+    CAPTURE=1
+  fi
 fi
 
-# The heartbeat must start BEFORE the blocking `ts -nf`, so it necessarily
-# starts before the job is enqueued -- hence "empty state means keep waiting".
-# The parent kills it once `ts -nf` returns, so it cannot outlive the job.
-HB_PID=0
-if (( HEARTBEAT > 0 )) && (( ahead > 0 )); then
-  (
-    t0=$SECONDS
-    while :; do
-      sleep "$HEARTBEAT"
-      st="$(state_by_label "$LABEL")"
-      [[ "$st" == "running" || "$st" == "finished" ]] && exit 0
-      my_id="$(id_by_label "$LABEL")"
-      if [[ -n "$my_id" ]]; then ahead_now="$(jobs_ahead_of "$my_id")"; else ahead_now="?"; fi
-      print -u2 "$SELF: still queued — $((SECONDS - t0))s elapsed, $ahead_now ahead (slots: $SLOTS)"
-    done
-  ) &
-  HB_PID=$!
+# --- normal mode: transparent, with a supervisor while we wait ---------------
+#
+# `ts -nf` blocks and never reveals the job id, so a background supervisor
+# discovers it by label and owns everything needing that id: the record, the
+# priority bump, anti-affinity promotion and the heartbeat. The parent stays a
+# plain blocking call, which is what keeps the wrapper transparent.
+AHEAD_AT_SUBMIT=$(queue_depth)
+if (( AHEAD_AT_SUBMIT > 0 )); then
+  say "$AHEAD_AT_SUBMIT job(s) ahead; blocked by $(describe_blocker || print -r -- 'a running job') (budget: $BUDGET units, this job: $WEIGHT)"
 fi
 
-stop_heartbeat() { (( HB_PID > 0 )) && kill "$HB_PID" 2>/dev/null; return 0 }
-trap stop_heartbeat EXIT INT TERM
+supervise() {
+  local id="" waited=0 t0=$SECONDS promoted=0 tries=0 st last_ahead=999999
 
-write_status running
-print -u2 "$SELF: status file: $STATUS_DIR/$LABEL.json (real exit code, survives any pipe)"
+  # Discover our id. Polling fast matters: a priority bump only helps if it
+  # lands before the scheduler picks the next job.
+  while (( tries < 400 )); do
+    id=$(id_by_label "$LABEL")
+    [[ -n "$id" ]] && break
+    sleep 0.05
+    (( tries++ ))
+  done
+  [[ -n "$id" ]] || return 0
 
+  rec_put "$RECORD" id "$id"
+  print -r -- "$LABEL" >"$BY_ID/$id" 2>/dev/null || true
+  (( PRIORITY )) && ts -u "$id" >/dev/null 2>&1
+
+  while :; do
+    st=$(state_of_id "$id")
+    [[ "$st" == "running" || "$st" == "finished" || -z "$st" ]] && break
+
+    if (( ! promoted )) && { promote_if_unblocked "$id" || promote_if_starved "$id" }; then
+      promoted=1
+    fi
+
+    if (( HEARTBEAT > 0 )) && (( SECONDS - t0 >= HEARTBEAT )); then
+      t0=$SECONDS
+      local ahead
+      ahead=$(queue_ahead_of "$id")
+      # A position that grows reads as losing ground; it is also never true,
+      # since only lower ids count. Clamp anyway so a daemon restart or an
+      # id-reuse edge case can't make the number climb.
+      (( ahead > last_ahead )) && ahead=$last_ahead
+      last_ahead=$ahead
+      say "still queued — ${waited}s elapsed, $ahead ahead; blocked by $(describe_blocker || print -r -- 'a running job')"
+    fi
+    sleep 1
+    (( waited++ ))
+  done
+  rec_put "$RECORD" started "$(date +%s)"
+}
+
+# ANTI-AFFINITY. Cargo takes an exclusive lock on target/, so two jobs sharing
+# a target dir cannot really compile at once no matter what the queue allows --
+# the second one just sits on "Blocking waiting for file lock", burning
+# capacity for nothing.
+#
+# (This is the inverse of the "batch by worktree" idea it replaces. That one
+# assumed alternating worktrees loses a warm target dir, which is false here:
+# there is no global CARGO_TARGET_DIR, so every worktree keeps its own.)
+#
+# So: if every job ahead of us wants a target dir that is already locked by a
+# running job, and ours is free, we can start now and nobody starts later.
+# Promotion happens at most once per job, so it cannot starve the queue.
+promote_if_unblocked() {
+  local id="$1" mine running_dirs="" other op qp qdir
+  mine=$(rec_get "$RECORD" target_dir) || return 1
+
+  for other in ${(f)"$(ids_in_state running)"}; do
+    op=$(rec_path "$other" 2>/dev/null) || return 1   # unknown job: don't guess
+    running_dirs+="$(rec_get "$op" target_dir || true)"$'\n'
+  done
+  [[ -n "$running_dirs" ]] || return 1
+  contains_line "$running_dirs" "$mine" && return 1   # we'd contend too
+
+  for other in ${(f)"$(ids_in_state queued)"}; do
+    (( other >= id )) && continue
+    qp=$(rec_path "$other" 2>/dev/null) || return 1
+    qdir=$(rec_get "$qp" target_dir) || return 1
+    contains_line "$running_dirs" "$qdir" || return 1 # that one isn't blocked
+  done
+
+  ts -u "$id" >/dev/null 2>&1
+}
+
+# FAIR SHARE ACROSS SESSIONS. Pure FIFO lets one session's fan-out flood the
+# queue: ten agents from one session submit ten suites, and another session's
+# single job waits behind all ten. If our session has nothing running, and every
+# job ahead of us belongs to a session that is ALREADY being served, we can go
+# first without delaying anyone who isn't already getting their turn.
+#
+# Like the anti-affinity bump this fires at most once per job, so it reorders
+# the queue a little and cannot livelock it.
+promote_if_starved() {
+  local id="$1" mine other op osess running_sessions=""
+  mine=$(rec_get "$RECORD" session) || return 1
+
+  for other in ${(f)"$(ids_in_state running)"}; do
+    op=$(rec_path "$other" 2>/dev/null) || return 1   # unknown job: don't guess
+    running_sessions+="$(rec_get "$op" session || true)"$'\n'
+  done
+  [[ -n "$running_sessions" ]] || return 1
+  contains_line "$running_sessions" "$mine" && return 1
+
+  for other in ${(f)"$(ids_in_state queued)"}; do
+    (( other >= id )) && continue
+    op=$(rec_path "$other" 2>/dev/null) || return 1
+    osess=$(rec_get "$op" session) || return 1
+    contains_line "$running_sessions" "$osess" || return 1
+  done
+
+  ts -u "$id" >/dev/null 2>&1
+}
+
+supervise &
+SUP_PID=$!
+
+# A queued job that outlives its submitter runs for nobody. The trap covers a
+# clean kill; reap_abandoned covers SIGKILL, where no trap can fire.
+cleanup() {
+  (( SUP_PID > 0 )) && kill "$SUP_PID" 2>/dev/null
+  [[ -n "$DEDUP_KEY" ]] && rm -rf "$DEDUP/$DEDUP_KEY" 2>/dev/null
+  local id
+  id=$(rec_get "$RECORD" id 2>/dev/null) || return 0
+  [[ "$(state_of_id "$id")" == "queued" ]] && ts -r "$id" >/dev/null 2>&1
+  return 0
+}
+trap cleanup INT TERM
+
+T_START=$(date +%s)
 # -n : inherit this process's stdout/stderr instead of capturing to a file
-# -f : don't detach -- wait for the slot, then run right here
-# Together they make the wrapper transparent: live output, real exit code,
-# caller's cwd and environment.
-TESTQ_ACTIVE=1 ts -nf -L "$LABEL" -N "$WEIGHT" "$@"
-rc=$?
-stop_heartbeat
-FINISHED_AT="$(date +%Y-%m-%dT%H:%M:%S%z)"
-write_status finished "$rc"
+# -f : don't detach -- wait for capacity, then run right here
+# Together they make the wrapper transparent: live output on the right streams,
+# the real exit code, the caller's cwd, stdin and environment.
+if (( CAPTURE )); then
+  # A leader has to keep a copy for its followers. Both tees are members of a
+  # real pipeline, so the shell waits for them -- the files are complete by the
+  # time this returns, which a background `tee &` could not guarantee. The exit
+  # code travels out of band through a file, since the pipeline's own status
+  # belongs to tee. Streams stay separate; only their tty-ness is lost, and
+  # capture is off for tty callers precisely so that never matters.
+  rm -f "$JOBS/$LABEL.out" "$JOBS/$LABEL.err" "$JOBS/$LABEL.rc" 2>/dev/null
+  {
+    { TESTQ_ACTIVE=1 ts -nf -L "$LABEL" -N "$WEIGHT" "$@"
+      print -r -- $? >"$JOBS/$LABEL.rc"
+    } 2>&1 1>&3 | tee "$JOBS/$LABEL.err" >&2
+  } 3>&1 | tee "$JOBS/$LABEL.out"
+  rc=$(cat "$JOBS/$LABEL.rc" 2>/dev/null) || rc=1
+  rec_put "$RECORD" out "$JOBS/$LABEL.out"
+  rec_put "$RECORD" err "$JOBS/$LABEL.err"
+else
+  TESTQ_ACTIVE=1 ts -nf -L "$LABEL" -N "$WEIGHT" "$@"
+  rc=$?
+fi
+(( SUP_PID > 0 )) && kill "$SUP_PID" 2>/dev/null
+trap - INT TERM
+
+# Release the claim before recording the exit code, so that "a follower only
+# ever attaches to a leader that is still running" stays literally true.
+[[ -n "$DEDUP_KEY" ]] && rm -rf "$DEDUP/$DEDUP_KEY" 2>/dev/null
+
+T_END=$(date +%s)
+
+# Backfill what the supervisor may not have had time to write. A job that
+# starts immediately can finish before the supervisor has even found its id, so
+# without this a short job would have no `id=` and no by-id index -- and then
+# `testq --status <id>` would report "no job record" for a job that plainly ran.
+if ! ID=$(rec_get "$RECORD" id); then
+  ID=$(id_by_label "$LABEL")
+  [[ -n "$ID" ]] && {
+    rec_put "$RECORD" id "$ID"
+    print -r -- "$LABEL" >"$BY_ID/$ID" 2>/dev/null || true
+  }
+fi
+
+rec_put "$RECORD" finished "$T_END"
+rec_put "$RECORD" exit "$rc"
+STARTED=$(rec_get "$RECORD" started) || { STARTED=$T_START; rec_put "$RECORD" started "$T_START" }
+history_append "$CLASS" "$CMDKEY" "$(( T_END - STARTED ))" "$rc"
+
 exit $rc
