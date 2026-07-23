@@ -77,3 +77,7 @@ nvm() {
 
 # Plain prompt (you live in zsh; this is just for bash fallback sessions)
 PS1='\u@\h:\w\$ '
+
+
+# Added by Antigravity CLI installer
+export PATH="/Users/vmasrani/.local/bin:$PATH"

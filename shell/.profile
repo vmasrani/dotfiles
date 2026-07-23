@@ -27,3 +27,7 @@ echo "hello from profile"
 
 . "$HOME/.local/bin/env"
 echo "Sourcing $0"
+
+
+# Added by Antigravity CLI installer
+export PATH="/Users/vmasrani/.local/bin:$PATH"

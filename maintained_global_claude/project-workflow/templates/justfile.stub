@@ -1,0 +1,27 @@
+# Replace every `exit 1` command with this project's real command before relying
+# on CI. A missing check must fail loudly rather than appear green.
+
+fmt-check:
+    @echo "Configure fmt-check for this project" >&2; exit 1
+
+lint:
+    @echo "Configure lint for this project" >&2; exit 1
+
+typecheck:
+    @echo "Configure typecheck, or print 'not applicable' if it genuinely does not apply" >&2; exit 1
+
+test-unit:
+    @echo "Configure test-unit for this project" >&2; exit 1
+
+test-integration:
+    @echo "not applicable"
+
+test-e2e:
+    @echo "not applicable"
+
+build:
+    @echo "Configure build for this project" >&2; exit 1
+
+ci-fast: fmt-check lint typecheck test-unit build
+
+ci-deep: ci-fast test-integration test-e2e

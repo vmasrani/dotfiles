@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+readonly WORKFLOW="$SCRIPT_DIR/project-workflow"
+readonly STUB_JUSTFILE="$SCRIPT_DIR/../templates/justfile.stub"
+
+fail() {
+    gum style --foreground 196 --border double --padding '0 1' "$*" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
+}
+
+repo_root() {
+    git -C "$1" rev-parse --show-toplevel 2>/dev/null || fail "Not a Git repository: $1"
+}
+
+choose_languages() {
+    local selected
+    selected="$(gum choose --no-limit --selected rust rust python javascript)"
+    [[ -n "$selected" ]] || fail "Choose at least one language"
+    printf '%s' "$selected" | paste -sd ',' -
+}
+
+ensure_clean() {
+    local root="$1"
+    git -C "$root" diff --quiet || fail "Working tree has unstaged changes; commit or stash them first"
+    git -C "$root" diff --cached --quiet || fail "Working tree has staged changes; commit or stash them first"
+}
+
+ensure_dev() {
+    local root="$1"
+    local base
+    git -C "$root" fetch origin --prune
+    if git -C "$root" show-ref --verify --quiet refs/remotes/origin/dev; then
+        return
+    fi
+    base="$(gh repo view -R "$root" --json defaultBranchRef --jq .defaultBranchRef.name)"
+    [[ -n "$base" && "$base" != null ]] || fail "Could not determine the default branch"
+    git -C "$root" branch dev "origin/$base"
+    git -C "$root" push -u origin dev
+    gum style --foreground 46 "Created integration branch dev from origin/$base"
+}
+
+ensure_justfile() {
+    local root="$1"
+    if [[ -f "$root/justfile" || -f "$root/Justfile" ]]; then
+        return
+    fi
+    cp "$STUB_JUSTFILE" "$root/justfile"
+    gum style --foreground 214 "Created a failing starter justfile. Replace its commands before the first PR."
+}
+
+run_init() {
+    local root="$1"
+    local languages="$2"
+    local codex="$3"
+    local args=(init --dir "$root" --languages "$languages" --workflow-ref v1)
+    [[ "$codex" == true ]] && args+=(--with-codex)
+    "$WORKFLOW" "${args[@]}"
+    ensure_justfile "$root"
+}
+
+stage_workflow() {
+    local root="$1"
+    local codex="$2"
+    git -C "$root" add CLAUDE.md .agent-workflow .github
+    if [[ -f "$root/justfile" ]]; then
+        git -C "$root" add justfile
+    else
+        git -C "$root" add Justfile
+    fi
+    [[ "$codex" == true ]] && git -C "$root" add AGENTS.md
+}
+
+new_project() {
+    require_command gh
+    gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run gh auth login -h github.com"
+    local name directory languages codex root
+    name="$(gum input --prompt 'Repository name: ' --placeholder 'my-project')"
+    [[ "$name" =~ ^[[:alnum:]_.-]+$ ]] || fail "Repository name may contain letters, numbers, dots, underscores, and hyphens"
+    directory="$(gum input --prompt 'Local directory: ' --value "$PWD/$name")"
+    [[ ! -e "$directory" ]] || fail "Local directory already exists: $directory"
+    languages="$(choose_languages)"
+    if gum confirm 'Create Codex AGENTS.md now?'; then codex=true; else codex=false; fi
+    gh repo create "sophiaconsulting/$name" --private
+    gh repo clone "sophiaconsulting/$name" "$directory"
+    root="$(repo_root "$directory")"
+    run_init "$root" "$languages" "$codex"
+    stage_workflow "$root" "$codex"
+    git -C "$root" commit -m 'add agent workflow'
+    git -C "$root" branch -M main
+    git -C "$root" push -u origin main
+    git -C "$root" branch dev main
+    git -C "$root" push -u origin dev
+    "$WORKFLOW" gh-setup --dir "$root" --apply
+    gum style --border rounded --border-foreground 46 --padding '1 2' "Ready: $root\nmain and dev are protected; replace starter justfile commands before feature work."
+}
+
+existing_project() {
+    require_command gh
+    local directory root languages codex branch pr_url
+    directory="$(gum input --prompt 'Existing repository directory: ' --value "$PWD")"
+    root="$(repo_root "$directory")"
+    ensure_clean "$root"
+    gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run gh auth login -h github.com"
+    gh repo view -R "$root" --json nameWithOwner >/dev/null || fail "origin must be a GitHub repository accessible through gh"
+    languages="$(choose_languages)"
+    if gum confirm 'Create Codex AGENTS.md now?'; then codex=true; else codex=false; fi
+    ensure_dev "$root"
+    branch='chore/add-agent-workflow'
+    if git -C "$root" show-ref --verify --quiet "refs/heads/$branch" || git -C "$root" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+        fail "Branch already exists: $branch; finish or remove it before running this migration"
+    fi
+    git -C "$root" switch -c "$branch" origin/dev
+    run_init "$root" "$languages" "$codex"
+    stage_workflow "$root" "$codex"
+    git -C "$root" commit -m 'add agent workflow'
+    git -C "$root" push -u origin "$branch"
+    pr_url="$(gh pr create -R "$root" --base dev --head "$branch" --title 'add agent workflow' --body 'Adds the shared Claude-first agent workflow and CI contract.')"
+    gum style --border rounded --border-foreground 214 --padding '1 2' "Migration PR: $pr_url\nMerge it, then run: $WORKFLOW gh-setup --dir $root --apply"
+}
+
+main() {
+    require_command gum
+    require_command git
+    require_command just
+    gum style --border double --padding '1 2' --foreground 212 'Agent project setup'
+    case "$(gum choose 'New private GitHub project' 'Migrate an existing GitHub project')" in
+        'New private GitHub project') new_project ;;
+        'Migrate an existing GitHub project') existing_project ;;
+    esac
+}
+
+main "$@"

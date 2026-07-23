@@ -60,6 +60,8 @@ install_dotfiles() {
 	mkdir -p "$HOME/.local/bin"
 	mkdir -p "$HOME/.claude"
 	mkdir -p "$HOME/.codex"
+	mkdir -p "$HOME/.gemini"
+	mkdir -p "$HOME/.gemini/antigravity-cli"
 	if [[ "$OS_TYPE" == "mac" ]]; then
 		mkdir -p "$HOME/Library/Application Support/iTerm2/DynamicProfiles"
 	fi
@@ -88,6 +90,13 @@ install_dotfiles() {
 		"$home/.claude/settings.json"
 		"$home/.claude/statusline.sh"
 		"$home/.codex/config.toml"
+		"$home/.gemini/antigravity-cli/agents"
+		"$home/.gemini/antigravity-cli/hooks"
+		"$home/.gemini/antigravity-cli/skills"
+		"$home/.gemini/antigravity-cli/settings.json"
+		"$home/.gemini/antigravity-cli/hooks.json"
+		"$home/.gemini/antigravity-cli/statusline.sh"
+		"$home/.gemini/AGENTS.md"
 	)
 
 	if [ ! -d "$tpm_dir" ]; then
@@ -223,6 +232,15 @@ install_dotfiles() {
 		"$dotfiles/maintained_global_claude/statusline.sh:$home/.claude/statusline.sh"
 		"$dotfiles/maintained_global_claude/CLAUDE.md:$home/.claude/CLAUDE.md"
 
+		# agy directories and files (symlink contents to ~/.gemini/antigravity-cli)
+		"$dotfiles/maintained_global_agy/agents:$home/.gemini/antigravity-cli/agents"
+		"$dotfiles/maintained_global_agy/hooks:$home/.gemini/antigravity-cli/hooks"
+		"$dotfiles/maintained_global_agy/skills:$home/.gemini/antigravity-cli/skills"
+		"$dotfiles/maintained_global_agy/settings.json:$home/.gemini/antigravity-cli/settings.json"
+		"$dotfiles/maintained_global_agy/hooks.json:$home/.gemini/antigravity-cli/hooks.json"
+		"$dotfiles/maintained_global_agy/statusline.sh:$home/.gemini/antigravity-cli/statusline.sh"
+		"$dotfiles/maintained_global_agy/AGENTS.md:$home/.gemini/AGENTS.md"
+
 		# codex config
 		"$dotfiles/codex/config.toml:$home/.codex/config.toml"
 
@@ -270,13 +288,14 @@ install_dotfiles() {
 		fi
 	done
 
-	# Symlink local (machine-specific, git-ignored) skills into maintained_global_claude/skills/
+	# Symlink local (machine-specific, git-ignored) skills into maintained_global_claude/skills/ and maintained_global_agy/skills/
 	local local_skills_dir="$dotfiles/local/local_skills"
 	if [ -d "$local_skills_dir" ]; then
 		for skill_dir in "$local_skills_dir"/*/; do
 			[ -d "$skill_dir" ] || continue
 			skill_name="$(basename "$skill_dir")"
 			ensure_symlink "$skill_dir" "$dotfiles/maintained_global_claude/skills/$skill_name" "false"
+			ensure_symlink "$skill_dir" "$dotfiles/maintained_global_agy/skills/$skill_name" "false"
 		done
 	fi
 

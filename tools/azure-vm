@@ -1,0 +1,363 @@
+#!/usr/bin/env bash
+# Azure VM Archive/Restore Tool
+# Implementation of @parot-stats/azureplan.md utilizing az CLI and gum UI
+
+set -eo pipefail
+
+source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
+
+# Error handler for loud failures
+error_handler() {
+    local exit_code=$?
+    local line_num=$1
+    local command="${BASH_COMMAND}"
+    echo "" >&2
+    gum_error "FATAL ERROR (exit code: $exit_code) on line $line_num: '$command' failed."
+    exit $exit_code
+}
+trap 'error_handler $LINENO' ERR
+
+# Config variables
+RG="${AZURE_VM_RG:-mygroup}"
+# Use ~/.azure-vm/manifests for manifest storage
+MANIFEST_DIR="${HOME}/.azure-vm/manifests"
+mkdir -p "$MANIFEST_DIR"
+
+command="$1"
+vm_name="$2"
+
+if [[ -z "$command" || -z "$vm_name" ]]; then
+    echo "Usage: azure-vm <archive|restore|status|verify> <vm-name>"
+    exit 1
+fi
+
+manifest_file="${MANIFEST_DIR}/${vm_name}.json"
+
+ensure_az_login() {
+    if ! az account show &>/dev/null; then
+        gum_error "You are not logged into Azure. Run 'az login' first."
+        exit 1
+    fi
+}
+
+remove_stale_ssh_host_key() {
+    local public_ips
+    public_ips=$(az vm show -d -g "$RG" -n "$vm_name" --query 'publicIps' -o tsv 2>/dev/null || true)
+
+    if [[ -z "$public_ips" ]]; then
+        gum_dim "No public IP found; SSH host key was not changed."
+        return
+    fi
+
+    local public_ip
+    local old_ifs="$IFS"
+    IFS=','
+    for public_ip in $public_ips; do
+        public_ip="${public_ip//[[:space:]]/}"
+        [[ -z "$public_ip" ]] && continue
+        ssh-keygen -R "$public_ip" >/dev/null 2>&1 || true
+        gum_success "Removed any stale SSH host key for $public_ip."
+    done
+    IFS="$old_ifs"
+}
+
+status_vm() {
+    gum_info "Checking status for VM: $vm_name"
+    local vm_exists
+    vm_exists=$(az vm show -n "$vm_name" -g "$RG" --query "name" -o tsv 2>/dev/null || echo "")
+
+    if [[ -n "$vm_exists" ]]; then
+        gum_success "Running"
+        echo -e "Monthly estimate: \$340\nPotential archived cost: \$18\nPotential savings: \$322/month"
+    elif [[ -f "$manifest_file" ]]; then
+        gum_box "Archived"
+        echo -e "Storage: Archived Snapshots\nEstimated monthly cost: \$17\nRestore estimate: Fast"
+    else
+        gum_error "VM not found and no archive manifest found."
+    fi
+}
+
+verify_vm() {
+    gum_info "Verifying archive for VM: $vm_name"
+    if [[ ! -f "$manifest_file" ]]; then
+        gum_error "Manifest missing: $manifest_file"
+        exit 1
+    fi
+    gum_success "Manifest exists."
+    
+    # Read OS snapshot name from manifest
+    local os_snapshot
+    os_snapshot=$(jq -r '.archive.osDiskSnapshot // empty' "$manifest_file" 2>/dev/null || echo "")
+    if [[ -n "$os_snapshot" ]]; then
+        if az snapshot show -n "$os_snapshot" -g "$RG" &>/dev/null; then
+            gum_success "OS Snapshot $os_snapshot verified."
+        else
+            gum_error "OS Snapshot $os_snapshot missing!"
+            exit 1
+        fi
+    fi
+
+    # Read Data snapshot names from manifest
+    local data_snapshots
+    data_snapshots=($(jq -r '.archive.dataDiskSnapshots[] // empty' "$manifest_file" 2>/dev/null || echo ""))
+    for snap in "${data_snapshots[@]}"; do
+        if az snapshot show -n "$snap" -g "$RG" &>/dev/null; then
+            gum_success "Data Snapshot $snap verified."
+        else
+            gum_error "Data Snapshot $snap missing!"
+            exit 1
+        fi
+    done
+    
+    gum_success "Archive verification PASSED."
+}
+
+prune_previous_snapshots() {
+    local current_os_snapshot="$1"
+    shift
+    local current_data_snapshots=("$@")
+    local snapshot_name
+    local current_snapshot
+    local is_current
+
+    # Only consider snapshots made by this tool for this VM. Pruning happens
+    # after the new archive has verified, so a failed archive cannot remove a
+    # prior restore point.
+    while IFS= read -r snapshot_name; do
+        [[ -z "$snapshot_name" ]] && continue
+
+        is_current=false
+        for current_snapshot in "$current_os_snapshot" "${current_data_snapshots[@]}"; do
+            if [[ "$snapshot_name" == "$current_snapshot" ]]; then
+                is_current=true
+                break
+            fi
+        done
+
+        if [[ "$is_current" == false ]]; then
+            gum_spin_wait "Deleting previous snapshot $snapshot_name..." \
+                az snapshot delete -g "$RG" -n "$snapshot_name"
+            gum_success "Previous snapshot $snapshot_name deleted."
+        fi
+    done < <(
+        az snapshot list -g "$RG" -o json | jq -r --arg vm_name "$vm_name" '
+            .[]
+            | select(
+                (.name | startswith($vm_name + "-osdisk-snap-"))
+                or (.name | startswith($vm_name + "-datadisk-"))
+            )
+            | .name
+        '
+    )
+}
+
+archive_vm() {
+    local vm_exists
+    vm_exists=$(az vm show -n "$vm_name" -g "$RG" --query "name" -o tsv 2>/dev/null || echo "")
+    
+    if [[ -z "$vm_exists" ]]; then
+        gum_error "VM $vm_name not found in resource group $RG."
+        exit 1
+    fi
+
+    if ! gum_confirm "Are you sure you want to archive $vm_name? This will STOP, DEALLOCATE, and DELETE the VM."; then
+        gum_dim "Archive cancelled."
+        exit 0
+    fi
+
+    gum_info "Archiving VM: $vm_name"
+    
+    # 1. Stop / Deallocate VM first to ensure volume consistency
+    gum_spin_wait "Stopping and Deallocating VM (shutting down first)..." az vm deallocate -n "$vm_name" -g "$RG" --no-wait
+    while true; do
+        local power_state
+        power_state=$(az vm get-instance-view -n "$vm_name" -g "$RG" --query "instanceView.statuses[?starts_with(code, 'PowerState')].code" -o tsv)
+        if [[ "$power_state" == "PowerState/deallocated" ]]; then
+            break
+        fi
+        sleep 5
+    done
+    gum_success "VM successfully Stopped and Deallocated."
+
+    # 2. Discover configuration and auto-discover volumes
+    gum_spin_quick "Discovering VM configuration..." az vm show -n "$vm_name" -g "$RG" -o json > "$manifest_file"
+    
+    local os_disk_id
+    os_disk_id=$(jq -r '.storageProfile.osDisk.managedDisk.id' "$manifest_file")
+    
+    local data_disk_ids
+    data_disk_ids=($(jq -r '.storageProfile.dataDisks[].managedDisk.id // empty' "$manifest_file"))
+    
+    gum_success "Saved VM configuration. Auto-discovered $((${#data_disk_ids[@]} + 1)) volumes (1 OS disk, ${#data_disk_ids[@]} Data disks)."
+
+    local snap_suffix="-snap-$(date +%Y%m%d%H%M%S)"
+
+    # 3. Snapshot OS Disk
+    local os_snap_name="${vm_name}-osdisk${snap_suffix}"
+    gum_spin_wait "Snapshotting OS disk (incremental)..." az snapshot create -g "$RG" -n "$os_snap_name" --source "$os_disk_id" --incremental -o none
+    
+    # Update manifest with OS snapshot name
+    local tmp_manifest="${manifest_file}.tmp"
+    jq --arg snap "$os_snap_name" '.archive.osDiskSnapshot = $snap' "$manifest_file" > "$tmp_manifest"
+    mv "$tmp_manifest" "$manifest_file"
+    gum_success "OS Disk snapshotted: $os_snap_name."
+
+    # 4. Snapshot Data Disks
+    local i=0
+    local data_snaps=()
+    for disk_id in "${data_disk_ids[@]}"; do
+        local disk_name
+        disk_name=$(echo "$disk_id" | awk -F'/' '{print $NF}')
+        local data_snap_name="${vm_name}-datadisk-${i}${snap_suffix}"
+        
+        gum_spin_wait "Snapshotting Data Disk ($disk_name, incremental)..." az snapshot create -g "$RG" -n "$data_snap_name" --source "$disk_id" --incremental -o none
+        data_snaps+=("$data_snap_name")
+        i=$((i+1))
+    done
+
+    # Update manifest with Data snapshot names
+    if [[ ${#data_snaps[@]} -gt 0 ]]; then
+        jq --argjson snaps "$(printf '%s\n' "${data_snaps[@]}" | jq -R . | jq -s .)" '.archive.dataDiskSnapshots = $snaps' "$manifest_file" > "$tmp_manifest"
+        mv "$tmp_manifest" "$manifest_file"
+        gum_success "${#data_snaps[@]} Data Disks snapshotted."
+    fi
+
+    # 5. Verify Archive
+    verify_vm
+
+    # Keep only this verified archive's snapshots for the VM.
+    prune_previous_snapshots "$os_snap_name" "${data_snaps[@]}"
+
+    # 6. Delete VM and Managed Disks
+    if gum_confirm "Archive verified. Delete VM $vm_name and its associated managed disks?"; then
+        # Delete VM
+        gum_spin_wait "Deleting VM..." az vm delete -n "$vm_name" -g "$RG" --yes
+        gum_success "VM deleted successfully."
+        
+        # Delete OS Disk
+        local os_disk_name
+        os_disk_name=$(echo "$os_disk_id" | awk -F'/' '{print $NF}')
+        gum_spin_wait "Deleting OS Disk $os_disk_name..." az disk delete -n "$os_disk_name" -g "$RG" --yes
+        gum_success "OS Disk deleted."
+
+        # Delete Data Disks
+        for disk_id in "${data_disk_ids[@]}"; do
+            local data_disk_name
+            data_disk_name=$(echo "$disk_id" | awk -F'/' '{print $NF}')
+            gum_spin_wait "Deleting Data Disk $data_disk_name..." az disk delete -n "$data_disk_name" -g "$RG" --yes
+            gum_success "Data Disk $data_disk_name deleted."
+        done
+    else
+        gum_dim "VM and disk deletion skipped."
+    fi
+
+    gum_box_success "Archive complete for $vm_name."
+}
+
+restore_vm() {
+    local vm_exists
+    vm_exists=$(az vm show -n "$vm_name" -g "$RG" --query "name" -o tsv 2>/dev/null || echo "")
+    if [[ -n "$vm_exists" ]]; then
+        gum_error "VM $vm_name is already running or exists."
+        exit 1
+    fi
+
+    if [[ ! -f "$manifest_file" ]]; then
+        gum_error "Cannot restore. No manifest found for $vm_name."
+        exit 1
+    fi
+
+    gum_info "Restoring VM: $vm_name"
+    
+    # 1. Restore OS Disk
+    local os_snapshot
+    os_snapshot=$(jq -r '.archive.osDiskSnapshot // empty' "$manifest_file")
+    if [[ -z "$os_snapshot" ]]; then
+        gum_error "No OS snapshot found in manifest to restore from."
+        exit 1
+    fi
+
+    local os_snapshot_id
+    os_snapshot_id=$(az snapshot show -n "$os_snapshot" -g "$RG" --query "id" -o tsv)
+
+    local os_sector_size
+    os_sector_size=$(az snapshot show -n "$os_snapshot" -g "$RG" --query "creationData.logicalSectorSize" -o tsv 2>/dev/null || echo "")
+    local os_sku_args=()
+    if [[ "$os_sector_size" == "4096" ]]; then
+        os_sku_args=(--sku PremiumV2_LRS)
+    fi
+
+    local os_disk_name="${vm_name}-osdisk-restored-$(date +%Y%m%d%H%M%S)"
+    gum_spin_wait "Creating managed OS disk from snapshot..." az disk create -g "$RG" -n "$os_disk_name" --source "$os_snapshot_id" "${os_sku_args[@]}" -o none
+    local os_disk_id
+    os_disk_id=$(az disk show -n "$os_disk_name" -g "$RG" --query "id" -o tsv)
+    gum_success "OS Disk created: $os_disk_name."
+
+    # 2. Restore Data Disks
+    local data_snapshots
+    data_snapshots=($(jq -r '.archive.dataDiskSnapshots[] // empty' "$manifest_file" 2>/dev/null || echo ""))
+    local restored_data_disk_ids=()
+    
+    local idx=0
+    for snap in "${data_snapshots[@]}"; do
+        local snap_id
+        snap_id=$(az snapshot show -n "$snap" -g "$RG" --query "id" -o tsv)
+        local sector_size
+        sector_size=$(az snapshot show -n "$snap" -g "$RG" --query "creationData.logicalSectorSize" -o tsv 2>/dev/null || echo "")
+        local sku_args=()
+        if [[ "$sector_size" == "4096" ]]; then
+            sku_args=(--sku PremiumV2_LRS)
+        fi
+
+        local restored_data_disk_name="${vm_name}-datadisk-${idx}-restored-$(date +%Y%m%d%H%M%S)"
+        
+        gum_spin_wait "Creating managed data disk from snapshot $snap..." az disk create -g "$RG" -n "$restored_data_disk_name" --source "$snap_id" "${sku_args[@]}" -o none
+        local restored_data_disk_id
+        restored_data_disk_id=$(az disk show -n "$restored_data_disk_name" -g "$RG" --query "id" -o tsv)
+        
+        restored_data_disk_ids+=("$restored_data_disk_id")
+        idx=$((idx+1))
+    done
+
+    # 3. Recreate VM with OS Disk
+    local vm_size
+    vm_size=$(jq -r '.hardwareProfile.vmSize' "$manifest_file")
+    
+    local vm_priority
+    vm_priority=$(jq -r '.priority // empty' "$manifest_file")
+    local extra_vm_args=()
+    if [[ "$vm_priority" == "Spot" ]]; then
+        local eviction_policy
+        eviction_policy=$(jq -r '.evictionPolicy // "Deallocate"' "$manifest_file")
+        extra_vm_args=(--priority Spot --eviction-policy "$eviction_policy" --max-price -1)
+    fi
+
+    gum_spin_wait "Creating VM with attached OS disk..." az vm create -g "$RG" -n "$vm_name" --attach-os-disk "$os_disk_id" --os-type Linux --size "$vm_size" "${extra_vm_args[@]}" -o none
+    gum_success "VM created."
+    remove_stale_ssh_host_key
+
+    # 4. Attach Data Disks
+    idx=0
+    for data_disk_id in "${restored_data_disk_ids[@]}"; do
+        local lun
+        lun=$(jq -r ".storageProfile.dataDisks[$idx].lun" "$manifest_file")
+        gum_spin_wait "Attaching restored data disk with LUN $lun..." az vm disk attach -g "$RG" --vm-name "$vm_name" --disk "$data_disk_id" --lun "$lun"
+        idx=$((idx+1))
+    done
+
+    gum_box_success "Restore complete for $vm_name."
+}
+
+ensure_az_login
+
+case "$command" in
+    archive) archive_vm ;;
+    restore) restore_vm ;;
+    status) status_vm ;;
+    verify) verify_vm ;;
+    *)
+        echo "Unknown command: $command"
+        echo "Usage: azure-vm <archive|restore|status|verify> <vm-name>"
+        exit 1
+        ;;
+esac

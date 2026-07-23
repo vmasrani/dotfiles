@@ -1,0 +1,9 @@
+# Managed by project-workflow. Keep this file project-specific.
+languages:
+  - rust
+working_directory: .
+fast_recipe: ci-fast
+deep_recipe: ci-deep
+deep_checks:
+  integration: false
+  e2e: false

@@ -83,3 +83,7 @@ path=($HOME/.cargo/bin $path)
 
 
 # source ~/dotfiles/shell/lscolors.sh
+
+
+# Added by Antigravity CLI installer
+export PATH="/Users/vmasrani/.local/bin:$PATH"

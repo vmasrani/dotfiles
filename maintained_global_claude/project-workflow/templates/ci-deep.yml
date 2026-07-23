@@ -1,0 +1,20 @@
+name: Deep CI
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deep:
+    uses: __WORKFLOW_REPOSITORY__/.github/workflows/agent-deep.yml@__WORKFLOW_REF__
+    secrets: inherit
+    with:
+      languages: __LANGUAGES__
+      working-directory: __WORKING_DIRECTORY__
+      just-recipe: __DEEP_RECIPE__

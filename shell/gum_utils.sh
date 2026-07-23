@@ -141,7 +141,7 @@ gum_spin_quick() {
     shift
 
     if _gum_check; then
-        gum spin --spinner dot --title "$title" -- "$@"
+        gum spin --show-error --spinner dot --title "$title" -- "$@"
     else
         echo "[$title]" >&2
         "$@"
@@ -153,7 +153,7 @@ gum_spin_wait() {
     shift
 
     if _gum_check; then
-        gum spin --spinner meter --title "$title" -- "$@"
+        gum spin --show-error --spinner meter --title "$title" -- "$@"
     else
         echo "[$title]" >&2
         "$@"
