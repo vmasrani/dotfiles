@@ -1,27 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+resolve_script_dir() {
+    local source="${BASH_SOURCE[0]}"
+    local dir
+    while [[ -L "$source" ]]; do
+        dir="$(cd -- "$(dirname -- "$source")" && pwd)"
+        source="$(readlink -- "$source")"
+        [[ "$source" == /* ]] || source="$dir/$source"
+    done
+    cd -- "$(dirname -- "$source")" && pwd
+}
+
+SCRIPT_DIR="$(resolve_script_dir)"
 readonly SCRIPT_DIR
 KIT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 readonly KIT_DIR
 readonly TEMPLATE_DIR="$KIT_DIR/templates"
-PUBLISH_TEMPORARY=""
+
+# The CI contract is exactly what CI executes -- nothing else. Sub-recipe names
+# (fmt-check, lint, test, ...) are project convention, not contract.
+readonly CONTRACT_RECIPES=(ci-fast ci-deep)
 
 usage() {
     cat <<'EOF'
 Usage:
-  project-workflow init --dir PATH [--languages rust,python,javascript] [--workflow-repository OWNER/REPO] [--workflow-ref TAG] [--with-codex]
-  project-workflow check --dir PATH [--require-codex]
+  project-workflow init --dir PATH
+  project-workflow check --dir PATH
   project-workflow gh-setup --dir PATH [--repo OWNER/REPO] [--apply]
-  project-workflow publish [--repo sophiaconsulting/agent-workflow] [--tag v1]
 
 `init` creates only missing files. It never replaces an existing project file.
-`check` validates the repository-local contract without running tests.
+`check` validates the repository-local contract without running tests: the
+workflow files exist and the justfile provides `ci-fast` and `ci-deep`.
 `gh-setup` prints the exact gh commands by default; --apply creates labels and
 applies the branch-protection settings after you have reviewed them.
-`publish` creates the shared GitHub repository as private, pushes this kit's
-distribution files, and creates the immutable workflow tag.
 EOF
 }
 
@@ -30,18 +42,20 @@ fail() {
     exit 1
 }
 
-cleanup_publish() {
-    if [[ -n "$PUBLISH_TEMPORARY" ]]; then
-        rm -rf -- "$PUBLISH_TEMPORARY"
-    fi
-}
-
 require_command() {
     command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
 }
 
 project_root() {
     git -C "$1" rev-parse --show-toplevel 2>/dev/null || fail "not a Git repository: $1"
+}
+
+# gh resolves the repository from the working directory's git remote. Its -R flag
+# takes OWNER/REPO, never a path, so path-scoped gh calls run here instead.
+gh_in_repo() {
+    local root="$1"
+    shift
+    (cd -- "$root" && gh "$@")
 }
 
 copy_missing() {
@@ -62,74 +76,32 @@ ensure_policy_link() {
     if grep -Fqx "$marker" "$instruction_file" 2>/dev/null; then
         return
     fi
+    # shellcheck disable=SC2016  # backticks are literal markdown, not a subshell
     printf '\n%s\nRead and follow `.agent-workflow/AGENT_WORKFLOW.md`; it defines the required Issue, worktree, PR, CI, and gh workflow for this project.\n' "$marker" >>"$instruction_file"
     printf 'added workflow policy link to %s\n' "$instruction_file"
 }
 
-render_missing() {
-    local source="$1"
-    local destination="$2"
-    local repository="$3"
-    local ref="$4"
-    local languages="$5"
-    local working_directory="$6"
-    local recipe="$7"
-    local temporary
-    if [[ -e "$destination" ]]; then
-        printf 'kept existing %s\n' "$destination"
-        return
-    fi
-    mkdir -p "$(dirname -- "$destination")"
-    temporary="$(mktemp)"
-    sed \
-        -e "s|__WORKFLOW_REPOSITORY__|$repository|g" \
-        -e "s|__WORKFLOW_REF__|$ref|g" \
-        -e "s|__LANGUAGES__|$languages|g" \
-        -e "s|__WORKING_DIRECTORY__|$working_directory|g" \
-        -e "s|__FAST_RECIPE__|$recipe|g" \
-        -e "s|__DEEP_RECIPE__|$recipe|g" \
-        "$source" >"$temporary"
-    mv "$temporary" "$destination"
-    printf 'created %s\n' "$destination"
-}
-
 init() {
     local directory=""
-    local languages="rust"
-    local workflow_repository="sophiaconsulting/agent-workflow"
-    local workflow_ref="v1"
-    local with_codex=false
     while (($#)); do
         case "$1" in
             --dir) directory="${2:-}"; shift 2 ;;
-            --languages) languages="${2:-}"; shift 2 ;;
-            --workflow-repository) workflow_repository="${2:-}"; shift 2 ;;
-            --workflow-ref) workflow_ref="${2:-}"; shift 2 ;;
-            --with-codex) with_codex=true; shift ;;
             *) fail "unknown init argument: $1" ;;
         esac
     done
     [[ -n "$directory" ]] || fail "init requires --dir PATH"
-    [[ "$languages" =~ ^(rust|python|javascript)(,(rust|python|javascript))*$ ]] || fail "invalid --languages value: $languages"
-    [[ "$workflow_repository" =~ ^[[:alnum:]_.-]+/[[:alnum:]_.-]+$ ]] || fail "invalid --workflow-repository value: $workflow_repository"
-    [[ "$workflow_ref" =~ ^[[:alnum:]_.-]+$ ]] || fail "invalid --workflow-ref value: $workflow_ref"
 
     require_command git
     local root
     root="$(project_root "$directory")"
     copy_missing "$KIT_DIR/policy/AGENT_WORKFLOW.md" "$root/.agent-workflow/AGENT_WORKFLOW.md"
-    copy_missing "$TEMPLATE_DIR/ci-manifest.yml" "$root/.agent-workflow/ci.yml"
     copy_missing "$TEMPLATE_DIR/CLAUDE.md" "$root/CLAUDE.md"
     ensure_policy_link "$root/CLAUDE.md"
     copy_missing "$TEMPLATE_DIR/pull_request_template.md" "$root/.github/pull_request_template.md"
     copy_missing "$TEMPLATE_DIR/issue_task.md" "$root/.github/ISSUE_TEMPLATE/agent-task.md"
-    render_missing "$TEMPLATE_DIR/ci-fast.yml" "$root/.github/workflows/agent-fast.yml" "$workflow_repository" "$workflow_ref" "$languages" "." "ci-fast"
-    render_missing "$TEMPLATE_DIR/ci-deep.yml" "$root/.github/workflows/agent-deep.yml" "$workflow_repository" "$workflow_ref" "$languages" "." "ci-deep"
-    if [[ "$with_codex" == true ]]; then
-        copy_missing "$TEMPLATE_DIR/AGENTS.md" "$root/AGENTS.md"
-        ensure_policy_link "$root/AGENTS.md"
-    fi
-    printf "\nNext: add the required just recipes, run \`project-workflow check --dir %s\`, then review the Git diff.\n" "$root"
+    copy_missing "$TEMPLATE_DIR/ci-fast.yml" "$root/.github/workflows/agent-fast.yml"
+    copy_missing "$TEMPLATE_DIR/ci-deep.yml" "$root/.github/workflows/agent-deep.yml"
+    printf "\nNext: add the ci-fast and ci-deep recipes, run \`project-workflow check --dir %s\`, then review the Git diff.\n" "$root"
 }
 
 has_recipe() {
@@ -138,13 +110,18 @@ has_recipe() {
     (cd -- "$root" && just --list --unsorted 2>/dev/null) | awk '{print $1}' | grep -Fxq "$recipe"
 }
 
+suggested_body() {
+    case "$1" in
+        ci-fast) printf 'ci-fast: fmt-check lint test  # aggregate your existing fast checks' ;;
+        ci-deep) printf 'ci-deep: ci-fast  # plus any real integration/e2e recipes you already have' ;;
+    esac
+}
+
 check() {
     local directory=""
-    local require_codex=false
     while (($#)); do
         case "$1" in
             --dir) directory="${2:-}"; shift 2 ;;
-            --require-codex) require_codex=true; shift ;;
             *) fail "unknown check argument: $1" ;;
         esac
     done
@@ -156,15 +133,11 @@ check() {
     local required_files=(
         "$root/CLAUDE.md"
         "$root/.agent-workflow/AGENT_WORKFLOW.md"
-        "$root/.agent-workflow/ci.yml"
         "$root/.github/pull_request_template.md"
         "$root/.github/ISSUE_TEMPLATE/agent-task.md"
         "$root/.github/workflows/agent-fast.yml"
         "$root/.github/workflows/agent-deep.yml"
     )
-    if [[ "$require_codex" == true ]]; then
-        required_files+=("$root/AGENTS.md")
-    fi
     local file
     for file in "${required_files[@]}"; do
         if [[ -f "$file" ]]; then
@@ -176,11 +149,12 @@ check() {
     done
     if command -v just >/dev/null 2>&1; then
         local recipe
-        for recipe in fmt-check lint typecheck test-unit test-integration test-e2e build ci-fast ci-deep; do
+        for recipe in "${CONTRACT_RECIPES[@]}"; do
             if has_recipe "$root" "$recipe"; then
                 printf 'ok recipe %s\n' "$recipe"
             else
-                printf 'missing recipe %s\n' "$recipe" >&2
+                printf 'missing recipe %s; add one that aggregates this project'"'"'s own recipes, for example:\n    %s\n' \
+                    "$recipe" "$(suggested_body "$recipe")" >&2
                 failed=true
             fi
         done
@@ -209,7 +183,7 @@ gh_setup() {
     local root
     root="$(project_root "$directory")"
     if [[ -z "$repository" ]]; then
-        repository="$(gh repo view --json nameWithOwner --jq .nameWithOwner -R "$root")"
+        repository="$(gh_in_repo "$root" repo view --json nameWithOwner --jq .nameWithOwner)"
     fi
     gh auth status >/dev/null || fail "GitHub CLI is not authenticated"
     if [[ "$apply" == false ]]; then
@@ -218,8 +192,8 @@ Review and then run:
   project-workflow gh-setup --dir $root --repo $repository --apply
 
 This will create/update the task labels and protect dev/main. It requires both
-branches to exist. Required status checks are the names emitted by this kit's
-reusable workflows: Project checks, Secret scan, Workflow lint, and Deep integration checks.
+branches to exist. Required status checks are the job names in this kit's
+workflows: Project checks, Secret scan, Workflow lint, and Deep integration checks.
 EOF
         return
     fi
@@ -240,38 +214,6 @@ EOF
     printf 'Configured labels and branch protection for %s\n' "$repository"
 }
 
-publish() {
-    local repository="sophiaconsulting/agent-workflow"
-    local tag="v1"
-    while (($#)); do
-        case "$1" in
-            --repo) repository="${2:-}"; shift 2 ;;
-            --tag) tag="${2:-}"; shift 2 ;;
-            *) fail "unknown publish argument: $1" ;;
-        esac
-    done
-    [[ "$repository" =~ ^sophiaconsulting/[[:alnum:]_.-]+$ ]] || fail "publish only supports a sophiaconsulting repository"
-    [[ "$tag" =~ ^v[0-9]+([.][0-9]+)*$ ]] || fail "tag must be an immutable version such as v1 or v1.2"
-    require_command gh
-    require_command git
-    gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run gh auth login -h github.com"
-    if gh repo view "$repository" >/dev/null 2>&1; then
-        fail "remote repository already exists: $repository; refusing to overwrite it"
-    fi
-    PUBLISH_TEMPORARY="$(mktemp -d /private/tmp/agent-workflow-publish.XXXXXX)"
-    trap cleanup_publish EXIT
-    cp -R "$KIT_DIR/repository/." "$PUBLISH_TEMPORARY/"
-    git -C "$PUBLISH_TEMPORARY" init -q -b main
-    git -C "$PUBLISH_TEMPORARY" add .
-    git -C "$PUBLISH_TEMPORARY" commit -qm "initial agent workflow kit"
-    gh repo create "$repository" --private --source "$PUBLISH_TEMPORARY" --remote origin --push
-    gh api --method PUT "repos/$repository/actions/permissions/access" -f access_level=organization
-    git -C "$PUBLISH_TEMPORARY" tag -a "$tag" -m "Agent workflow $tag"
-    git -C "$PUBLISH_TEMPORARY" push origin "$tag"
-    [[ "$(gh repo view "$repository" --json isPrivate --jq .isPrivate)" == true ]] || fail "GitHub repository was not private: $repository"
-    printf 'Published private workflow repository %s at %s with organization workflow access\n' "$repository" "$tag"
-}
-
 main() {
     [[ $# -gt 0 ]] || { usage; exit 1; }
     local command="$1"
@@ -280,7 +222,6 @@ main() {
         init) init "$@" ;;
         check) check "$@" ;;
         gh-setup) gh_setup "$@" ;;
-        publish) publish "$@" ;;
         -h|--help|help) usage ;;
         *) fail "unknown command: $command" ;;
     esac

@@ -1,5 +1,8 @@
 name: Fast CI
 
+# Vendored, placeholder-free. Toolchain setup keys off what is actually in the
+# tree, so one template serves every project and nothing needs rendering.
+
 on:
   pull_request:
     branches: [dev]
@@ -8,10 +11,44 @@ permissions:
   contents: read
 
 jobs:
-  fast:
-    uses: __WORKFLOW_REPOSITORY__/.github/workflows/agent-fast.yml@__WORKFLOW_REF__
-    secrets: inherit
-    with:
-      languages: __LANGUAGES__
-      working-directory: __WORKING_DIRECTORY__
-      just-recipe: __FAST_RECIPE__
+  project-checks:
+    name: Project checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    concurrency:
+      group: agent-fast-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        if: hashFiles('**/Cargo.toml') != ''
+      - uses: astral-sh/setup-uv@v6
+        if: hashFiles('**/pyproject.toml') != ''
+      - uses: actions/setup-node@v4
+        if: hashFiles('**/package.json') != ''
+        with:
+          node-version: 22
+      - uses: taiki-e/install-action@just
+      - name: Run fast project checks
+        run: just ci-fast
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: raven-actions/actionlint@v2

@@ -1,10 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+resolve_script_dir() {
+    local source="${BASH_SOURCE[0]}"
+    local dir
+    while [[ -L "$source" ]]; do
+        dir="$(cd -- "$(dirname -- "$source")" && pwd)"
+        source="$(readlink -- "$source")"
+        [[ "$source" == /* ]] || source="$dir/$source"
+    done
+    cd -- "$(dirname -- "$source")" && pwd
+}
+
+SCRIPT_DIR="$(resolve_script_dir)"
 readonly SCRIPT_DIR
 readonly WORKFLOW="$SCRIPT_DIR/project-workflow"
-readonly STUB_JUSTFILE="$SCRIPT_DIR/../templates/justfile.stub"
+TEMPLATE_DIR="$(cd -- "$SCRIPT_DIR/../templates" && pwd)"
+readonly TEMPLATE_DIR
 
 fail() {
     gum style --foreground 196 --border double --padding '0 1' "$*" >&2
@@ -19,11 +31,21 @@ repo_root() {
     git -C "$1" rev-parse --show-toplevel 2>/dev/null || fail "Not a Git repository: $1"
 }
 
-choose_languages() {
+# gh resolves the repository from the working directory's git remote. Its -R flag
+# takes OWNER/REPO, never a path, so every repository-scoped gh call runs here.
+gh_in_repo() {
+    local root="$1"
+    shift
+    (cd -- "$root" && gh "$@")
+}
+
+# Greenfield only: picks which starter justfile to copy. There is no tree to
+# detect from yet, so ask.
+choose_language() {
     local selected
-    selected="$(gum choose --no-limit --selected rust rust python javascript)"
-    [[ -n "$selected" ]] || fail "Choose at least one language"
-    printf '%s' "$selected" | paste -sd ',' -
+    selected="$(gum choose rust python javascript)"
+    [[ -n "$selected" ]] || fail "Choose a language"
+    printf '%s' "$selected"
 }
 
 ensure_clean() {
@@ -32,97 +54,106 @@ ensure_clean() {
     git -C "$root" diff --cached --quiet || fail "Working tree has staged changes; commit or stash them first"
 }
 
-ensure_dev() {
+default_branch() {
     local root="$1"
     local base
+    base="$(gh_in_repo "$root" repo view --json defaultBranchRef --jq .defaultBranchRef.name)"
+    [[ -n "$base" && "$base" != null ]] || fail "Could not determine the default branch"
+    printf '%s' "$base"
+}
+
+ensure_dev() {
+    local root="$1"
+    local base behind
     git -C "$root" fetch origin --prune
     if git -C "$root" show-ref --verify --quiet refs/remotes/origin/dev; then
         return
     fi
-    base="$(gh repo view -R "$root" --json defaultBranchRef --jq .defaultBranchRef.name)"
-    [[ -n "$base" && "$base" != null ]] || fail "Could not determine the default branch"
+    base="$(default_branch "$root")"
+    if git -C "$root" show-ref --verify --quiet refs/heads/dev; then
+        # An unpublished local dev is a valid starting point only if it is not
+        # already behind the default branch; publishing a stale one would give
+        # every later task branch an old base.
+        behind="$(git -C "$root" rev-list --count "dev..origin/$base")"
+        [[ "$behind" == 0 ]] || fail "Local dev is $behind commits behind origin/$base; merge or delete it, then re-run"
+        git -C "$root" push -u origin dev
+        gum style --foreground 46 "Published the existing local branch dev"
+        return
+    fi
     git -C "$root" branch dev "origin/$base"
     git -C "$root" push -u origin dev
     gum style --foreground 46 "Created integration branch dev from origin/$base"
 }
 
-ensure_justfile() {
+# Greenfield only. An existing project owns its justfile; the kit never writes,
+# imports, or regenerates recipes in one.
+copy_starter_justfile() {
     local root="$1"
+    local language="$2"
     if [[ -f "$root/justfile" || -f "$root/Justfile" ]]; then
         return
     fi
-    cp "$STUB_JUSTFILE" "$root/justfile"
-    gum style --foreground 214 "Created a failing starter justfile. Replace its commands before the first PR."
-}
-
-run_init() {
-    local root="$1"
-    local languages="$2"
-    local codex="$3"
-    local args=(init --dir "$root" --languages "$languages" --workflow-ref v1)
-    [[ "$codex" == true ]] && args+=(--with-codex)
-    "$WORKFLOW" "${args[@]}"
-    ensure_justfile "$root"
-}
-
-stage_workflow() {
-    local root="$1"
-    local codex="$2"
-    git -C "$root" add CLAUDE.md .agent-workflow .github
-    if [[ -f "$root/justfile" ]]; then
-        git -C "$root" add justfile
-    else
-        git -C "$root" add Justfile
-    fi
-    [[ "$codex" == true ]] && git -C "$root" add AGENTS.md
+    cp "$TEMPLATE_DIR/justfile.$language" "$root/justfile"
+    gum style --foreground 46 "Created a starter justfile for $language"
 }
 
 new_project() {
     require_command gh
     gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run gh auth login -h github.com"
-    local name directory languages codex root
+    local name directory language root
     name="$(gum input --prompt 'Repository name: ' --placeholder 'my-project')"
     [[ "$name" =~ ^[[:alnum:]_.-]+$ ]] || fail "Repository name may contain letters, numbers, dots, underscores, and hyphens"
     directory="$(gum input --prompt 'Local directory: ' --value "$PWD/$name")"
     [[ ! -e "$directory" ]] || fail "Local directory already exists: $directory"
-    languages="$(choose_languages)"
-    if gum confirm 'Create Codex AGENTS.md now?'; then codex=true; else codex=false; fi
+    language="$(choose_language)"
     gh repo create "sophiaconsulting/$name" --private
     gh repo clone "sophiaconsulting/$name" "$directory"
     root="$(repo_root "$directory")"
-    run_init "$root" "$languages" "$codex"
-    stage_workflow "$root" "$codex"
+    "$WORKFLOW" init --dir "$root"
+    copy_starter_justfile "$root" "$language"
+    git -C "$root" add CLAUDE.md .agent-workflow .github justfile
     git -C "$root" commit -m 'add agent workflow'
     git -C "$root" branch -M main
     git -C "$root" push -u origin main
     git -C "$root" branch dev main
     git -C "$root" push -u origin dev
     "$WORKFLOW" gh-setup --dir "$root" --apply
-    gum style --border rounded --border-foreground 46 --padding '1 2' "Ready: $root\nmain and dev are protected; replace starter justfile commands before feature work."
+    gum style --border rounded --border-foreground 46 --padding '1 2' \
+        "Ready: $root" \
+        'main and dev are protected; the starter justfile recipes are yours to edit.'
 }
 
+# Installs and reports. It never commits, pushes, or opens a PR: that happens
+# through the normal Issue -> worktree -> /open-pr flow, which already gates a
+# PR on a green `just ci-fast`. Never opening a red PR is achieved by never
+# opening one from setup.
 existing_project() {
     require_command gh
-    local directory root languages codex branch pr_url
+    local directory root check_status=0
     directory="$(gum input --prompt 'Existing repository directory: ' --value "$PWD")"
     root="$(repo_root "$directory")"
     ensure_clean "$root"
     gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run gh auth login -h github.com"
-    gh repo view -R "$root" --json nameWithOwner >/dev/null || fail "origin must be a GitHub repository accessible through gh"
-    languages="$(choose_languages)"
-    if gum confirm 'Create Codex AGENTS.md now?'; then codex=true; else codex=false; fi
+    gh_in_repo "$root" repo view --json nameWithOwner >/dev/null || fail "origin must be a GitHub repository accessible through gh"
     ensure_dev "$root"
-    branch='chore/add-agent-workflow'
-    if git -C "$root" show-ref --verify --quiet "refs/heads/$branch" || git -C "$root" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-        fail "Branch already exists: $branch; finish or remove it before running this migration"
+    "$WORKFLOW" init --dir "$root"
+    "$WORKFLOW" check --dir "$root" || check_status=$?
+    if [[ "$check_status" -eq 0 ]]; then
+        gum style --border rounded --border-foreground 46 --padding '1 2' \
+            "Installed: $root" \
+            'The CI contract is already satisfied. Review the Git diff, then commit it' \
+            'through the normal Issue/worktree/PR flow.'
+        return
     fi
-    git -C "$root" switch -c "$branch" origin/dev
-    run_init "$root" "$languages" "$codex"
-    stage_workflow "$root" "$codex"
-    git -C "$root" commit -m 'add agent workflow'
-    git -C "$root" push -u origin "$branch"
-    pr_url="$(gh pr create -R "$root" --base dev --head "$branch" --title 'add agent workflow' --body 'Adds the shared Claude-first agent workflow and CI contract.')"
-    gum style --border rounded --border-foreground 214 --padding '1 2' "Migration PR: $pr_url\nMerge it, then run: $WORKFLOW gh-setup --dir $root --apply"
+    # shellcheck disable=SC2016  # backticks are literal markdown, not a subshell
+    gum style --border rounded --border-foreground 214 --padding '1 2' \
+        "Installed: $root" \
+        'Nothing has been committed or pushed. The check above names the missing' \
+        'ci-fast/ci-deep recipes and suggests bodies; add them to this project'"'"'s' \
+        'justfile so they aggregate the checks it already has.' \
+        '' \
+        'Then: open an Issue, branch from dev, get `just ci-fast` green, and open' \
+        "the PR. After it merges: project-workflow gh-setup --dir $root --apply"
 }
 
 main() {

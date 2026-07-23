@@ -1,7 +1,7 @@
 # Agent project workflow policy
 
-This is the canonical, client-neutral policy. The generated `CLAUDE.md` and
-future `AGENTS.md` must preserve these requirements.
+This is the canonical, client-neutral policy. The generated `CLAUDE.md` must
+preserve these requirements.
 
 1. Work starts from one GitHub Issue. Create and update it with `gh issue`.
 2. One issue owns one branch, one Git worktree, and one pull request. Branch

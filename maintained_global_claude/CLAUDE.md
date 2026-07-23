@@ -92,7 +92,7 @@ Two things to keep straight about this, so the rule isn't cargo-culted:
 
 When delegating work to subagents (Agent tool `model` param, Workflow `agent()` `model` opt), match the model tier to task difficulty:
 
-- **simple tasks** → `haiku` or `sonnet` (haiku for the most trivial: scouting, file mapping, mechanical edits, formatting)
+- **simple tasks** → `sonnet` (haiku for the most trivial: scouting, file mapping, mechanical edits, formatting)
 - **moderately difficult tasks** → `opus` (standard implementation, code review, test writing)
 - **very difficult tasks** → `opus` with max thinking/reasoning effort
 

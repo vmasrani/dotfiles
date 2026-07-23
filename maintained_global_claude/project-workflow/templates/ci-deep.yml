@@ -1,5 +1,8 @@
 name: Deep CI
 
+# Vendored, placeholder-free. Toolchain setup keys off what is actually in the
+# tree, so one template serves every project and nothing needs rendering.
+
 on:
   push:
     branches: [dev]
@@ -11,10 +14,23 @@ permissions:
   contents: read
 
 jobs:
-  deep:
-    uses: __WORKFLOW_REPOSITORY__/.github/workflows/agent-deep.yml@__WORKFLOW_REF__
-    secrets: inherit
-    with:
-      languages: __LANGUAGES__
-      working-directory: __WORKING_DIRECTORY__
-      just-recipe: __DEEP_RECIPE__
+  integration:
+    name: Deep integration checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    concurrency:
+      group: agent-deep-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        if: hashFiles('**/Cargo.toml') != ''
+      - uses: astral-sh/setup-uv@v6
+        if: hashFiles('**/pyproject.toml') != ''
+      - uses: actions/setup-node@v4
+        if: hashFiles('**/package.json') != ''
+        with:
+          node-version: 22
+      - uses: taiki-e/install-action@just
+      - name: Run deep project checks
+        run: just ci-deep
