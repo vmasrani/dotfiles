@@ -29,12 +29,17 @@
       "mcp__plugin_context7_context7__resolve-library-id",
       "ExitPlanMode",
       "Read(//Volumes/external/**)",
-      "Edit(//Volumes/external/**)"
+      "Edit(//Volumes/external/**)",
+      "Write(//Volumes/external/**)",
+      "Read(//Users/vmasrani/**)",
+      "Edit(//Users/vmasrani/**)",
+      "Write(//Users/vmasrani/**)"
     ],
     "deny": [],
     "defaultMode": "auto",
     "additionalDirectories": [
-      "/Volumes/external"
+      "/Volumes/external",
+      "/Users/vmasrani"
     ]
   },
   "model": "opus[1m]",
@@ -110,7 +115,8 @@
   "sandbox": {
     "filesystem": {
       "allowWrite": [
-        "/Volumes/external"
+        "/Volumes/external",
+        "/Users/vmasrani"
       ]
     }
   },
