@@ -192,8 +192,12 @@ Review and then run:
   project-workflow gh-setup --dir $root --repo $repository --apply
 
 This will create/update the task labels and protect dev/main. It requires both
-branches to exist. Required status checks are the job names in this kit's
-workflows: Project checks, Secret scan, Workflow lint, and Deep integration checks.
+branches to exist. Required status checks are LEAN by design:
+  dev  <- Secret scan, Workflow lint        (cheap; every feature PR)
+  main <- Deep integration checks           (the full suite; dev->main only)
+The Project checks job still runs on dev PRs but is ADVISORY -- it covers Linux
+without making a feature PR wait on a cold build. Add "Project checks" to the
+dev contexts below to make it blocking.
 EOF
         return
     fi
@@ -203,7 +207,7 @@ EOF
     local temporary
     temporary="$(mktemp)"
     cat >"$temporary" <<'EOF'
-{"required_status_checks":{"strict":true,"contexts":["Project checks","Secret scan","Workflow lint"]},"enforce_admins":true,"required_pull_request_reviews":null,"restrictions":null,"required_linear_history":true,"allow_force_pushes":false,"allow_deletions":false,"block_creations":false,"required_conversation_resolution":true}
+{"required_status_checks":{"strict":true,"contexts":["Secret scan","Workflow lint"]},"enforce_admins":true,"required_pull_request_reviews":null,"restrictions":null,"required_linear_history":true,"allow_force_pushes":false,"allow_deletions":false,"block_creations":false,"required_conversation_resolution":true}
 EOF
     gh api --method PUT "repos/$repository/branches/dev/protection" --input "$temporary"
     cat >"$temporary" <<'EOF'

@@ -11,10 +11,22 @@ permissions:
   contents: read
 
 jobs:
+  # ADVISORY, not required. This job runs the project's own `just ci-fast` on
+  # Linux -- the platform local macOS/Windows dev cannot cover -- but it does
+  # NOT gate merges into dev (gh-setup requires only Secret scan + Workflow
+  # lint there). The full suite gates the dev->main promotion instead, via
+  # Deep integration checks in ci-deep.yml, so tests still guard main while a
+  # feature PR never waits on a cold Linux build. Add "Project checks" to the
+  # dev contexts in bin/project-workflow if you want it blocking.
   project-checks:
     name: Project checks
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # A COLD build of a large Rust workspace does not fit in 12 min on a 2-core
+    # runner and was cancelled mid-compile, which also meant rust-cache never
+    # got to save -- so every run started cold and it could never go green. The
+    # ceiling exists for that first cache-populating run; cached runs finish in
+    # a fraction of it, and a small project never approaches it either way.
+    timeout-minutes: 25
     concurrency:
       group: agent-fast-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
@@ -52,6 +64,14 @@ jobs:
       # the project. Installing it is a prebuilt-binary download of a few
       # seconds and is inert for projects that do not use it.
       - uses: taiki-e/install-action@nextest
+        if: hashFiles('**/Cargo.toml') != ''
+      # Caches ~/.cargo and target/ keyed on Cargo.lock + rustc version. The
+      # first run is fully cold (nothing to restore) -- that is what the 25 min
+      # ceiling above is for -- and saves the cache on success; later runs
+      # restore it and skip recompiling unchanged dependencies, which is the
+      # bulk of the time. It prunes stale artifacts before saving, so target/
+      # does not grow without bound and re-open the disk problem.
+      - uses: Swatinem/rust-cache@v2
         if: hashFiles('**/Cargo.toml') != ''
       - uses: astral-sh/setup-uv@v6
         if: hashFiles('**/pyproject.toml') != ''

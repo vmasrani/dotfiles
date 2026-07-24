@@ -486,14 +486,16 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "workflows: job names match the required status checks gh-setup applies" {
+@test "workflows: every required status check has a job that can report it" {
     command -v yq >/dev/null || skip 'yq is not installed'
     make_repo
     "$WORKFLOW" init --dir "$REPO" >/dev/null
-    # Compare against the contexts gh-setup actually PUTs, not a copy of them:
-    # a renamed job that nobody mirrored into the protection payload would leave
-    # a required check that can never report.
-    local job_names context_names
+    # The invariant is SUBSET, not equality: every context gh-setup marks
+    # required must be backed by a real job name, or it becomes a required check
+    # that never reports and blocks every PR forever. The reverse is allowed on
+    # purpose -- "Project checks" is an advisory job that runs without being
+    # required, which is the whole point of the lean posture.
+    local job_names context_names missing
     job_names="$( {
         yq -r '.jobs[].name' "$REPO/.github/workflows/agent-fast.yml"
         yq -r '.jobs[].name' "$REPO/.github/workflows/agent-deep.yml"
@@ -501,7 +503,15 @@ EOF
     context_names="$(grep -o '"contexts":\[[^]]*\]' "$WORKFLOW" |
         grep -o '"[A-Z][^"]*"' | tr -d '"' | sort -u)"
     [ -n "$context_names" ]
-    [ "$job_names" = "$context_names" ]
+    # Any required context with no matching job is a fatal misconfiguration.
+    missing="$(comm -23 <(printf '%s\n' "$context_names") <(printf '%s\n' "$job_names"))"
+    [ -z "$missing" ] || {
+        printf 'required context with no job to report it: %s\n' "$missing" >&2
+        return 1
+    }
+    # And the lean posture specifically: Project checks RUNS but is NOT required.
+    grep -q 'Project checks' <<<"$job_names"
+    ! grep -q 'Project checks' <<<"$context_names"
 }
 
 @test "workflows: fast runs ci-fast on PRs into dev, deep runs ci-deep" {
