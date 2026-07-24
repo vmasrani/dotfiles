@@ -19,16 +19,22 @@ jobs:
       group: agent-fast-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      # A GitHub runner starts with only ~15 GB free of its 72 GB disk, and a
-      # debug build of a large Rust workspace needs more than that -- MEASURED
-      # here at ~24 GB, which filled the disk to 100% and killed the linker with
-      # `ld terminated with signal 7 [Bus error]` (SIGBUS, because lld writes
-      # its output through an mmap that cannot be extended). The runner image
-      # ships toolchains no Rust build touches; dropping them roughly doubles
-      # the space available.
+      - uses: actions/checkout@v4
+      # MUST come after checkout. `hashFiles` globs the WORKSPACE, which is
+      # empty until the checkout lands, so this same step placed above it
+      # evaluated to '' and was silently skipped -- reported as a clean run
+      # while doing nothing, and the build then died on a full disk anyway.
       #
-      # Costs ~90s, so it is scoped to Rust projects, which are the ones that
-      # need it. Delete the step if your workspace is small.
+      # A runner starts with only ~15 GB free of its 72 GB disk, and a debug
+      # build of a large Rust workspace needs more -- MEASURED at ~24 GB here,
+      # which filled the disk to 100% and killed the linker with
+      # `ld terminated with signal 7 [Bus error]`. That is SIGBUS, not SIGKILL,
+      # because lld writes its output through an mmap that cannot be extended:
+      # it reads like a toolchain bug and is really ENOSPC. Dropping toolchains
+      # no Rust build touches roughly doubles the space.
+      #
+      # Costs ~90s, so it is scoped to Rust projects. Delete it if your
+      # workspace is small enough not to care.
       - name: Reclaim runner disk
         if: hashFiles('**/Cargo.toml') != ''
         run: |
@@ -38,7 +44,6 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
                       /usr/local/share/boost /usr/local/share/powershell
           df -h /
-      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         if: hashFiles('**/Cargo.toml') != ''
       # cargo-nextest is the common Rust test runner and is NOT bundled with the
