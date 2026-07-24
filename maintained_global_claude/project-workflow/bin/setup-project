@@ -17,6 +17,7 @@ readonly SCRIPT_DIR
 readonly WORKFLOW="$SCRIPT_DIR/project-workflow"
 TEMPLATE_DIR="$(cd -- "$SCRIPT_DIR/../templates" && pwd)"
 readonly TEMPLATE_DIR
+readonly CI_SETUP_BRANCH="chore/ci-setup"
 
 fail() {
     gum style --foreground 196 --border double --padding '0 1' "$*" >&2
@@ -123,37 +124,146 @@ new_project() {
         'main and dev are protected; the starter justfile recipes are yours to edit.'
 }
 
-# Installs and reports. It never commits, pushes, or opens a PR: that happens
-# through the normal Issue -> worktree -> /open-pr flow, which already gates a
-# PR on a green `just ci-fast`. Never opening a red PR is achieved by never
-# opening one from setup.
+# Appends the two contract recipes to an existing justfile, but ONLY the ones
+# that are absent, and ONLY by appending -- it never edits or deletes a line the
+# project already has. Appended (not prepended) on purpose: in just the FIRST
+# recipe is the default that a bare `just` runs, and hijacking that would be a
+# surprising, destructive-in-spirit change. Idempotent: a second run finds both
+# recipes and adds nothing.
+ensure_ci_recipes() {
+    local root="$1" justfile block=""
+    justfile="$root/justfile"
+    [[ -f "$justfile" ]] || justfile="$root/Justfile"
+    [[ -f "$justfile" ]] || fail "no justfile in $root to add ci-fast/ci-deep to; create one first"
+    grep -Eq '^ci-fast[ :]' "$justfile" || block+=$'ci-fast: fmt-check lint test\n'
+    grep -Eq '^ci-deep[ :]' "$justfile" || block+=$'ci-deep: ci-fast\n'
+    [[ -n "$block" ]] || return 0
+    {
+        printf '\n# ── CI contract (added by setup-project) ─────────────────────────────\n'
+        # shellcheck disable=SC2016  # backticks are literal justfile-comment text
+        printf '# CI runs `just ci-fast` on PRs into dev and `just ci-deep` on dev->main.\n'
+        printf "# Edit these to aggregate THIS project's real recipes; they are the only\n"
+        printf '# two names CI knows. Nothing else in this file was touched.\n'
+        printf '%s' "$block"
+    } >>"$justfile"
+    gum style --foreground 46 "Appended the missing ci-fast/ci-deep recipe(s) to the justfile"
+}
+
+# True when dev already carries the workflow files and both contract recipes --
+# i.e. a previous migration merged. Lets the migration short-circuit to just
+# re-applying protection instead of opening a redundant PR.
+already_set_up() {
+    local root="$1"
+    git -C "$root" cat-file -e origin/dev:.github/workflows/agent-fast.yml 2>/dev/null || return 1
+    git -C "$root" show origin/dev:justfile 2>/dev/null | grep -Eq '^ci-fast[ :]' || return 1
+    git -C "$root" show origin/dev:justfile 2>/dev/null | grep -Eq '^ci-deep[ :]' || return 1
+    return 0
+}
+
+# Bootstraps CI on an existing repo, end to end: install files, add the missing
+# recipes, commit, open a PR into dev, protect the branches, and arm GitHub
+# auto-merge so the PR lands once the required checks pass.
+#
+# RULE EXCEPTION, SCOPED TO THIS ONE COMMAND: everywhere else the policy is
+# never push to a shared branch from a script and never self-merge a PR. This
+# bootstrap is the single sanctioned exception -- it is the human running their
+# own one-time setup, not an agent -- and it is kept safe by two hard gates that
+# are NOT relaxed: (1) a local `just ci-fast` must pass before anything is
+# pushed, so a red PR is never opened; (2) merge is GitHub-native auto-merge
+# behind the required checks (Secret scan + Workflow lint), so a red PR is never
+# merged. Do not copy this push-and-merge shape into any other recipe.
+#
+# Idempotent throughout: safe to re-run after a fix or a partial run.
 existing_project() {
     require_command gh
-    local directory root check_status=0
+    require_command just
+    local directory root repo branch orig_branch pr_url armed=yes
     directory="$(gum input --prompt 'Existing repository directory: ' --value "$PWD")"
     root="$(repo_root "$directory")"
     ensure_clean "$root"
     gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run gh auth login -h github.com"
-    gh_in_repo "$root" repo view --json nameWithOwner >/dev/null || fail "origin must be a GitHub repository accessible through gh"
+    repo="$(gh_in_repo "$root" repo view --json nameWithOwner --jq .nameWithOwner)" \
+        || fail "origin must be a GitHub repository accessible through gh"
     ensure_dev "$root"
-    "$WORKFLOW" init --dir "$root"
-    "$WORKFLOW" check --dir "$root" || check_status=$?
-    if [[ "$check_status" -eq 0 ]]; then
-        gum style --border rounded --border-foreground 46 --padding '1 2' \
-            "Installed: $root" \
-            'The CI contract is already satisfied. Review the Git diff, then commit it' \
-            'through the normal Issue/worktree/PR flow.'
+
+    if already_set_up "$root"; then
+        gum style --foreground 46 "CI is already set up on dev; re-applying branch protection only"
+        "$WORKFLOW" gh-setup --dir "$root" --repo "$repo" --apply
         return
     fi
-    # shellcheck disable=SC2016  # backticks are literal markdown, not a subshell
-    gum style --border rounded --border-foreground 214 --padding '1 2' \
-        "Installed: $root" \
-        'Nothing has been committed or pushed. The check above names the missing' \
-        'ci-fast/ci-deep recipes and suggests bodies; add them to this project'"'"'s' \
-        'justfile so they aggregate the checks it already has.' \
-        '' \
-        'Then: open an Issue, branch from dev, get `just ci-fast` green, and open' \
-        "the PR. After it merges: project-workflow gh-setup --dir $root --apply"
+
+    # Base the CI branch on the CURRENT tree, because that is what carries the
+    # project's justfile -- basing it on dev would lose a justfile that only
+    # exists on the checked-out branch. Require dev to be an ANCESTOR of HEAD so
+    # the PR into dev is purely additive and can never revert work that is on dev
+    # but not here.
+    branch="$CI_SETUP_BRANCH"
+    orig_branch="$(git -C "$root" symbolic-ref --quiet --short HEAD || true)"
+    git -C "$root" merge-base --is-ancestor origin/dev HEAD \
+        || fail "the checked-out branch is behind origin/dev; check out dev (or a branch ahead of it) and re-run"
+    if git -C "$root" show-ref --verify --quiet "refs/heads/$branch"; then
+        git -C "$root" checkout -q "$branch"
+    else
+        git -C "$root" checkout -q -b "$branch"
+    fi
+
+    "$WORKFLOW" init --dir "$root"
+    ensure_ci_recipes "$root"
+
+    # Commit BEFORE the gate so that a gate failure leaves a CLEAN tree on the
+    # branch -- the user edits the recipe, commits, and re-runs without fighting
+    # `ensure_clean`. The commit is local only; the gate below is what guards the
+    # push.
+    git -C "$root" add CLAUDE.md .agent-workflow .github justfile
+    if git -C "$root" diff --cached --quiet; then
+        gum style --foreground 214 "Nothing new to commit; the branch already carries the setup"
+    else
+        git -C "$root" commit -qm 'ci: set up agent workflow (CI SETUP)'
+    fi
+
+    # THE GATE. `just ci-fast` runs the project's own aggregate on this machine.
+    # If the appended `ci-fast: fmt-check lint test` names recipes this project
+    # does not have, just fails loudly here (its native "does not contain recipe"
+    # message is shown) and NOTHING is pushed. This is the sanctioned exception's
+    # hard floor: no red PR is ever opened.
+    if ! ( cd -- "$root" && just ci-fast ); then
+        fail "just ci-fast failed (see above). Edit ci-fast/ci-deep in the justfile to aggregate recipes this project actually has, commit, then re-run. Nothing was pushed."
+    fi
+
+    git -C "$root" push -q -u origin "$branch"
+
+    pr_url="$(gh_in_repo "$root" pr list --head "$branch" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
+    if [[ -z "$pr_url" ]]; then
+        pr_url="$(gh_in_repo "$root" pr create --base dev --fill)"
+    fi
+
+    # Protect dev/main, then hand the merge to GitHub: auto-merge lands the PR
+    # once the REQUIRED checks (Secret scan + Workflow lint) are green. The
+    # advisory Linux build does not gate it, so this never blocks on a cold
+    # build, and a real secret leak (red Secret scan) keeps the PR unmerged.
+    "$WORKFLOW" gh-setup --dir "$root" --repo "$repo" --apply
+    gh_in_repo "$root" repo edit --enable-auto-merge >/dev/null 2>&1 || true
+    gh_in_repo "$root" pr merge "$pr_url" --squash --auto --delete-branch >/dev/null 2>&1 || armed=no
+
+    # Return the working tree to where the user started; the branch merges and
+    # deletes remotely once its checks pass.
+    if [[ -n "$orig_branch" ]]; then
+        git -C "$root" checkout -q "$orig_branch"
+    fi
+
+    if [[ "$armed" == yes ]]; then
+        gum style --border rounded --border-foreground 46 --padding '1 2' \
+            "CI set up for $repo" \
+            "PR: $pr_url" \
+            'Auto-merge is armed: GitHub merges it once Secret scan + Workflow lint pass.' \
+            "dev and main are protected. Your tree is back on ${orig_branch:-its original branch}."
+    else
+        gum style --border rounded --border-foreground 214 --padding '1 2' \
+            "CI set up for $repo, PR open but auto-merge NOT armed" \
+            "PR: $pr_url" \
+            "Enable 'Allow auto-merge' in the repo settings, or merge the PR" \
+            'yourself once Secret scan + Workflow lint are green.'
+    fi
 }
 
 main() {

@@ -39,6 +39,8 @@ setup() {
 
     ORIGIN="${BATS_TEST_TMPDIR}/origin.git"
     REPO="${BATS_TEST_TMPDIR}/project"
+    # Mirror the branch name the migration uses (setup-project's CI_SETUP_BRANCH).
+    CI_SETUP_BRANCH_NAME="chore/ci-setup"
 
     export GIT_CONFIG_GLOBAL="${BATS_TEST_TMPDIR}/gitconfig"
     export GIT_CONFIG_NOSYSTEM=1
@@ -133,6 +135,25 @@ ci-deep: ci-fast gauntlet
 EOF
 }
 
+# A justfile that follows the house convention (fmt-check/lint/test/build) but
+# has NEITHER aggregate. The migration should append ci-fast/ci-deep and, because
+# the sub-recipes exist, pass the local `just ci-fast` gate.
+write_convention_justfile() {
+    cat >"$REPO/justfile" <<'EOF'
+fmt-check:
+    @true
+
+lint:
+    @true
+
+test:
+    @true
+
+build:
+    @true
+EOF
+}
+
 publish_dev() {
     git -C "$REPO" branch dev main
     git -C "$REPO" push -q -u origin dev
@@ -176,6 +197,14 @@ assert_no_path_repo_flag() {
 refute_trace() {
     ! grep -q -- "$1" "$GH_TRACE" || {
         echo "unexpected gh invocation matching '$1':" >&2
+        cat "$GH_TRACE" >&2
+        return 1
+    }
+}
+
+assert_trace() {
+    grep -q -- "$1" "$GH_TRACE" || {
+        echo "expected a gh invocation matching '$1', trace was:" >&2
         cat "$GH_TRACE" >&2
         return 1
     }
@@ -376,69 +405,96 @@ EOF
     echo "$output" | grep -q 'missing file .github/workflows/agent-deep.yml'
 }
 
-# ── the migration installs and reports; it never commits, pushes, or PRs ──
+# ── the migration bootstraps CI end to end: commit, PR, auto-merge ────────
+# This is the ONE sanctioned rule exception (a human's one-time setup), kept
+# safe by a local `just ci-fast` gate before any push and GitHub-native
+# auto-merge behind the required checks.
 
-@test "existing_project: opens no pull request" {
+@test "migration: commits CI SETUP on a branch and pushes it to origin" {
     make_repo
     publish_dev
     write_bespoke_justfile
     commit_all justfile
     migrate
     [ "$status" -eq 0 ]
-    refute_trace 'pr create'
+    git -C "$ORIGIN" show-ref --verify --quiet "refs/heads/$CI_SETUP_BRANCH_NAME"
+    [ "$(git -C "$ORIGIN" log -1 --format=%s "$CI_SETUP_BRANCH_NAME")" = 'ci: set up agent workflow (CI SETUP)' ]
 }
 
-@test "existing_project: commits nothing and pushes nothing" {
-    make_repo
-    publish_dev
-    write_bespoke_justfile
-    commit_all justfile
-    local head_before origin_before
-    head_before="$(git -C "$REPO" rev-parse HEAD)"
-    origin_before="$(git -C "$ORIGIN" for-each-ref --format='%(refname) %(objectname)' | sort)"
-    migrate
-    [ "$status" -eq 0 ]
-    [ "$(git -C "$REPO" rev-parse HEAD)" = "$head_before" ]
-    [ "$(git -C "$ORIGIN" for-each-ref --format='%(refname) %(objectname)' | sort)" = "$origin_before" ]
-    # The installed files are present but still uncommitted, which is the proof
-    # that install-and-report ran and nothing else did.
-    git -C "$REPO" status --porcelain | grep -q '^?? .github/'
-}
-
-@test "existing_project: creates no chore/add-agent-workflow branch" {
+@test "migration: opens a PR into dev and arms squash auto-merge" {
     make_repo
     publish_dev
     write_bespoke_justfile
     commit_all justfile
     migrate
     [ "$status" -eq 0 ]
-    ! git -C "$REPO" show-ref --verify --quiet refs/heads/chore/add-agent-workflow
-    ! git -C "$ORIGIN" show-ref --verify --quiet refs/heads/chore/add-agent-workflow
+    assert_trace 'pr create --base dev'
+    assert_trace 'pr merge'
+    assert_trace '--auto'
+    assert_trace '--squash'
 }
 
-@test "existing_project: is safe to run twice" {
+@test "migration: appends the missing aggregates without touching existing recipes" {
     make_repo
     publish_dev
-    write_bespoke_justfile
+    write_convention_justfile
     commit_all justfile
     migrate
     [ "$status" -eq 0 ]
-    migrate
-    [ "$status" -eq 0 ]
-    echo "$output" | grep -q 'The CI contract is already satisfied'
+    local jf
+    jf="$(git -C "$REPO" show "$CI_SETUP_BRANCH_NAME:justfile")"
+    grep -q '^ci-fast: fmt-check lint test$' <<<"$jf"
+    grep -q '^ci-deep: ci-fast$' <<<"$jf"
+    # nothing the project already had was removed or rewritten
+    grep -q '^fmt-check:$' <<<"$jf"
+    grep -q '^build:$' <<<"$jf"
 }
 
-@test "existing_project: a repo without the aggregates stops at an actionable report" {
+@test "migration: never pushes when the local just ci-fast gate fails" {
     make_repo
     publish_dev
+    # Only `polish` exists, so the appended `ci-fast: fmt-check lint test`
+    # references recipes that do not exist and `just ci-fast` fails.
     printf 'polish:\n    @true\n' >"$REPO/justfile"
     commit_all justfile
     migrate
-    [ "$status" -eq 0 ]
-    echo "$output" | grep -q 'Nothing has been committed or pushed'
-    echo "$output" | grep -q 'missing recipe ci-fast'
-    echo "$output" | grep -q 'missing recipe ci-deep'
+    [ "$status" -ne 0 ]
     refute_trace 'pr create'
+    refute_trace 'pr merge'
+    ! git -C "$ORIGIN" show-ref --verify --quiet "refs/heads/$CI_SETUP_BRANCH_NAME"
+}
+
+@test "migration: is idempotent -- a second run adds no duplicate recipes" {
+    make_repo
+    publish_dev
+    write_convention_justfile
+    commit_all justfile
+    migrate
+    [ "$status" -eq 0 ]
+    migrate
+    [ "$status" -eq 0 ]
+    local jf
+    jf="$(git -C "$REPO" show "$CI_SETUP_BRANCH_NAME:justfile")"
+    [ "$(grep -c '^ci-fast' <<<"$jf")" -eq 1 ]
+    [ "$(grep -c '^ci-deep' <<<"$jf")" -eq 1 ]
+}
+
+@test "migration: short-circuits to protection-only when dev already carries CI" {
+    make_repo
+    # Seed dev with the workflow files and both aggregates already present, as if
+    # a prior migration had merged.
+    write_bespoke_justfile
+    "$WORKFLOW" init --dir "$REPO" >/dev/null
+    git -C "$REPO" add -A
+    git -C "$REPO" commit -qm 'pre-existing CI'
+    git -C "$REPO" branch dev
+    git -C "$REPO" push -q -u origin dev
+    migrate
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -q 'already set up on dev'
+    # No branch, no PR -- just protection re-applied.
+    refute_trace 'pr create'
+    ! git -C "$ORIGIN" show-ref --verify --quiet "refs/heads/$CI_SETUP_BRANCH_NAME"
 }
 
 # ── the vendored workflows are placeholder-free and well-formed ───────────
