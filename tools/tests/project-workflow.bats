@@ -452,6 +452,23 @@ EOF
     }
 }
 
+@test "workflows: the secret scanner is the unlicensed CLI, pinned by checksum" {
+    make_repo
+    "$WORKFLOW" init --dir "$REPO" >/dev/null
+    local fast="$REPO/.github/workflows/agent-fast.yml"
+    # gitleaks-action hard-fails on org repos without a GITLEAKS_LICENSE. The
+    # CLI it wraps is MIT and needs no key, so neither the action nor the secret
+    # may come back -- either one reintroduces a signup and a red check.
+    ! grep -q 'gitleaks-action' "$fast"
+    ! grep -q 'GITLEAKS_LICENSE' "$fast"
+    grep -q 'gitleaks git' "$fast"
+    # A download pinned to a version but not a checksum is an unauthenticated
+    # binary running in the job whose whole purpose is finding leaked secrets.
+    # Require a literal 64-hex digest -- a placeholder or a stale env ref fails.
+    grep -Eq '^\s+SHA256: [0-9a-f]{64}$' "$fast"
+    grep -q 'sha256sum -c' "$fast"
+}
+
 @test "workflows: installed files reference no shared workflow repository" {
     make_repo
     "$WORKFLOW" init --dir "$REPO" >/dev/null
