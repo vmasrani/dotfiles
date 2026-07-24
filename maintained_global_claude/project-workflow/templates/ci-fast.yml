@@ -19,6 +19,25 @@ jobs:
       group: agent-fast-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
+      # A GitHub runner starts with only ~15 GB free of its 72 GB disk, and a
+      # debug build of a large Rust workspace needs more than that -- MEASURED
+      # here at ~24 GB, which filled the disk to 100% and killed the linker with
+      # `ld terminated with signal 7 [Bus error]` (SIGBUS, because lld writes
+      # its output through an mmap that cannot be extended). The runner image
+      # ships toolchains no Rust build touches; dropping them roughly doubles
+      # the space available.
+      #
+      # Costs ~90s, so it is scoped to Rust projects, which are the ones that
+      # need it. Delete the step if your workspace is small.
+      - name: Reclaim runner disk
+        if: hashFiles('**/Cargo.toml') != ''
+        run: |
+          set -euo pipefail
+          df -h /
+          # NOT the tool cache -- the setup-* actions below populate it.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /usr/local/share/powershell
+          df -h /
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         if: hashFiles('**/Cargo.toml') != ''
