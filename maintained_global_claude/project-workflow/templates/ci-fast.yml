@@ -37,7 +37,23 @@ jobs:
           node-version: 22
       - uses: taiki-e/install-action@just
       - name: Run fast project checks
+        # Debug info is the single largest consumer of disk, RAM and link time
+        # in a Rust CI build, and it is nearly worthless on a runner you cannot
+        # attach a debugger to. A large workspace linking it into every test
+        # binary killed the linker outright here:
+        #   collect2: fatal error: ld terminated with signal 7 [Bus error]
+        # `line-tables-only` keeps panic locations and backtrace line numbers --
+        # the part anyone actually reads from a CI log -- and drops the rest.
+        # Delete these two if a project genuinely needs full debug info in CI.
+        env:
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: just ci-fast
+      # Runs even on failure: a build that dies in the linker looks identical
+      # whether it ran the machine out of disk or not, and only this says which.
+      - name: Disk after checks
+        if: always()
+        run: df -h /
 
   secrets:
     name: Secret scan
