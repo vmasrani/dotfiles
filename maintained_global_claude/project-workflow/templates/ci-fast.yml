@@ -22,6 +22,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         if: hashFiles('**/Cargo.toml') != ''
+      # cargo-nextest is the common Rust test runner and is NOT bundled with the
+      # toolchain, so a `just test` that shells out to it dies with a bare
+      # "error: no such command: `nextest`" -- a failure that says nothing about
+      # the project. Installing it is a prebuilt-binary download of a few
+      # seconds and is inert for projects that do not use it.
+      - uses: taiki-e/install-action@nextest
+        if: hashFiles('**/Cargo.toml') != ''
       - uses: astral-sh/setup-uv@v6
         if: hashFiles('**/pyproject.toml') != ''
       - uses: actions/setup-node@v4
