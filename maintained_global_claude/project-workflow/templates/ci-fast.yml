@@ -61,6 +61,17 @@ jobs:
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
       # Scans FULL history (hence fetch-depth: 0), not just the diff. Exits 1 on
       # any finding -- no soft-fail, no report-and-continue.
+      #
+      # Expect false positives from `generic-api-key`, an entropy heuristic that
+      # fires on high-entropy strings near words like key/token/secret -- test
+      # fixtures and .env.example templates set it off routinely. Silence them
+      # in a repo-root `.gitleaksignore`, which ignores AUDITED findings BY
+      # FINGERPRINT (commit:file:rule:line), so a new secret in the same file
+      # still fails. Do NOT reach for a path/rule allowlist in .gitleaks.toml:
+      # `[[allowlists]] targetRules` was measured to swallow a planted AWS key
+      # in an allowlisted path -- it mutes the path for EVERY rule, silently.
+      #   gitleaks git --report-format json --report-path /tmp/gl.json .
+      # then audit each finding before pasting its fingerprint.
       - name: Scan git history for secrets
         run: gitleaks git --no-banner --redact --exit-code 1 .
 
