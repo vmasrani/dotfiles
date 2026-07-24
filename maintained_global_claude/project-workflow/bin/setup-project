@@ -98,15 +98,18 @@ copy_starter_justfile() {
     gum style --foreground 46 "Created a starter justfile for $language"
 }
 
+# Bootstraps a fresh private repo. Callers (interactive or script mode) supply
+# the three answers; validation lives here so both entry points share it.
 new_project() {
+    local name="$1" directory="$2" language="$3" root
+    [[ "$name" =~ ^[[:alnum:]_.-]+$ ]] || fail "Repository name may contain letters, numbers, dots, underscores, and hyphens"
+    case "$language" in
+        rust | python | javascript) ;;
+        *) fail "Language must be one of: rust, python, javascript (got: ${language:-<empty>})" ;;
+    esac
+    [[ ! -e "$directory" ]] || fail "Local directory already exists: $directory"
     require_command gh
     gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run gh auth login -h github.com"
-    local name directory language root
-    name="$(gum input --prompt 'Repository name: ' --placeholder 'my-project')"
-    [[ "$name" =~ ^[[:alnum:]_.-]+$ ]] || fail "Repository name may contain letters, numbers, dots, underscores, and hyphens"
-    directory="$(gum input --prompt 'Local directory: ' --value "$PWD/$name")"
-    [[ ! -e "$directory" ]] || fail "Local directory already exists: $directory"
-    language="$(choose_language)"
     gh repo create "sophiaconsulting/$name" --private
     gh repo clone "sophiaconsulting/$name" "$directory"
     root="$(repo_root "$directory")"
@@ -175,10 +178,10 @@ already_set_up() {
 #
 # Idempotent throughout: safe to re-run after a fix or a partial run.
 existing_project() {
+    local directory="$1"
     require_command gh
     require_command just
-    local directory root repo branch orig_branch pr_url armed=yes
-    directory="$(gum input --prompt 'Existing repository directory: ' --value "$PWD")"
+    local root repo branch orig_branch pr_url armed=yes
     root="$(repo_root "$directory")"
     ensure_clean "$root"
     gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run gh auth login -h github.com"
@@ -266,14 +269,104 @@ existing_project() {
     fi
 }
 
+usage() {
+    cat <<'EOF'
+Usage:
+  setup-project                                          interactive setup (TUI)
+  setup-project new --name NAME --language LANG [--dir DIR]
+  setup-project migrate [--dir DIR]
+  setup-project --help | -h
+
+LANG is one of: rust, python, javascript
+new  --dir defaults to $PWD/NAME; migrate --dir defaults to $PWD.
+EOF
+}
+
+# Interactive answer-gathering. Prompts live ONLY here, so no gum input/choose is
+# ever reached when the script runs with arguments.
+interactive_new() {
+    local name directory language
+    name="$(gum input --prompt 'Repository name: ' --placeholder 'my-project')"
+    directory="$(gum input --prompt 'Local directory: ' --value "$PWD/$name")"
+    language="$(choose_language)"
+    new_project "$name" "$directory" "$language"
+}
+
+interactive_migrate() {
+    local directory
+    directory="$(gum input --prompt 'Existing repository directory: ' --value "$PWD")"
+    existing_project "$directory"
+}
+
+# Script mode: flags carry the answers the TUI would have prompted for. Missing
+# required flags and unknown flags fail loudly -- no interactive fallback.
+script_new() {
+    local name="" language="" directory=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --name)
+                [[ $# -ge 2 ]] || fail "new: --name requires a value"$'\n'"$(usage)"
+                name="$2"
+                shift 2
+                ;;
+            --language)
+                [[ $# -ge 2 ]] || fail "new: --language requires a value"$'\n'"$(usage)"
+                language="$2"
+                shift 2
+                ;;
+            --dir)
+                [[ $# -ge 2 ]] || fail "new: --dir requires a value"$'\n'"$(usage)"
+                directory="$2"
+                shift 2
+                ;;
+            *) fail "new: unknown flag: $1"$'\n'"$(usage)" ;;
+        esac
+    done
+    [[ -n "$name" ]] || fail "new: --name is required"$'\n'"$(usage)"
+    [[ -n "$language" ]] || fail "new: --language is required"$'\n'"$(usage)"
+    [[ -n "$directory" ]] || directory="$PWD/$name"
+    new_project "$name" "$directory" "$language"
+}
+
+script_migrate() {
+    local directory=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dir)
+                [[ $# -ge 2 ]] || fail "migrate: --dir requires a value"$'\n'"$(usage)"
+                directory="$2"
+                shift 2
+                ;;
+            *) fail "migrate: unknown flag: $1"$'\n'"$(usage)" ;;
+        esac
+    done
+    [[ -n "$directory" ]] || directory="$PWD"
+    existing_project "$directory"
+}
+
 main() {
     require_command gum
     require_command git
     require_command just
-    gum style --border double --padding '1 2' --foreground 212 'Agent project setup'
-    case "$(gum choose 'New private GitHub project' 'Migrate an existing GitHub project')" in
-        'New private GitHub project') new_project ;;
-        'Migrate an existing GitHub project') existing_project ;;
+
+    # No arguments: the interactive TUI, unchanged.
+    if [[ $# -eq 0 ]]; then
+        gum style --border double --padding '1 2' --foreground 212 'Agent project setup'
+        case "$(gum choose 'New private GitHub project' 'Migrate an existing GitHub project')" in
+            'New private GitHub project') interactive_new ;;
+            'Migrate an existing GitHub project') interactive_migrate ;;
+        esac
+        return
+    fi
+
+    # Any argument: script mode. Never prompts.
+    local sub="$1"
+    shift
+    case "$sub" in
+        -h | --help) usage ;;
+        new) script_new "$@" ;;
+        migrate) script_migrate "$@" ;;
+        *) fail "unknown subcommand: $sub"$'\n'"$(usage)" ;;
     esac
 }
 

@@ -28,9 +28,11 @@ setup() {
     BIN="${BATS_TEST_TMPDIR}/bin"
     mkdir -p "$BIN"
     export GH_TRACE="${BATS_TEST_TMPDIR}/gh-trace"
+    export GUM_TRACE="${BATS_TEST_TMPDIR}/gum-trace"
     export GUM_ANSWERS="${BATS_TEST_TMPDIR}/gum-answers"
     export GUM_CURSOR="${BATS_TEST_TMPDIR}/gum-cursor"
     : >"$GH_TRACE"
+    : >"$GUM_TRACE"
     : >"$GUM_ANSWERS"
     echo 0 >"$GUM_CURSOR"
     write_fake_gh
@@ -72,10 +74,13 @@ EOF
 }
 
 # `gum input` and `gum choose` pop the next line of $GUM_ANSWERS. `gum style`
-# echoes its non-flag arguments so report text stays visible in $output.
+# echoes its non-flag arguments so report text stays visible in $output. Every
+# invocation records its full argv to $GUM_TRACE so tests can assert that script
+# mode never reaches for an interactive prompt (`gum input`/`gum choose`).
 write_fake_gum() {
     cat >"$BIN/gum" <<'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >>"$GUM_TRACE"
 sub="$1"
 shift
 case "$sub" in
@@ -198,6 +203,16 @@ refute_trace() {
     ! grep -q -- "$1" "$GH_TRACE" || {
         echo "unexpected gh invocation matching '$1':" >&2
         cat "$GH_TRACE" >&2
+        return 1
+    }
+}
+
+# Fails if `gum <sub>` was ever invoked. Anchored on the first argv word so a
+# subcommand name appearing inside `gum style` report text can't false-positive.
+refute_gum() {
+    ! grep -qE "^$1( |\$)" "$GUM_TRACE" || {
+        echo "unexpected gum invocation of '$1':" >&2
+        cat "$GUM_TRACE" >&2
         return 1
     }
 }
@@ -636,4 +651,95 @@ EOF
 
 @test "removed: the ci manifest template is gone" {
     [ ! -e "$KIT/templates/ci-manifest.yml" ]
+}
+
+# ── script mode: non-interactive invocation for agents ────────────────────
+# Any argument switches setup-project out of the TUI. The interactive prompts
+# (gum input / gum choose) must NEVER fire in this mode; flags carry the answers.
+
+@test "script mode: migrate --dir completes the migration with no interactive prompt" {
+    make_repo
+    publish_dev
+    write_bespoke_justfile
+    commit_all justfile
+    run "$SETUP" migrate --dir "$REPO"
+    [ "$status" -eq 0 ]
+    # The migration actually ran: branch pushed, PR opened, auto-merge armed.
+    git -C "$ORIGIN" show-ref --verify --quiet "refs/heads/$CI_SETUP_BRANCH_NAME"
+    assert_trace 'pr create --base dev'
+    # ...without ever prompting.
+    refute_gum input
+    refute_gum choose
+}
+
+@test "script mode: migrate defaults --dir to the current directory" {
+    make_repo
+    publish_dev
+    write_bespoke_justfile
+    commit_all justfile
+    run bash -c "cd '$REPO' && '$SETUP' migrate"
+    [ "$status" -eq 0 ]
+    git -C "$ORIGIN" show-ref --verify --quiet "refs/heads/$CI_SETUP_BRANCH_NAME"
+    refute_gum input
+    refute_gum choose
+}
+
+@test "script mode: new without --name fails loudly naming --name" {
+    run "$SETUP" new --language rust
+    [ "$status" -ne 0 ]
+    echo "$output" | grep -q -- '--name'
+    refute_gum input
+    refute_gum choose
+}
+
+@test "script mode: new without --language fails loudly naming --language" {
+    run "$SETUP" new --name my-project
+    [ "$status" -ne 0 ]
+    echo "$output" | grep -q -- '--language'
+    refute_gum input
+    refute_gum choose
+}
+
+@test "script mode: new with an invalid --language fails loudly" {
+    run "$SETUP" new --name my-project --language cobol
+    [ "$status" -ne 0 ]
+    echo "$output" | grep -qi 'language'
+    refute_gum input
+    refute_gum choose
+}
+
+@test "script mode: --help prints usage and exits 0" {
+    run "$SETUP" --help
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qi 'usage'
+    echo "$output" | grep -q 'setup-project migrate'
+    refute_gum input
+    refute_gum choose
+}
+
+@test "script mode: an unknown subcommand fails loudly" {
+    run "$SETUP" bogus
+    [ "$status" -ne 0 ]
+    echo "$output" | grep -qi 'unknown'
+    refute_gum input
+    refute_gum choose
+}
+
+@test "script mode: an unknown flag fails loudly" {
+    run "$SETUP" migrate --wat
+    [ "$status" -ne 0 ]
+    refute_gum input
+    refute_gum choose
+}
+
+# The zero-arg path still drives the interactive TUI (gum choose + gum input).
+@test "script mode: zero args still drives the interactive prompt" {
+    make_repo
+    publish_dev
+    write_bespoke_justfile
+    commit_all justfile
+    migrate
+    [ "$status" -eq 0 ]
+    grep -qE '^choose( |$)' "$GUM_TRACE"
+    grep -qE '^input( |$)' "$GUM_TRACE"
 }

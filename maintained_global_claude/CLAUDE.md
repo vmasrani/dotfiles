@@ -96,6 +96,21 @@ These rules target failures that produce confident, plausible, wrong output inst
 - **Never build in, or `cp` out of, a tree another session has uncommitted work in** — check `git -C <tree> status --porcelain` first. Relocate changes with `git stash` / `git diff | git apply` scoped to files you actually modified.
 - **Git cleanup is local-only by default.** Never delete remote branches or unmerged work unless explicitly told.
 
+# GitHub projects — issue → worktree → PR → CI
+
+Projects carrying the workflow kit (markers: `.agent-workflow/AGENT_WORKFLOW.md`, `ci-fast`/`ci-deep` recipes in the justfile) follow this protocol BY DEFAULT — don't wait to be told:
+
+- **Lifecycle:** one GitHub Issue owns one branch, one worktree, one PR. Branch from `dev`, target `dev` (main is for release tasks only). Use the skills: `/start-task` → work → `/open-pr` → `/check-pr` (repair red CI) → `/finish-task`.
+- **Gate before pushing:** `just ci-fast` must pass locally in the worktree before a PR is opened. Never open a red PR.
+- **Hard prohibitions:** never push directly to `dev`/`main`, never merge your own PR, never bypass required checks, never force-push shared branches, never touch another task's worktree. All GitHub ops via `gh` (`gh auth status` first); never put tokens in the repo.
+- **The CI contract is exactly two just recipes.** `ci-fast` = everything gating a PR into dev; `ci-deep` = the slow gate on dev pushes and dev→main (minimum honest form: `ci-deep: ci-fast`). Keep ci-fast fast — migrations, service integration, browser checks belong in ci-deep. Never add a recipe that passes while doing nothing; a check that can't run is visibly absent, not silently green.
+- **Required checks are lean by design:** dev PRs gate only on Secret scan + Workflow lint; the Linux `Project checks` job is advisory; the full suite gates dev→main via Deep integration checks. Don't "fix" this posture by making everything required.
+- **Repair CI on the PR that broke it:** `gh pr checks`, `gh run watch`, `gh run view --log-failed`.
+- **Handoffs live on the issue/PR** (goal, verification, remaining risks, next concrete action) — never scattered progress markdown files.
+- **The vendored workflow files are placeholder-free and ordering-sensitive** (e.g. disk reclaim must follow checkout; step comments encode measured failures) — don't reorder steps or strip comments.
+- **Known CI hazards:** a manifest pinning another private repo by git URL fails in CI (the workflow token is single-repo) — feature-gate it out of the CI path or add a deploy key. Never call `uvx <tool>` unpinned in a CI recipe — pin the version or use `uv run`.
+- **Repo without the kit?** Offer `setup-project` instead of hand-rolling CI (idempotent, handles new and existing repos). Agents use its non-interactive mode: `setup-project new --name NAME --language rust|python|javascript [--dir DIR]` or `setup-project migrate [--dir DIR]`; zero args launches the human TUI.
+
 # Design doctrine
 
 - **A substantial change is a smell.** If "add X to every path" touches N places, the duplication is probably the bug — recommend consolidating into one shared primitive first.

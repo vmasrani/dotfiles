@@ -15,6 +15,18 @@ run this single command from anywhere (both scripts are symlinked into
 setup-project
 ```
 
+For non-interactive use (agents, CI, scripts), pass a subcommand and flags — the
+TUI prompts are skipped entirely:
+
+```bash
+setup-project new --name my-project --language rust   # --dir defaults to $PWD/my-project
+setup-project migrate --dir /path/to/existing/repo    # --dir defaults to $PWD
+```
+
+`--language` is one of `rust`, `python`, `javascript`. Run `setup-project --help`
+for the full usage. Any missing required flag, unknown flag, or unknown
+subcommand fails loudly instead of falling back to a prompt.
+
 **New project**: creates the private `sophiaconsulting` repository, installs the
 workflow and a per-language starter `justfile`, pushes `main` and `dev`, and
 applies branch protection. A fresh repo with real starter recipes is green by
