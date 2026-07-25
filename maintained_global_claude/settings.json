@@ -2,8 +2,9 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "env": {
     "USE_BUILTIN_RIPGREP": "1",
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "40"
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "30"
   },
+  "autoCompactWindow": 1000000,
   "permissions": {
     "allow": [
       "Read",
