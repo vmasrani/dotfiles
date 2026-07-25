@@ -19,6 +19,15 @@ test:
 build:
     npm run build
 
+# Fast pre-push gate: formatting + lint, NO tests. `.githooks/pre-push` runs
+# this, so keep it quick -- a slow gate is a bypassed gate.
+pre-push: fmt-check lint
+
+# Install the pre-push gate into this clone. Once per clone, per machine.
+install-hooks:
+    git config core.hooksPath .githooks
+    @echo "git hooks active (core.hooksPath=.githooks); pre-push now runs the lint gate"
+
 ci-fast: fmt-check lint typecheck test build
 
 # Grow this as real integration/e2e suites appear.

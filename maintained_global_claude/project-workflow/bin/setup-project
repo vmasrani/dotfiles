@@ -115,7 +115,10 @@ new_project() {
     root="$(repo_root "$directory")"
     "$WORKFLOW" init --dir "$root"
     copy_starter_justfile "$root" "$language"
-    git -C "$root" add CLAUDE.md .agent-workflow .github justfile
+    git -C "$root" add CLAUDE.md .agent-workflow .github .githooks justfile
+    # core.hooksPath is per-clone local config and cannot be committed, so arm
+    # it here for THIS clone. Every other clone runs `just install-hooks` once.
+    git -C "$root" config core.hooksPath .githooks
     git -C "$root" commit -m 'add agent workflow'
     git -C "$root" branch -M main
     git -C "$root" push -u origin main
@@ -124,7 +127,8 @@ new_project() {
     "$WORKFLOW" gh-setup --dir "$root" --apply
     gum style --border rounded --border-foreground 46 --padding '1 2' \
         "Ready: $root" \
-        'main and dev are protected; the starter justfile recipes are yours to edit.'
+        'main is ruleset-protected and the pre-push hook is armed in this clone;' \
+        'the starter justfile recipes are yours to edit.'
 }
 
 # True when the justfile defines a recipe named $2. Matches `name:`, `name arg:`,
@@ -165,7 +169,7 @@ detect_check_recipes() {
 # surprising, destructive-in-spirit change. Idempotent: a second run finds both
 # recipes and adds nothing.
 ensure_ci_recipes() {
-    local root="$1" justfile block="" checks
+    local root="$1" justfile block="" checks name fast_checks
     justfile="$root/justfile"
     [[ -f "$justfile" ]] || justfile="$root/Justfile"
     [[ -f "$justfile" ]] || fail "no justfile in $root to add ci-fast/ci-deep to; create one first"
@@ -182,16 +186,39 @@ ensure_ci_recipes() {
         fi
     fi
     grep -Eq '^ci-deep[ :]' "$justfile" || block+=$'ci-deep: ci-fast\n'
+    # The local pre-push gate. Aggregates only the format/lint groups that this
+    # justfile actually has -- never `test`, because a push gate slow enough to
+    # be bypassed is worse than none. If the project has neither, the recipe is
+    # emitted as a loud failure rather than an empty body that would report a
+    # passing gate while checking nothing.
+    if ! grep -Eq '^pre-push[ :]' "$justfile"; then
+        local fast_checks=""
+        for name in fmt-check format-check fmt format; do
+            recipe_exists "$justfile" "$name" && { fast_checks="$name"; break; }
+        done
+        for name in lint clippy; do
+            recipe_exists "$justfile" "$name" && { fast_checks="${fast_checks:+$fast_checks }$name"; break; }
+        done
+        if [[ -n "$fast_checks" ]]; then
+            block+="pre-push: $fast_checks"$'\n'
+        else
+            block+=$'pre-push:\n    @echo "setup-project: no fmt/lint recipe found; edit pre-push to run this project\'s real fast checks" >&2; exit 1\n'
+        fi
+    fi
+    grep -Eq '^install-hooks[ :]' "$justfile" || block+=$'install-hooks:\n    git config core.hooksPath .githooks\n    @echo "git hooks active (core.hooksPath=.githooks); pre-push now runs the lint gate"\n'
     [[ -n "$block" ]] || return 0
     {
-        printf '\n# ── CI contract (added by setup-project) ─────────────────────────────\n'
+        printf '\n# ── Agent workflow contract (added by setup-project) ─────────────────\n'
         # shellcheck disable=SC2016  # backticks are literal justfile-comment text
         printf '# CI runs `just ci-fast` on PRs into dev and `just ci-deep` on dev->main.\n'
-        printf "# Edit these to aggregate THIS project's real recipes; they are the only\n"
-        printf '# two names CI knows. Nothing else in this file was touched.\n'
+        # shellcheck disable=SC2016  # backticks are literal justfile-comment text
+        printf '# `just pre-push` is the LOCAL gate that .githooks/pre-push runs; dev has\n'
+        printf '# no required checks on the server, so this is the only thing in front of\n'
+        printf '# a direct push to it. Edit these to aggregate THIS project\x27s real\n'
+        printf '# recipes. Nothing else in this file was touched.\n'
         printf '%s' "$block"
     } >>"$justfile"
-    gum style --foreground 46 "Appended the missing ci-fast/ci-deep recipe(s) to the justfile"
+    gum style --foreground 46 "Appended the missing contract recipe(s) to the justfile"
 }
 
 # True when dev already carries the workflow files and both contract recipes --
@@ -232,7 +259,7 @@ existing_project() {
     ensure_dev "$root"
 
     if already_set_up "$root"; then
-        gum style --foreground 46 "CI is already set up on dev; re-applying branch protection only"
+        gum style --foreground 46 "CI is already set up on dev; re-applying labels and ruleset opt-in only"
         "$WORKFLOW" gh-setup --dir "$root" --repo "$repo" --apply
         return
     fi
@@ -259,7 +286,10 @@ existing_project() {
     # branch -- the user edits the recipe, commits, and re-runs without fighting
     # `ensure_clean`. The commit is local only; the gate below is what guards the
     # push.
-    git -C "$root" add CLAUDE.md .agent-workflow .github justfile
+    git -C "$root" add CLAUDE.md .agent-workflow .github .githooks justfile
+    # core.hooksPath is per-clone local config and cannot be committed, so arm
+    # it here for THIS clone. Every other clone runs `just install-hooks` once.
+    git -C "$root" config core.hooksPath .githooks
     if git -C "$root" diff --cached --quiet; then
         gum style --foreground 214 "Nothing new to commit; the branch already carries the setup"
     else
@@ -282,10 +312,11 @@ existing_project() {
         pr_url="$(gh_in_repo "$root" pr create --base dev --fill)"
     fi
 
-    # Protect dev/main, then hand the merge to GitHub: auto-merge lands the PR
-    # once the REQUIRED checks (Secret scan + Workflow lint) are green. The
-    # advisory Linux build does not gate it, so this never blocks on a cold
-    # build, and a real secret leak (red Secret scan) keeps the PR unmerged.
+    # Opt the repo into the org ruleset, then TRY to hand the merge to GitHub.
+    # Auto-merge only arms when the base branch has something to wait for, and
+    # dev deliberately has no required checks -- so on most repos this does not
+    # arm, and the else-branch below tells the truth about that rather than
+    # claiming a merge is pending that never comes.
     "$WORKFLOW" gh-setup --dir "$root" --repo "$repo" --apply
     gh_in_repo "$root" repo edit --enable-auto-merge >/dev/null 2>&1 || true
     gh_in_repo "$root" pr merge "$pr_url" --squash --auto --delete-branch >/dev/null 2>&1 || armed=no
@@ -300,14 +331,15 @@ existing_project() {
         gum style --border rounded --border-foreground 46 --padding '1 2' \
             "CI set up for $repo" \
             "PR: $pr_url" \
-            'Auto-merge is armed: GitHub merges it once Secret scan + Workflow lint pass.' \
-            "dev and main are protected. Your tree is back on ${orig_branch:-its original branch}."
+            'Auto-merge is armed: GitHub lands it once the checks pass.' \
+            "main is ruleset-protected; dev takes direct pushes, gated locally by" \
+            "the pre-push hook. Your tree is back on ${orig_branch:-its original branch}."
     else
         gum style --border rounded --border-foreground 214 --padding '1 2' \
-            "CI set up for $repo, PR open but auto-merge NOT armed" \
+            "CI set up for $repo; PR is open and waiting for you to merge it" \
             "PR: $pr_url" \
-            "Enable 'Allow auto-merge' in the repo settings, or merge the PR" \
-            'yourself once Secret scan + Workflow lint are green.'
+            'Auto-merge did not arm -- expected when dev has no required checks.' \
+            'Review the run, then merge it yourself.'
     fi
 }
 

@@ -28,9 +28,16 @@ for the full usage. Any missing required flag, unknown flag, or unknown
 subcommand fails loudly instead of falling back to a prompt.
 
 **New project**: creates the private `sophiaconsulting` repository, installs the
-workflow and a per-language starter `justfile`, pushes `main` and `dev`, and
-applies branch protection. A fresh repo with real starter recipes is green by
-construction.
+workflow, a per-language starter `justfile` and the `.githooks/pre-push` gate,
+pushes `main` and `dev`, and opts the repo into the strict `main` ruleset. A
+fresh repo with real starter recipes is green by construction.
+
+Branch rules are **not** applied per repository any more. They live once as org
+rulesets (see `rulesets/`), already cover every repo including ones that do not
+exist yet, and the only per-repo step is flipping the `agent-workflow` custom
+property. `dev` intentionally carries no required checks so direct pushes keep
+working; `.githooks/pre-push` is the gate on that path, and it runs
+`just pre-push` (format + lint, never tests).
 
 **Existing project**: creates `dev` when needed, installs the workflow files,
 runs `check`, and stops at a report. It never commits, pushes, or opens a PR —

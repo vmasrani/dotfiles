@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+# Pre-push gate installed by `just install-hooks` (sets core.hooksPath=.githooks).
+#
+# WHY THIS EXISTS: `dev` allows direct pushes on purpose, so nothing on the
+# server stands between a local commit and a break landing on the integration
+# branch. This hook is that gate, and it is the ONLY one for a direct push.
+#
+# It runs `just pre-push` -- the project's own fast, no-tests aggregate
+# (conventionally `fmt-check` + `lint`). Tests are deliberately NOT here: a
+# push gate that takes minutes gets bypassed, and a bypassed gate is worse
+# than no gate. The full suite runs in CI.
+#
+# Install once per clone:  just install-hooks
+# Bypass in a pinch:       git push --no-verify
+set -e
+
+if ! command -v just >/dev/null 2>&1; then
+    echo "pre-push: 'just' is not installed, so the lint gate cannot run." >&2
+    echo "pre-push: install just, or push with --no-verify to skip deliberately." >&2
+    exit 1
+fi
+
+# A missing `pre-push` recipe is a setup error, not a reason to wave the push
+# through: silently succeeding here would make an uninstalled gate and a passing
+# gate look identical from the outside.
+if ! just --list --unsorted 2>/dev/null | awk '{print $1}' | grep -Fxq pre-push; then
+    echo "pre-push: this project has no 'pre-push' recipe in its justfile." >&2
+    echo "pre-push: add one (conventionally 'pre-push: fmt-check lint'), or run" >&2
+    echo "pre-push: 'git config --unset core.hooksPath' to remove the gate." >&2
+    exit 1
+fi
+
+echo "pre-push: just pre-push"
+just pre-push
+echo "pre-push: clean ✓"

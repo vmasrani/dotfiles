@@ -22,6 +22,16 @@ readonly TEMPLATE_DIR="$KIT_DIR/templates"
 # (fmt-check, lint, test, ...) are project convention, not contract.
 readonly CONTRACT_RECIPES=(ci-fast ci-deep)
 
+# What the pre-push hook executes. Separate from CONTRACT_RECIPES because CI
+# never runs it: this is the LOCAL gate, and it is the only thing standing in
+# front of a direct push to dev (which the org ruleset deliberately allows).
+readonly HOOK_RECIPE=pre-push
+
+# The org that owns these repos, and the custom property whose value decides
+# whether the strict main ruleset applies. See rulesets/README.md.
+readonly ORG=sophiaconsulting
+readonly WORKFLOW_PROPERTY=agent-workflow
+
 usage() {
     cat <<'EOF'
 Usage:
@@ -101,7 +111,12 @@ init() {
     copy_missing "$TEMPLATE_DIR/issue_task.md" "$root/.github/ISSUE_TEMPLATE/agent-task.md"
     copy_missing "$TEMPLATE_DIR/ci-fast.yml" "$root/.github/workflows/agent-fast.yml"
     copy_missing "$TEMPLATE_DIR/ci-deep.yml" "$root/.github/workflows/agent-deep.yml"
-    printf "\nNext: add the ci-fast and ci-deep recipes, run \`project-workflow check --dir %s\`, then review the Git diff.\n" "$root"
+    # The hook file only ARMS the gate; `just install-hooks` points git at it.
+    # Shipping the file without activating it is intentional -- core.hooksPath is
+    # per-clone local config, so it cannot be committed on the user's behalf.
+    copy_missing "$TEMPLATE_DIR/pre-push" "$root/.githooks/pre-push"
+    chmod +x "$root/.githooks/pre-push"
+    printf "\nNext: add the ci-fast, ci-deep and pre-push recipes, run \`just install-hooks\`,\nthen \`project-workflow check --dir %s\` and review the Git diff.\n" "$root"
 }
 
 has_recipe() {
@@ -114,6 +129,7 @@ suggested_body() {
     case "$1" in
         ci-fast) printf 'ci-fast: fmt-check lint test  # aggregate your existing fast checks' ;;
         ci-deep) printf 'ci-deep: ci-fast  # plus any real integration/e2e recipes you already have' ;;
+        pre-push) printf 'pre-push: fmt-check lint  # fast LOCAL gate, no tests -- see .githooks/pre-push' ;;
     esac
 }
 
@@ -137,6 +153,7 @@ check() {
         "$root/.github/ISSUE_TEMPLATE/agent-task.md"
         "$root/.github/workflows/agent-fast.yml"
         "$root/.github/workflows/agent-deep.yml"
+        "$root/.githooks/pre-push"
     )
     local file
     for file in "${required_files[@]}"; do
@@ -147,9 +164,19 @@ check() {
             failed=true
         fi
     done
+    # An armed hook file that git is not pointed at is the failure mode this
+    # whole kit exists to prevent: it LOOKS installed and gates nothing. Report
+    # it as a real failure, not a note.
+    if [[ "$(git -C "$root" config --get core.hooksPath || true)" == ".githooks" ]]; then
+        printf 'ok hooks core.hooksPath=.githooks\n'
+    else
+        # shellcheck disable=SC2016  # backticks are literal prose, not a subshell
+        printf 'missing hooks core.hooksPath is not .githooks in this clone; run `just install-hooks`\n' >&2
+        failed=true
+    fi
     if command -v just >/dev/null 2>&1; then
         local recipe
-        for recipe in "${CONTRACT_RECIPES[@]}"; do
+        for recipe in "${CONTRACT_RECIPES[@]}" "$HOOK_RECIPE"; do
             if has_recipe "$root" "$recipe"; then
                 printf 'ok recipe %s\n' "$recipe"
             else
@@ -191,31 +218,35 @@ gh_setup() {
 Review and then run:
   project-workflow gh-setup --dir $root --repo $repository --apply
 
-This will create/update the task labels and protect dev/main. It requires both
-branches to exist. Required status checks are LEAN by design:
-  dev  <- Secret scan, Workflow lint        (cheap; every feature PR)
-  main <- Deep integration checks           (the full suite; dev->main only)
-The Project checks job still runs on dev PRs but is ADVISORY -- it covers Linux
-without making a feature PR wait on a cold build. Add "Project checks" to the
-dev contexts below to make it blocking.
+This creates the task labels and opts the repo into the strict main ruleset by
+setting the '$WORKFLOW_PROPERTY' custom property to true.
+
+Branch rules themselves are NOT set here. They live once, at the org level, and
+already cover every repo including ones that do not exist yet:
+  baseline-history-protection  all repos, main/master/dev: no force-push, no delete
+  agent-workflow-main-strict   opted-in repos, main: PR + green Deep integration checks
+dev deliberately has NO required checks, so direct pushes to it keep working;
+the local .githooks/pre-push gate is what guards that path. See rulesets/README.md.
 EOF
         return
     fi
     gh label create task --color 0E8A16 --description 'Agent-owned implementation task' --force -R "$repository"
     gh label create handoff --color 5319E7 --description 'Needs another session to continue' --force -R "$repository"
     gh label create blocked --color B60205 --description 'Blocked on an external decision or state' --force -R "$repository"
-    local temporary
-    temporary="$(mktemp)"
-    cat >"$temporary" <<'EOF'
-{"required_status_checks":{"strict":true,"contexts":["Secret scan","Workflow lint"]},"enforce_admins":true,"required_pull_request_reviews":null,"restrictions":null,"required_linear_history":true,"allow_force_pushes":false,"allow_deletions":false,"block_creations":false,"required_conversation_resolution":true}
-EOF
-    gh api --method PUT "repos/$repository/branches/dev/protection" --input "$temporary"
-    cat >"$temporary" <<'EOF'
-{"required_status_checks":{"strict":true,"contexts":["Deep integration checks"]},"enforce_admins":true,"required_pull_request_reviews":null,"restrictions":null,"required_linear_history":true,"allow_force_pushes":false,"allow_deletions":false,"block_creations":false,"required_conversation_resolution":true}
-EOF
-    gh api --method PUT "repos/$repository/branches/main/protection" --input "$temporary"
-    rm -f "$temporary"
-    printf 'Configured labels and branch protection for %s\n' "$repository"
+
+    # Opting in is a single property flip. This is the whole per-repo protection
+    # step now -- the rules are already defined org-wide and match on this value.
+    gh api --method PATCH "orgs/$ORG/properties/values" \
+        -f "repository_names[]=${repository#*/}" \
+        -F "properties[][property_name]=$WORKFLOW_PROPERTY" \
+        -F 'properties[][value]=true'
+
+    # A ruleset that returned 201 is not a ruleset that applies. Show what
+    # GitHub says is actually in force on main, so a targeting mistake surfaces
+    # here rather than as an unmergeable PR weeks later.
+    printf '\nRules now in force on main for %s:\n' "$repository"
+    gh ruleset check main --repo "$repository" || true
+    printf '\nConfigured labels for %s and opted it into %s.\n' "$repository" "$WORKFLOW_PROPERTY"
 }
 
 main() {
