@@ -127,6 +127,37 @@ new_project() {
         'main and dev are protected; the starter justfile recipes are yours to edit.'
 }
 
+# True when the justfile defines a recipe named $2. Matches `name:`, `name arg:`,
+# and `name *ARGS:` -- the char after the name must be a space or a colon, so
+# `test` never matches `test-corpus:` and `check` never matches `check-links:`.
+recipe_exists() {
+    grep -Eq "^$2( |:)" "$1"
+}
+
+# Picks which of THIS project's existing recipes are the CI checks, in a stable
+# format -> lint -> typecheck -> test order, at most one per group (so a project
+# carrying both `fmt` and `fmt-check` does not format twice). Only recipes that
+# actually exist are returned, so the generated `ci-fast` can never name a recipe
+# `just` will reject -- the exact failure this replaces. This is the "auto
+# defaults adapt to inputs" rule: the aggregate is a function of the justfile's
+# real recipes, not a static Rust-shaped guess.
+detect_check_recipes() {
+    local justfile="$1" picked=() group name
+    for group in \
+        'fmt-check format-check fmt format' \
+        'lint clippy' \
+        'typecheck type-check check mypy tsc' \
+        'test tests pytest'; do
+        for name in $group; do
+            if recipe_exists "$justfile" "$name"; then
+                picked+=("$name")
+                break
+            fi
+        done
+    done
+    printf '%s' "${picked[*]}"
+}
+
 # Appends the two contract recipes to an existing justfile, but ONLY the ones
 # that are absent, and ONLY by appending -- it never edits or deletes a line the
 # project already has. Appended (not prepended) on purpose: in just the FIRST
@@ -134,11 +165,22 @@ new_project() {
 # surprising, destructive-in-spirit change. Idempotent: a second run finds both
 # recipes and adds nothing.
 ensure_ci_recipes() {
-    local root="$1" justfile block=""
+    local root="$1" justfile block="" checks
     justfile="$root/justfile"
     [[ -f "$justfile" ]] || justfile="$root/Justfile"
     [[ -f "$justfile" ]] || fail "no justfile in $root to add ci-fast/ci-deep to; create one first"
-    grep -Eq '^ci-fast[ :]' "$justfile" || block+=$'ci-fast: fmt-check lint test\n'
+    if ! grep -Eq '^ci-fast[ :]' "$justfile"; then
+        checks="$(detect_check_recipes "$justfile")"
+        if [[ -n "$checks" ]]; then
+            block+="ci-fast: $checks"$'\n'
+        else
+            # No recognizable check recipe to aggregate. Emit a ci-fast that FAILS
+            # LOUDLY rather than a body-less recipe that would pass while doing
+            # nothing -- a silent green is worse than a visible gap. The gate below
+            # stops here and tells the user to wire in their real checks.
+            block+=$'ci-fast:\n    @echo "setup-project: no check recipes found in this justfile; edit ci-fast to aggregate this project\'s real checks" >&2; exit 1\n'
+        fi
+    fi
     grep -Eq '^ci-deep[ :]' "$justfile" || block+=$'ci-deep: ci-fast\n'
     [[ -n "$block" ]] || return 0
     {

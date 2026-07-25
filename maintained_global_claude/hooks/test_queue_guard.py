@@ -49,8 +49,15 @@ from shell_tokens import command_heads, skip_env_assigns, tokenize  # noqa: E402
 # Deliberately EXCLUDED as trivial/metadata-only: fmt, metadata, tree, add,
 # remove, update, search, login, --version. Those must stay instant.
 HEAVY_CARGO_VERBS = {"nextest", "test", "build", "check", "clippy", "bench", "install", "miri"}
-# Project recipes that fan out into the above: just test*, just bench-*, just lint*.
-JUST_HEAVY_RE = re.compile(r"\A(?:test|bench|lint)[a-z0-9-]*\Z")
+# Project recipes that fan out into the above: just test*, just bench-*, just lint*,
+# and the two CI-contract recipes. ci-fast/ci-deep were MISSING here until 2026-07-24:
+# they are the aggregate gate every agent runs before opening a PR, and in a
+# python project they fan out to a full pytest suite rather than to cargo, so
+# nothing else in this hook caught them. Ten concurrent agents each running an
+# unqueued `just ci-fast` drove load average to 38 and corrupted a latency
+# measurement by 20x. The CI contract is exactly these two names, so matching
+# them here covers every project that carries the workflow kit.
+JUST_HEAVY_RE = re.compile(r"\A(?:test|bench|lint|ci-fast|ci-deep)[a-z0-9-]*\Z")
 
 
 def _classify_head(tokens, head):

@@ -40,7 +40,7 @@
       "/Users/vmasrani"
     ]
   },
-  "model": "claude-fable-5[1m]",
+  "model": "opus[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -119,7 +119,6 @@
     }
   },
   "effortLevel": "high",
-  "fastMode": true,
   "showClearContextOnPlanAccept": true,
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,
