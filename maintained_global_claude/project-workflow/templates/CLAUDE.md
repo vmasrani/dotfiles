@@ -21,9 +21,10 @@ plus ONE comment on the lowest-numbered issue; land one commit per issue; put
 one `Closes #<n>` line per issue plus a per-issue checklist in the PR body.
 If a batched issue turns out non-mechanical, eject it: drop its commits,
 remove its label, unassign, comment, and finish the rest. A fast-lane PR is
-merged into `dev` by its author with `gh pr merge --merge` (never squash) once
-it is mergeable-green: required checks passing, any advisory red verified
-pre-existing on the base branch — no separate review agent. All other gates
+merged into `dev` by its author with `gh pr merge --merge` (`--rebase` where
+merge commits are forbidden; never squash) once it is mergeable-green:
+required checks passing, any advisory red verified pre-existing on the base
+branch — no separate review agent. All other gates
 apply unchanged. Full rules: `.agent-workflow/AGENT_WORKFLOW.md`.
 
 Never directly push to `dev` or `main`, bypass required checks, force-push
@@ -33,7 +34,8 @@ Merging into `dev` is scoped by complexity. A PR whose linked issues all
 carry the `fast-lane` label, or a kit-generated `chore/policy-sync` PR, may
 be merged into `dev` by its author once it is mergeable-green (required
 checks passing; a failing advisory check blocks only if this PR introduced
-the failure) — use a merge commit (`gh pr merge --merge`), never squash. Every other PR requires a
+the failure) — preserve per-issue commits: `gh pr merge --merge`, or
+`--rebase` where the repository forbids merge commits; never squash. Every other PR requires a
 separate *review* agent: the merging agent must not be the PR's author; where
 author and reviewer would be the same agent, stop and hand off. **Merges into
 `main` are the user's alone** — no agent merges to `main` under any

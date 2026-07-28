@@ -16,8 +16,8 @@ description: Inspect and repair CI failures for the current pull request using g
    branch's latest run; a red this PR introduced always blocks): if the PR
    qualifies for fast-lane self-merge (every linked issue carries the
    `fast-lane` label, or it is a `chore/policy-sync` PR), merge it now as the
-   author with `gh pr merge --merge` — never squash. Otherwise leave it for a
-   separate review agent.
+   author with `gh pr merge --merge` (`--rebase` if the repo forbids merge
+   commits) — never squash. Otherwise leave it for a separate review agent.
 
 Do not rerun a flaky check without understanding why it failed, and do not
 modify a different task's branch.

@@ -1,4 +1,4 @@
-<!-- policy-version: 4 -->
+<!-- policy-version: 5 -->
 # Agent project workflow policy
 
 This is the canonical, client-neutral policy. The generated `CLAUDE.md` must
@@ -23,8 +23,9 @@ preserve these requirements.
    once it is mergeable-green: every REQUIRED check passing, and any failing
    advisory check verified pre-existing — the same failure on the base
    branch's latest run, not introduced by this pull request. A red this PR
-   caused always blocks. Use a merge commit (`gh pr merge --merge`), never
-   squash, so per-issue commits survive. Every other pull request
+   caused always blocks. Merge so per-issue commits survive: `gh pr merge
+   --merge`, or `--rebase` where the repository forbids merge commits; never
+   squash. Every other pull request
    requires a separate *review* agent: the merging agent must not be the
    author, and where the author and the reviewer would be the same agent, stop
    and hand off instead of merging. Merges into `main` belong to the user
@@ -69,10 +70,10 @@ a mergeable-green PR before merging (see 6), no direct pushes, no merges to
   PR merges into `dev`.
 - **Self-merge on green.** Triage already judged the work mechanical, so a
   fast-lane PR needs no separate review agent: its author merges it into `dev`
-  with `gh pr merge --merge` once the PR is mergeable-green per rule 6 —
-  required checks passing, and any advisory red verified pre-existing on the
-  base branch. Never squash — squashing destroys the one-commit-per-issue
-  history.
+  with `gh pr merge --merge` (or `--rebase` where the repository forbids
+  merge commits) once the PR is mergeable-green per rule 6 — required checks
+  passing, and any advisory red verified pre-existing on the base branch.
+  Never squash — squashing destroys the one-commit-per-issue history.
 - **Eject rule.** The moment a batched issue turns out to need a design
   decision or a wider diff than triaged: drop its commit(s) from the branch,
   remove its `fast-lane` label, unassign it, comment on that issue why it was

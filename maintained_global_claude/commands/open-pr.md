@@ -24,5 +24,6 @@ Never bypass a required check. Merge the PR yourself only when it qualifies
 for fast-lane self-merge — every linked issue carries the `fast-lane` label,
 or it is a `chore/policy-sync` PR — AND it is mergeable-green (required
 checks passing; an advisory red blocks only if this PR introduced it): then
-`gh pr merge --merge` (never squash; per-issue commits must survive).
+`gh pr merge --merge`, or `--rebase` if the repo forbids merge commits
+(never squash; per-issue commits must survive).
 Everything else waits for a separate review agent.

@@ -8,8 +8,9 @@ description: Leave a durable GitHub handoff or completion record for the current
    If the PR is mergeable-green (required checks passing; any advisory red
    verified pre-existing on the base branch) but unmerged and qualifies for
    fast-lane self-merge (every linked issue labeled `fast-lane`, or a
-   `chore/policy-sync` PR), merge it now with `gh pr merge --merge` (never
-   squash) before continuing.
+   `chore/policy-sync` PR), merge it now with `gh pr merge --merge`
+   (`--rebase` if the repo forbids merge commits; never squash) before
+   continuing.
 2. If the task is incomplete, add a concise handoff to both the PR and issue
    (for a batch, the lowest-numbered issue): current state, exact blocker,
    completed verification, remaining action, and worktree/branch name. Apply
