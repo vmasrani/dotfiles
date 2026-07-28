@@ -50,6 +50,18 @@ readonly MANAGED_FILES=(
     "templates/pre-push:.githooks/pre-push"
 )
 
+# A managed file in the TARGET repo opts out of syncing by containing this exact
+# substring, conventionally inside a comment:
+#
+#     # kit-sync: project-owned
+#
+# `sync-policy` then never copies over that file, so a deliberate divergence (a
+# job dropped for cost, a step the project cannot run) survives a kit update
+# instead of being silently clobbered. The marker lives only in the repo's copy,
+# never in the kit source. The trade is permanent while it is there: that file
+# stops receiving upstream template fixes until the marker is deleted.
+readonly OWNERSHIP_MARKER='kit-sync: project-owned'
+
 # The one managed file that has to stay executable after any copy.
 readonly HOOK_DESTINATION=.githooks/pre-push
 
@@ -67,6 +79,8 @@ workflow files exist and the justfile provides `ci-fast` and `ci-deep`.
 `sync-policy` byte-compares the kit-managed files against a repo that already
 ran `init` and, when they differ, opens a pull request into dev that updates
 them. It never merges, and it never touches CLAUDE.md or the justfile.
+A managed file in the repo containing `kit-sync: project-owned` is never synced;
+it is reported as skipped and stops receiving kit updates until that is removed.
 `gh-setup` prints the exact gh commands by default; --apply creates labels and
 applies the branch-protection settings after you have reviewed them.
 EOF
@@ -101,6 +115,11 @@ managed_source() {
 
 managed_destination() {
     printf '%s' "${1#*:}"
+}
+
+# True when the repo's copy of a managed file claims ownership of itself.
+is_project_owned() {
+    grep -qF "$OWNERSHIP_MARKER" "$1" 2>/dev/null
 }
 
 copy_missing() {
@@ -186,11 +205,15 @@ check() {
     done
     local file
     for file in "${required_files[@]}"; do
-        if [[ -f "$file" ]]; then
-            printf 'ok file %s\n' "${file#"$root"/}"
-        else
+        if [[ ! -f "$file" ]]; then
             printf 'missing file %s\n' "${file#"$root"/}" >&2
             failed=true
+        elif is_project_owned "$file"; then
+            # Present and deliberately divergent is a pass: sync-policy will
+            # leave it alone, which is exactly what the marker asks for.
+            printf 'ok (project-owned): %s\n' "${file#"$root"/}"
+        else
+            printf 'ok file %s\n' "${file#"$root"/}"
         fi
     done
     # An armed hook file that git is not pointed at is the failure mode this
@@ -263,14 +286,35 @@ sync_policy() {
         fail "no 'origin' remote in $root; add one before syncing policy"
 
     local -a changed=()
+    local -a skipped=()
     local pair
+    local destination
     for pair in "${MANAGED_FILES[@]}"; do
+        destination="$(managed_destination "$pair")"
+        # An existing copy that carries the ownership marker is never compared
+        # and never copied over -- the divergence is the point.
+        if [[ -f "$root/$destination" ]] && is_project_owned "$root/$destination"; then
+            skipped+=("$destination")
+            continue
+        fi
         # A destination that does not exist yet is a difference, not an error:
         # it means the kit grew a managed file after this repo ran init.
-        cmp -s "$KIT_DIR/$(managed_source "$pair")" "$root/$(managed_destination "$pair")" 2>/dev/null || changed+=("$pair")
+        cmp -s "$KIT_DIR/$(managed_source "$pair")" "$root/$destination" 2>/dev/null || changed+=("$pair")
     done
+    # Skips are reported before any early return, so a repo that opts a file out
+    # can never quietly look like a repo the kit still owns end to end.
+    if ((${#skipped[@]} > 0)); then
+        for destination in "${skipped[@]}"; do
+            printf 'skipped (project-owned): %s\n' "$destination"
+        done
+    fi
     if ((${#changed[@]} == 0)); then
-        printf 'up to date: all %d kit-managed files in %s already match the kit\n' "${#MANAGED_FILES[@]}" "$root"
+        if ((${#skipped[@]} > 0)); then
+            printf 'up to date: %d of %d kit-managed files in %s match the kit; %d project-owned (skipped)\n' \
+                "$((${#MANAGED_FILES[@]} - ${#skipped[@]}))" "${#MANAGED_FILES[@]}" "$root" "${#skipped[@]}"
+        else
+            printf 'up to date: all %d kit-managed files in %s already match the kit\n' "${#MANAGED_FILES[@]}" "$root"
+        fi
         return
     fi
 
@@ -292,7 +336,6 @@ sync_policy() {
     trap "restore_branch '$root' '$starting_branch'" EXIT
 
     local -a changed_destinations=()
-    local destination
     for pair in "${changed[@]}"; do
         destination="$(managed_destination "$pair")"
         changed_destinations+=("$destination")
@@ -312,6 +355,12 @@ sync_policy() {
     for destination in "${changed_destinations[@]}"; do
         body+="- \`$destination\`"$'\n'
     done
+    if ((${#skipped[@]} > 0)); then
+        body+=$'\nNot synced -- these carry the `kit-sync: project-owned` marker:\n'
+        for destination in "${skipped[@]}"; do
+            body+="- \`$destination\`"$'\n'
+        done
+    fi
     body+=$'\nOpened by `project-workflow sync-policy`. Only files the kit owns byte-for-byte\nare touched; CLAUDE.md and the justfile are project-owned and were not changed.\n'
 
     git -C "$root" add -- "${changed_destinations[@]}" || fail "git add failed in $root"

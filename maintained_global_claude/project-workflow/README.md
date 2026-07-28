@@ -74,6 +74,18 @@ repo's vintage is greppable; byte-comparison, not the stamp, decides whether a
 sync is needed. After any change to `policy/` or `templates/` in this kit, run
 `sync-policy` across the active repos.
 
+A repo can keep a deliberate divergence in a managed file by putting the exact
+substring `kit-sync: project-owned` in that file (conventionally in a comment,
+next to the rationale for the divergence). `sync-policy` never copies over a
+marker-carrying file — it reports `skipped (project-owned)` and lists the file
+in the PR body — and `check` shows it as `ok (project-owned)`. The trade is
+explicit: that file stops receiving upstream template fixes until the marker is
+removed. Two failure modes taught us both sides of this line: a deliberately
+trimmed job clobbered back in (→ mark the file project-owned) and a live CI fix
+that never reached the template (→ upstream the fix into `templates/`, don't
+mark). If the change is right for every repo, it belongs in the kit; the marker
+is only for divergences that are right for one repo.
+
 ## Two lanes: strict and fast
 
 The default lifecycle is strict: one issue, one branch, one worktree, one PR.
