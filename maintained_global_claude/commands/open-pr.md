@@ -22,6 +22,7 @@ description: Run fast checks and open the current issue-owned or batch branch as
 
 Never bypass a required check. Merge the PR yourself only when it qualifies
 for fast-lane self-merge — every linked issue carries the `fast-lane` label,
-or it is a `chore/policy-sync` PR — AND every check on it is green: then
+or it is a `chore/policy-sync` PR — AND it is mergeable-green (required
+checks passing; an advisory red blocks only if this PR introduced it): then
 `gh pr merge --merge` (never squash; per-issue commits must survive).
 Everything else waits for a separate review agent.

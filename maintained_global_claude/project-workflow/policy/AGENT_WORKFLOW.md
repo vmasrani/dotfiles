@@ -1,4 +1,4 @@
-<!-- policy-version: 3 -->
+<!-- policy-version: 4 -->
 # Agent project workflow policy
 
 This is the canonical, client-neutral policy. The generated `CLAUDE.md` must
@@ -20,8 +20,11 @@ preserve these requirements.
 6. Merging into `dev` is scoped by complexity. A pull request whose linked
    issues all carry the `fast-lane` label, or a kit-generated
    `chore/policy-sync` pull request, may be merged into `dev` by its author
-   once every check on it is green; use a merge commit (`gh pr merge --merge`),
-   never squash, so per-issue commits survive. Every other pull request
+   once it is mergeable-green: every REQUIRED check passing, and any failing
+   advisory check verified pre-existing — the same failure on the base
+   branch's latest run, not introduced by this pull request. A red this PR
+   caused always blocks. Use a merge commit (`gh pr merge --merge`), never
+   squash, so per-issue commits survive. Every other pull request
    requires a separate *review* agent: the merging agent must not be the
    author, and where the author and the reviewer would be the same agent, stop
    and hand off instead of merging. Merges into `main` belong to the user
@@ -39,7 +42,8 @@ preserve these requirements.
 
 The fast lane loosens per-issue ceremony and the separate-review-agent
 requirement. What it never loosens: a green `just ci-fast` before the PR,
-green checks on the PR before merging, no direct pushes, no merges to `main`.
+a mergeable-green PR before merging (see 6), no direct pushes, no merges to
+`main`.
 
 - **Eligibility is decided at triage, not by the implementing agent.** Only
   issues carrying the `fast-lane` label may use the fast lane. The label marks
@@ -65,8 +69,10 @@ green checks on the PR before merging, no direct pushes, no merges to `main`.
   PR merges into `dev`.
 - **Self-merge on green.** Triage already judged the work mechanical, so a
   fast-lane PR needs no separate review agent: its author merges it into `dev`
-  with `gh pr merge --merge` once every check on the PR is green. Never
-  squash — squashing destroys the one-commit-per-issue history.
+  with `gh pr merge --merge` once the PR is mergeable-green per rule 6 —
+  required checks passing, and any advisory red verified pre-existing on the
+  base branch. Never squash — squashing destroys the one-commit-per-issue
+  history.
 - **Eject rule.** The moment a batched issue turns out to need a design
   decision or a wider diff than triaged: drop its commit(s) from the branch,
   remove its `fast-lane` label, unassign it, comment on that issue why it was
