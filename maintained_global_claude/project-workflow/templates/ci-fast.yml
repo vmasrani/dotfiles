@@ -80,6 +80,17 @@ jobs:
         with:
           node-version: 22
       - uses: taiki-e/install-action@just
+      # setup-node above installs a node RUNTIME, not dependencies. The JS
+      # checks inside ci-fast need an installed tree and deliberately refuse to
+      # create one -- they fail loud instead. Deep CI hit exactly that (run
+      # 30227033020, `typecheck-apps`, no node_modules on the runner); this
+      # workflow shares the recipe and had the same hole, unnoticed only because
+      # no PR had opened yet. Installing is setup, so it lives here rather than
+      # inside a gate. Keyed on a lockfile, not package.json: `npm ci` requires
+      # one and errors without it. Must follow install-action@just.
+      - name: Install JS dependencies
+        if: hashFiles('**/package-lock.json') != ''
+        run: just install-js
       - name: Run fast project checks
         # Debug info is the single largest consumer of disk, RAM and link time
         # in a Rust CI build, and it is nearly worthless on a runner you cannot
