@@ -81,9 +81,11 @@ Issues labeled `fast-lane` (a triage decision — `gh-setup` creates the label,
 a human or dedicated triage pass applies it, never the implementing agent) may
 be batched 2–4 per branch/PR: claim by assignment plus one comment on the lead
 issue, one commit per issue so revert/bisect stay per-issue, one `Closes #<n>`
-line per issue in the PR body. All gates — green `ci-fast`, non-author review,
-no self-merge — apply unchanged; only the per-issue ceremony collapses. Full
-rules live in `policy/AGENT_WORKFLOW.md`.
+line per issue in the PR body. Green `ci-fast` and green PR checks still gate
+everything, but fast-lane PRs (and kit-generated `chore/policy-sync` PRs) are
+merged into `dev` by their author on green — the separate-review-agent
+requirement is reserved for strict-lane PRs, and `main` remains the user's
+alone. Full rules live in `policy/AGENT_WORKFLOW.md`.
 
 ## CI contract
 

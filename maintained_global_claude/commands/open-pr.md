@@ -20,4 +20,8 @@ description: Run fast checks and open the current issue-owned or batch branch as
 5. Report the PR URL with `gh issue comment`: on the issue (strict lane) or on
    the batch's lowest-numbered issue only (fast lane).
 
-Never merge the PR yourself or bypass a required check.
+Never bypass a required check. Merge the PR yourself only when it qualifies
+for fast-lane self-merge — every linked issue carries the `fast-lane` label,
+or it is a `chore/policy-sync` PR — AND every check on it is green: then
+`gh pr merge --merge` (never squash; per-issue commits must survive).
+Everything else waits for a separate review agent.
