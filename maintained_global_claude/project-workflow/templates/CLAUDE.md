@@ -12,6 +12,18 @@ is in `.agent-workflow/AGENT_WORKFLOW.md` and is binding.
 5. Use `gh pr checks`, `gh run watch`, and `gh run view --log-failed` to repair
    failed CI on this PR only. Comment the handoff or result on the PR/issue.
 
+## Fast lane
+
+Issues labeled `fast-lane` (label applied at triage — never by the agent
+implementing them) may be batched 2–4 per branch/worktree/PR on a
+`batch-<n1>-<n2>-<suffix>` branch. Claim the batch by assigning every issue
+plus ONE comment on the lowest-numbered issue; land one commit per issue; put
+one `Closes #<n>` line per issue plus a per-issue checklist in the PR body.
+If a batched issue turns out non-mechanical, eject it: drop its commits,
+remove its label, unassign, comment, and finish the rest. This loosens
+ceremony only — every gate below applies unchanged. Full rules:
+`.agent-workflow/AGENT_WORKFLOW.md`.
+
 Never directly push to `dev` or `main`, bypass required checks, force-push
 shared branches, or leave untracked progress documents.
 

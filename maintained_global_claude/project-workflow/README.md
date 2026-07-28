@@ -49,14 +49,41 @@ opening one from setup. Both `init` and `check` are idempotent, so re-running
 For scripting or advanced use:
 
 ```bash
-project-workflow init  --dir /absolute/path/to/project
-project-workflow check --dir /absolute/path/to/project
+project-workflow init        --dir /absolute/path/to/project
+project-workflow check       --dir /absolute/path/to/project
+project-workflow sync-policy --dir /absolute/path/to/project
 ```
 
 `init` never replaces an existing instruction, workflow, or `justfile`. It adds
 a short managed policy link to an existing `CLAUDE.md` and uses its own
 `agent-fast.yml`/`agent-deep.yml` workflow names, so existing project automation
 is preserved.
+
+## Keeping existing projects in sync
+
+`init` copies kit files once; without a sync mechanism, existing projects stay
+frozen on whatever policy text they were born with. `project-workflow
+sync-policy --dir <repo>` byte-compares every verbatim-managed file (the
+vendored policy, workflow files, pre-push hook, PR/issue templates) against the
+kit's canonical copies. If everything matches it reports up to date and exits;
+otherwise it opens a `chore/policy-sync` PR into `dev` carrying exactly the
+changed managed files. It never touches merged or generated files (`justfile`,
+the project `CLAUDE.md`), never pushes to `dev` directly, and never merges its
+own PR. The canonical policy carries a `<!-- policy-version: N -->` stamp so a
+repo's vintage is greppable; byte-comparison, not the stamp, decides whether a
+sync is needed. After any change to `policy/` or `templates/` in this kit, run
+`sync-policy` across the active repos.
+
+## Two lanes: strict and fast
+
+The default lifecycle is strict: one issue, one branch, one worktree, one PR.
+Issues labeled `fast-lane` (a triage decision — `gh-setup` creates the label,
+a human or dedicated triage pass applies it, never the implementing agent) may
+be batched 2–4 per branch/PR: claim by assignment plus one comment on the lead
+issue, one commit per issue so revert/bisect stay per-issue, one `Closes #<n>`
+line per issue in the PR body. All gates — green `ci-fast`, non-author review,
+no self-merge — apply unchanged; only the per-issue ceremony collapses. Full
+rules live in `policy/AGENT_WORKFLOW.md`.
 
 ## CI contract
 
@@ -89,10 +116,12 @@ actually in the tree (`hashFiles('**/Cargo.toml')`, `pyproject.toml`,
 `package.json`), so one template serves every project. Updating projects later
 is a `copy_missing` re-run after deleting the old file.
 
-The secret-scan job uses Gitleaks Action v2. Before applying the kit to an
-organization repository, add the organization-approved `GITLEAKS_LICENSE`
-Actions secret (and grant it to the participating repositories); the action
-requires it for organization-owned repositories.
+The secret-scan job installs the raw `gitleaks` CLI (version-pinned, checksum
+verified) rather than `gitleaks-action`, deliberately: the action demands a
+`GITLEAKS_LICENSE` secret for organization-owned repositories, the raw CLI does
+not. It scans full history and hard-fails on any finding. The escape hatch for
+a confirmed false positive is a fingerprint entry in `.gitleaksignore` — never
+a `.gitleaks.toml` path allowlist, which silently swallows real keys repo-wide.
 
 ## GitHub setup
 

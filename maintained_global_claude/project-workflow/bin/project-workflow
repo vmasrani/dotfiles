@@ -32,16 +32,41 @@ readonly HOOK_RECIPE=pre-push
 readonly ORG=sophiaconsulting
 readonly WORKFLOW_PROPERTY=agent-workflow
 
+# The branch `sync-policy` opens its pull request from.
+readonly SYNC_BRANCH=chore/policy-sync
+
+# Single source of truth for the files the kit owns byte-for-byte, as
+# KIT-RELATIVE-SOURCE:REPO-RELATIVE-DESTINATION. `init` installs them and
+# `sync-policy` re-syncs them, so the two can never drift apart.
+#
+# CLAUDE.md and the justfile are deliberately absent: init seeds them and the
+# project then edits them, so they are per-project files, not managed copies.
+readonly MANAGED_FILES=(
+    "policy/AGENT_WORKFLOW.md:.agent-workflow/AGENT_WORKFLOW.md"
+    "templates/pull_request_template.md:.github/pull_request_template.md"
+    "templates/issue_task.md:.github/ISSUE_TEMPLATE/agent-task.md"
+    "templates/ci-fast.yml:.github/workflows/agent-fast.yml"
+    "templates/ci-deep.yml:.github/workflows/agent-deep.yml"
+    "templates/pre-push:.githooks/pre-push"
+)
+
+# The one managed file that has to stay executable after any copy.
+readonly HOOK_DESTINATION=.githooks/pre-push
+
 usage() {
     cat <<'EOF'
 Usage:
   project-workflow init --dir PATH
   project-workflow check --dir PATH
+  project-workflow sync-policy --dir PATH
   project-workflow gh-setup --dir PATH [--repo OWNER/REPO] [--apply]
 
 `init` creates only missing files. It never replaces an existing project file.
 `check` validates the repository-local contract without running tests: the
 workflow files exist and the justfile provides `ci-fast` and `ci-deep`.
+`sync-policy` byte-compares the kit-managed files against a repo that already
+ran `init` and, when they differ, opens a pull request into dev that updates
+them. It never merges, and it never touches CLAUDE.md or the justfile.
 `gh-setup` prints the exact gh commands by default; --apply creates labels and
 applies the branch-protection settings after you have reviewed them.
 EOF
@@ -66,6 +91,16 @@ gh_in_repo() {
     local root="$1"
     shift
     (cd -- "$root" && gh "$@")
+}
+
+# MANAGED_FILES entries are SOURCE:DESTINATION; these two split them so no
+# caller has to know the encoding.
+managed_source() {
+    printf '%s' "${1%%:*}"
+}
+
+managed_destination() {
+    printf '%s' "${1#*:}"
 }
 
 copy_missing() {
@@ -104,18 +139,16 @@ init() {
     require_command git
     local root
     root="$(project_root "$directory")"
-    copy_missing "$KIT_DIR/policy/AGENT_WORKFLOW.md" "$root/.agent-workflow/AGENT_WORKFLOW.md"
     copy_missing "$TEMPLATE_DIR/CLAUDE.md" "$root/CLAUDE.md"
     ensure_policy_link "$root/CLAUDE.md"
-    copy_missing "$TEMPLATE_DIR/pull_request_template.md" "$root/.github/pull_request_template.md"
-    copy_missing "$TEMPLATE_DIR/issue_task.md" "$root/.github/ISSUE_TEMPLATE/agent-task.md"
-    copy_missing "$TEMPLATE_DIR/ci-fast.yml" "$root/.github/workflows/agent-fast.yml"
-    copy_missing "$TEMPLATE_DIR/ci-deep.yml" "$root/.github/workflows/agent-deep.yml"
     # The hook file only ARMS the gate; `just install-hooks` points git at it.
     # Shipping the file without activating it is intentional -- core.hooksPath is
     # per-clone local config, so it cannot be committed on the user's behalf.
-    copy_missing "$TEMPLATE_DIR/pre-push" "$root/.githooks/pre-push"
-    chmod +x "$root/.githooks/pre-push"
+    local pair
+    for pair in "${MANAGED_FILES[@]}"; do
+        copy_missing "$KIT_DIR/$(managed_source "$pair")" "$root/$(managed_destination "$pair")"
+    done
+    chmod +x "$root/$HOOK_DESTINATION"
     printf "\nNext: add the ci-fast, ci-deep and pre-push recipes, run \`just install-hooks\`,\nthen \`project-workflow check --dir %s\` and review the Git diff.\n" "$root"
 }
 
@@ -146,15 +179,11 @@ check() {
     local root
     local failed=false
     root="$(project_root "$directory")"
-    local required_files=(
-        "$root/CLAUDE.md"
-        "$root/.agent-workflow/AGENT_WORKFLOW.md"
-        "$root/.github/pull_request_template.md"
-        "$root/.github/ISSUE_TEMPLATE/agent-task.md"
-        "$root/.github/workflows/agent-fast.yml"
-        "$root/.github/workflows/agent-deep.yml"
-        "$root/.githooks/pre-push"
-    )
+    local required_files=("$root/CLAUDE.md")
+    local pair
+    for pair in "${MANAGED_FILES[@]}"; do
+        required_files+=("$root/$(managed_destination "$pair")")
+    done
     local file
     for file in "${required_files[@]}"; do
         if [[ -f "$file" ]]; then
@@ -190,6 +219,108 @@ check() {
         failed=true
     fi
     [[ "$failed" == false ]] || exit 1
+}
+
+# The canonical policy file carries `<!-- policy-version: N -->` on its first
+# line. It is a label for humans reading the PR, never the sync decision: the
+# byte-compare is the authority, so a missing stamp is not an error.
+policy_version() {
+    sed -n '1s/^<!-- policy-version: \([0-9][0-9]*\) -->$/\1/p' "$KIT_DIR/policy/AGENT_WORKFLOW.md"
+}
+
+restore_branch() {
+    local root="$1"
+    local branch="$2"
+    git -C "$root" checkout --quiet "$branch" && return
+    printf 'project-workflow: could not return to %s; run: git -C %s checkout %s\n' "$branch" "$root" "$branch" >&2
+}
+
+sync_policy() {
+    local directory=""
+    while (($#)); do
+        case "$1" in
+            --dir) directory="${2:-}"; shift 2 ;;
+            *) fail "unknown sync-policy argument: $1" ;;
+        esac
+    done
+    [[ -n "$directory" ]] || fail "sync-policy requires --dir PATH"
+    require_command git
+    require_command gh
+    require_command cmp
+    local root
+    root="$(project_root "$directory")"
+
+    # Every precondition is checked before anything is written, so a failure
+    # never leaves a half-made branch behind.
+    [[ -f "$root/.agent-workflow/AGENT_WORKFLOW.md" ]] ||
+        fail "$root does not carry the workflow kit (.agent-workflow/AGENT_WORKFLOW.md is missing); run: project-workflow init --dir $root"
+    local dirty
+    dirty="$(git -C "$root" status --porcelain)"
+    [[ -z "$dirty" ]] ||
+        fail "$(printf 'working tree is not clean; commit or stash these first:\n%s' "$dirty")"
+    gh auth status >/dev/null || fail "GitHub CLI is not authenticated; run: gh auth login"
+    git -C "$root" remote get-url origin >/dev/null 2>&1 ||
+        fail "no 'origin' remote in $root; add one before syncing policy"
+
+    local -a changed=()
+    local pair
+    for pair in "${MANAGED_FILES[@]}"; do
+        # A destination that does not exist yet is a difference, not an error:
+        # it means the kit grew a managed file after this repo ran init.
+        cmp -s "$KIT_DIR/$(managed_source "$pair")" "$root/$(managed_destination "$pair")" 2>/dev/null || changed+=("$pair")
+    done
+    if ((${#changed[@]} == 0)); then
+        printf 'up to date: all %d kit-managed files in %s already match the kit\n' "${#MANAGED_FILES[@]}" "$root"
+        return
+    fi
+
+    git -C "$root" fetch --quiet origin || fail "git fetch origin failed in $root"
+    git -C "$root" rev-parse --verify --quiet refs/remotes/origin/dev >/dev/null ||
+        fail "origin has no dev branch; sync-policy targets dev, so create it before syncing"
+    ! git -C "$root" rev-parse --verify --quiet "refs/heads/$SYNC_BRANCH" >/dev/null ||
+        fail "local branch $SYNC_BRANCH already exists; merge or delete the stale sync branch first"
+    ! git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$SYNC_BRANCH" >/dev/null ||
+        fail "origin/$SYNC_BRANCH already exists; merge or delete the stale sync branch first"
+
+    local starting_branch
+    starting_branch="$(git -C "$root" rev-parse --abbrev-ref HEAD)"
+    git -C "$root" checkout --quiet -b "$SYNC_BRANCH" origin/dev ||
+        fail "could not create $SYNC_BRANCH from origin/dev in $root"
+    # From here on the checkout is ours, so put the user back on their branch
+    # however this run ends -- including the fail-loud exits below.
+    # shellcheck disable=SC2064  # expand root/starting_branch now, not at exit
+    trap "restore_branch '$root' '$starting_branch'" EXIT
+
+    local -a changed_destinations=()
+    local destination
+    for pair in "${changed[@]}"; do
+        destination="$(managed_destination "$pair")"
+        changed_destinations+=("$destination")
+        mkdir -p "$(dirname -- "$root/$destination")"
+        cp "$KIT_DIR/$(managed_source "$pair")" "$root/$destination"
+        printf 'updated %s\n' "$destination"
+    done
+    chmod +x "$root/$HOOK_DESTINATION"
+
+    local version
+    local message='chore: sync workflow-kit managed files'
+    local title="$message"
+    version="$(policy_version)"
+    [[ -z "$version" ]] || title="$message (policy v$version)"
+
+    local body="Propagates the current workflow-kit files into this repository."$'\n\n'"Updated files:"$'\n'
+    for destination in "${changed_destinations[@]}"; do
+        body+="- \`$destination\`"$'\n'
+    done
+    body+=$'\nOpened by `project-workflow sync-policy`. Only files the kit owns byte-for-byte\nare touched; CLAUDE.md and the justfile are project-owned and were not changed.\n'
+
+    git -C "$root" add -- "${changed_destinations[@]}" || fail "git add failed in $root"
+    git -C "$root" commit --quiet -m "$message" || fail "git commit failed in $root"
+    git -C "$root" push --quiet -u origin "$SYNC_BRANCH" || fail "git push failed for $SYNC_BRANCH"
+    local pr_url
+    pr_url="$(gh_in_repo "$root" pr create --base dev --head "$SYNC_BRANCH" --title "$title" --body "$body")" ||
+        fail "gh pr create failed for $SYNC_BRANCH"
+    printf '\nopened %s\nReview and merge it yourself; sync-policy never merges.\n' "$pr_url"
 }
 
 gh_setup() {
@@ -233,6 +364,7 @@ EOF
     gh label create task --color 0E8A16 --description 'Agent-owned implementation task' --force -R "$repository"
     gh label create handoff --color 5319E7 --description 'Needs another session to continue' --force -R "$repository"
     gh label create blocked --color B60205 --description 'Blocked on an external decision or state' --force -R "$repository"
+    gh label create fast-lane --color FBCA04 --description 'Pre-triaged mechanical issue; eligible for batching 2-4 per PR' --force -R "$repository"
 
     # Opting in is a single property flip. This is the whole per-repo protection
     # step now -- the rules are already defined org-wide and match on this value.
@@ -256,6 +388,7 @@ main() {
     case "$command" in
         init) init "$@" ;;
         check) check "$@" ;;
+        sync-policy) sync_policy "$@" ;;
         gh-setup) gh_setup "$@" ;;
         -h|--help|help) usage ;;
         *) fail "unknown command: $command" ;;
