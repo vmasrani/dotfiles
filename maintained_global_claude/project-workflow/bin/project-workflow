@@ -368,10 +368,14 @@ EOF
 
     # Opting in is a single property flip. This is the whole per-repo protection
     # step now -- the rules are already defined org-wide and match on this value.
+    # -f (not -F) on the value: the property is value_type=true_false, whose
+    # wire representation is the STRING "true". -F coerces true to a JSON
+    # boolean and the API rejects it with 422 "Data type must be one of:
+    # string, array".
     gh api --method PATCH "orgs/$ORG/properties/values" \
         -f "repository_names[]=${repository#*/}" \
-        -F "properties[][property_name]=$WORKFLOW_PROPERTY" \
-        -F 'properties[][value]=true'
+        -f "properties[][property_name]=$WORKFLOW_PROPERTY" \
+        -f 'properties[][value]=true'
 
     # A ruleset that returned 201 is not a ruleset that applies. Show what
     # GitHub says is actually in force on main, so a targeting mistake surfaces
