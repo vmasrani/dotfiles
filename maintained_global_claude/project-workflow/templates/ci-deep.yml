@@ -50,6 +50,17 @@ jobs:
         with:
           node-version: 22
       - uses: taiki-e/install-action@just
+      # setup-node above installs a node RUNTIME, not dependencies. The JS
+      # checks inside ci-fast -- which ci-deep runs too -- need an installed
+      # tree and deliberately refuse to create one; they fail loud instead.
+      # This job is where that was MEASURED (run 30227033020, `typecheck-apps`,
+      # no node_modules on the runner). Installing is setup, so it lives here
+      # rather than inside a gate. Keyed on a lockfile, not package.json:
+      # `npm ci` requires one and errors without it. Must follow
+      # install-action@just.
+      - name: Install JS dependencies
+        if: hashFiles('**/package-lock.json') != ''
+        run: just install-js
       - name: Run deep project checks
         env:
           CARGO_PROFILE_DEV_DEBUG: line-tables-only

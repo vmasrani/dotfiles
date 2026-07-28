@@ -4,6 +4,14 @@
 # here is convention: rename, split, or delete them as the project grows, as
 # long as `ci-fast` and `ci-deep` keep running real checks.
 
+# Called by ci-fast.yml and ci-deep.yml before any check runs, gated there on a
+# committed package-lock.json. setup-node installs a node RUNTIME only, and the
+# checks below refuse to install for themselves -- they fail loud on a missing
+# tree instead. `npm ci` needs the lockfile and errors without one; that is the
+# intended failure, not a case to paper over with `npm install`.
+install-js:
+    npm ci
+
 fmt-check:
     npx prettier --check .
 
