@@ -1,4 +1,4 @@
-<!-- policy-version: 6 -->
+<!-- policy-version: 7 -->
 # Agent project workflow policy
 
 This is the canonical, client-neutral policy. The generated `CLAUDE.md` must
@@ -56,6 +56,30 @@ preserve these requirements.
     and run a triage pass over them before starting any. Issues accumulated
     and triaged together get deduplicated and batched; issues started one at a
     time each pay the full lifecycle.
+11. Keep a branch mergeable by REBASING it onto its base — never by merging the
+    base into the branch. Where the base requires linear history, a branch that
+    has merged its base into itself can afterwards be merged by no permitted
+    method at all: `--merge` is refused by the protection, `--rebase` reports
+    `rebaseable: false` because replaying the underlying commit re-hits the
+    original conflict, and squashing is forbidden by rule 6. The only exit is
+    rewriting the branch and force-pushing, which rule 5 otherwise discourages.
+    Clear a behind pull request with `gh pr update-branch --rebase`, which
+    rebases without a local force-push. Where the base also sets
+    `required_status_checks.strict`, every pull request must be brought up to
+    date this way before it can merge at all.
+12. Read protection from the BRANCH, not the repository, and read a remote tip
+    from the API, not a local ref — both defaults are confidently stale or
+    wrongly scoped. `allow_merge_commit: true` on the repository is a
+    permission that branch protection overrides, and
+    `gh api repos/<o>/<r>/rules/branches/<b>` does not list the linear-history
+    rule at all; only
+    `gh api repos/<o>/<r>/branches/<b>/protection --jq .required_linear_history.enabled`
+    answers it. Likewise a remote-tracking ref is only as fresh as the last
+    fetch in the worktree you are standing in, and one repository carries many
+    worktrees — read a tip with
+    `gh api repos/<o>/<r>/git/ref/heads/<b> --jq .object.sha`. When a force-push
+    is genuinely unavoidable, pin that value:
+    `git push --force-with-lease=<branch>:<sha>`, never a bare `--force`.
 
 ## Fast lane: batching pre-triaged mechanical issues
 

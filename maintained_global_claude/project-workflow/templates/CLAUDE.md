@@ -58,6 +58,21 @@ issue. The lane drops the issue, never the branch, the gate, or the PR.
 Never directly push to `dev` or `main`, bypass required checks, force-push
 shared branches, or leave untracked progress documents.
 
+**Keep a branch mergeable by rebasing it onto its base, never by merging the
+base into the branch.** Where the base requires linear history, a branch that
+has merged its base into itself can no longer be merged by any permitted
+method — `--merge` is refused, `--rebase` reports `rebaseable: false`, and
+squashing is forbidden — leaving a force-push as the only exit. Clear a behind
+PR with `gh pr update-branch --rebase`. Check protection on the BRANCH
+(`gh api repos/<o>/<r>/branches/<b>/protection --jq
+.required_linear_history.enabled`); the repository's `allow_merge_commit` is a
+permission that branch protection overrides, and the `rules/branches` endpoint
+does not list the rule at all. Read a remote tip from
+`gh api repos/<o>/<r>/git/ref/heads/<b> --jq .object.sha`, never a local
+remote-tracking ref — one repo carries many worktrees and a ref is only as
+fresh as the last fetch where you stand. If a force-push is unavoidable, pin
+that value with `--force-with-lease=<branch>:<sha>`.
+
 Merging into `dev` is scoped by complexity. A PR whose linked issues all
 carry the `fast-lane` label, or any `chore/<slug>` PR opened under the chore
 lane above (including the kit-generated `chore/policy-sync`), may
