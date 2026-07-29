@@ -12,10 +12,28 @@ is in `.agent-workflow/AGENT_WORKFLOW.md` and is binding.
 5. Use `gh pr checks`, `gh run watch`, and `gh run view --log-failed` to repair
    failed CI on this PR only. Comment the handoff or result on the PR/issue.
 
+## Issue granularity
+
+One issue tracks one **invariant**, not one instance of it. Search open and
+recently-closed issues before filing; if the invariant is already tracked, add
+your instance to it. When what you tripped over is one violation of a rule the
+codebase should enforce everywhere, sweep for the siblings and file the rule,
+with the inventory. Findings from one PR review become ONE hardening issue
+with a checklist — never one issue per finding.
+
+A bug-fix PR says whether it fixed the **class** or the **instance**. The class
+is the default: show the sibling sweep, or name the test that fails on the next
+instance. Instance-only is allowed when stated explicitly and the class is
+filed — never silently.
+
+Filed three or more issues you did not start with? Run a triage pass over them
+before starting any.
+
 ## Fast lane
 
-Issues labeled `fast-lane` (label applied at triage — never by the agent
-implementing them) may be batched 2–4 per branch/worktree/PR on a
+Issues labeled `fast-lane` — granted at triage, a SEPARATE ACT over 2+ filed
+issues before any branch exists for them, by the four-part predicate in
+`.agent-workflow/AGENT_WORKFLOW.md` — may be batched 2–4 per branch/worktree/PR on a
 `batch-<n1>-<n2>-<suffix>` branch. Claim the batch by assigning every issue
 plus ONE comment on the lowest-numbered issue; land one commit per issue; put
 one `Closes #<n>` line per issue plus a per-issue checklist in the PR body.
@@ -27,11 +45,22 @@ required checks passing, any advisory red verified pre-existing on the base
 branch — no separate review agent. All other gates
 apply unchanged. Full rules: `.agent-workflow/AGENT_WORKFLOW.md`.
 
+## Chore lane
+
+Work with no decision to record — a formatter run, a lockfile regen, a comment
+typo, a dependency repin, a regenerated artifact — may skip the issue: branch
+`chore/<slug>`, green `just ci-fast`, PR into `dev`, author self-merges on
+mergeable-green. Eligibility is ALL of: no behavior change (no test's expected
+value moves), no decision to explain, mechanically re-derivable or externally
+forced, and nobody would ever search for why it happened. In doubt, file the
+issue. The lane drops the issue, never the branch, the gate, or the PR.
+
 Never directly push to `dev` or `main`, bypass required checks, force-push
 shared branches, or leave untracked progress documents.
 
 Merging into `dev` is scoped by complexity. A PR whose linked issues all
-carry the `fast-lane` label, or a kit-generated `chore/policy-sync` PR, may
+carry the `fast-lane` label, or any `chore/<slug>` PR opened under the chore
+lane above (including the kit-generated `chore/policy-sync`), may
 be merged into `dev` by its author once it is mergeable-green (required
 checks passing; a failing advisory check blocks only if this PR introduced
 the failure) — preserve per-issue commits: `gh pr merge --merge`, or

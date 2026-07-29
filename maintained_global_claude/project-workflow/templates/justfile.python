@@ -3,6 +3,43 @@
 # The CI contract is only the two aggregates at the bottom. Every other recipe
 # here is convention: rename, split, or delete them as the project grows, as
 # long as `ci-fast` and `ci-deep` keep running real checks.
+#
+# ── THE ONE INVARIANT THIS FILE EXISTS TO HOLD ───────────────────────────────
+# A check that cannot run must FAIL, never pass. Every recipe with an external
+# prerequisite -- a binary, a fixture, a built artifact, a credential -- states
+# it with `_require-cmd` / `_require-file` FIRST. A recipe that shrugs at a
+# missing prerequisite and exits 0 is indistinguishable from one that verified
+# the code, and it stays that way until something ships broken.
+#
+# The same rule downstream: pytest markers that skip when a fixture or binary
+# is absent hide real coverage loss. Reconcile the test COUNT against a known
+# baseline, and make a gate that CANNOT run its guarded tests say so and exit
+# non-zero. "Skipped" and "passed" must never be the same observable state.
+
+# Fail loud when a required command is absent. Usage: `_require-cmd uv git`
+_require-cmd +CMDS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    missing=()
+    for c in {{CMDS}}; do command -v "$c" >/dev/null 2>&1 || missing+=("$c"); done
+    if ((${#missing[@]})); then
+        printf 'MISSING PREREQUISITE: %s\n' "${missing[@]}" >&2
+        printf 'These checks cannot run. Install them and re-run -- do not skip past this.\n' >&2
+        exit 1
+    fi
+
+# Fail loud when a required file or directory is absent. Usage:
+# `_require-file fixtures/corpus.parquet`
+_require-file +PATHS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    missing=()
+    for p in {{PATHS}}; do [ -e "$p" ] || missing+=("$p"); done
+    if ((${#missing[@]})); then
+        printf 'MISSING PREREQUISITE: %s\n' "${missing[@]}" >&2
+        printf 'The tests that read these would SKIP and still report success. Refusing.\n' >&2
+        exit 1
+    fi
 
 fmt-check:
     uv run ruff format --check .
@@ -25,7 +62,7 @@ install-hooks:
     git config core.hooksPath .githooks
     @echo "git hooks active (core.hooksPath=.githooks); pre-push now runs the lint gate"
 
-ci-fast: fmt-check lint typecheck test
+ci-fast: (_require-cmd "uv") fmt-check lint typecheck test
 
 # Grow this as real integration/e2e suites appear.
 ci-deep: ci-fast

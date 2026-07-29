@@ -1,9 +1,17 @@
-<!-- policy-version: 5 -->
+<!-- policy-version: 6 -->
 # Agent project workflow policy
 
 This is the canonical, client-neutral policy. The generated `CLAUDE.md` must
 preserve these requirements.
 
+0. Work starts from one GitHub Issue, and an issue tracks one **invariant**,
+   not one instance of it. Before filing, search open and recently-closed
+   issues for the same invariant; if it is already tracked, add your instance
+   to that issue instead of filing a new one. When the thing you tripped over
+   is one violation of a rule the codebase should enforce everywhere, sweep
+   for the other violations and file the rule, with the inventory. Findings
+   from one PR review become ONE hardening issue with a checklist, never one
+   issue per finding.
 1. Work starts from one GitHub Issue. Create and update it with `gh issue`.
 2. One issue owns one branch, one Git worktree, and one pull request — except
    issues labeled `fast-lane`, which may be batched under the fast-lane rules
@@ -18,8 +26,9 @@ preserve these requirements.
 5. Do not push directly to `dev` or `main`, force-push shared branches, bypass
    required checks, or change another task's worktree.
 6. Merging into `dev` is scoped by complexity. A pull request whose linked
-   issues all carry the `fast-lane` label, or a kit-generated
-   `chore/policy-sync` pull request, may be merged into `dev` by its author
+   issues all carry the `fast-lane` label, or any `chore/<slug>` pull request
+   opened under the chore lane below (including the kit-generated
+   `chore/policy-sync`), may be merged into `dev` by its author
    once it is mergeable-green: every REQUIRED check passing, and any failing
    advisory check verified pre-existing — the same failure on the base
    branch's latest run, not introduced by this pull request. A red this PR
@@ -38,6 +47,15 @@ preserve these requirements.
 8. Fast CI must remain fast. Put full migrations, service integration, and
    browser checks in `ci-deep`; never disguise a failed or unavailable check as
    a passing check.
+9. A bug-fix pull request says whether it fixed the **class** or the
+   **instance**. Fixing the class is the default: show the sweep proving no
+   sibling instance remains, or name the test that fails on the next one.
+   Fixing only the instance is allowed when saying so explicitly and filing
+   the class as its own issue — never silently.
+10. When a session has filed three or more issues it did not start with, stop
+    and run a triage pass over them before starting any. Issues accumulated
+    and triaged together get deduplicated and batched; issues started one at a
+    time each pay the full lifecycle.
 
 ## Fast lane: batching pre-triaged mechanical issues
 
@@ -46,12 +64,27 @@ requirement. What it never loosens: a green `just ci-fast` before the PR,
 a mergeable-green PR before merging (see 6), no direct pushes, no merges to
 `main`.
 
-- **Eligibility is decided at triage, not by the implementing agent.** Only
-  issues carrying the `fast-lane` label may use the fast lane. The label marks
-  work triaged as small and mechanical: narrow diff, clear acceptance
-  criteria, no design decision, no cross-cutting refactor. Never add the label
-  to an issue in the same session that implements it — if an unlabeled issue
-  looks mechanical, run it through the strict lane and note that on the issue.
+- **Eligibility is decided at triage, and triage is a separate ACT.** Only
+  issues carrying the `fast-lane` label may use the fast lane. Triage is a
+  distinct pass (`/triage`) over **two or more** already-filed, unlabeled
+  issues, run **before any branch exists for them**. The same session may file
+  an issue and later triage it; what is forbidden is labeling an issue while
+  holding its branch, labeling a single issue in isolation to unlock light
+  ceremony for the work already underway, or labeling to rescue work that has
+  already begun.
+- **The label is granted by a predicate, not by judgement.** Apply `fast-lane`
+  only when ALL of these hold, and record the four answers in the issue body
+  so the grant is auditable:
+  1. the complete file list is known before any code is written, and is ≤3
+     files;
+  2. no new public interface, no schema or data-format change, no new
+     dependency;
+  3. the acceptance criterion is a check that already exists, or one new
+     assertion;
+  4. it is not the issue that motivated the current session's design work.
+  Any "no", or any uncertainty, means the strict lane. A predicate that turns
+  out false during implementation triggers the eject rule below — that is the
+  backstop, and it is not optional.
 - **Batch 2–4 related `fast-lane` issues** into one branch, one worktree, one
   pull request. Name the branch `batch-<n1>-<n2>[-<n3>[-<n4>]]-<short-suffix>`.
   A single `fast-lane` issue keeps its normal `issue-<n>-<suffix>` branch and
@@ -85,3 +118,35 @@ a mergeable-green PR before merging (see 6), no direct pushes, no merges to
   matters. A project disables the fast lane entirely by saying so under its
   `CLAUDE.md` project-specific instructions; absent that, the fast lane is on
   wherever the `fast-lane` label exists.
+
+## Chore lane: work too small to deserve an issue
+
+Some work carries no decision to record, so an issue would be a worse record
+than the diff itself: a formatter run, a lockfile regeneration, a comment typo,
+a dependency repin to a reachable commit, a regenerated artifact. Writing an
+issue for these is ceremony that buys nothing — but committing them straight to
+`dev` buys something worse than nothing, because `dev` is what every in-flight
+worktree branches from and a red `dev` blocks every agent at once.
+
+So the chore lane drops the ISSUE, never the BRANCH, the GATE, or the PR:
+
+- Branch `chore/<short-slug>` from `dev`. No issue, no worktree required — the
+  primary checkout is fine when nothing else is running in it.
+- `just ci-fast` green locally, then a PR into `dev` whose body says in one
+  line what changed and why it needed no issue.
+- The author self-merges on mergeable-green, same bar as the fast lane — rule 6
+  grants this to every `chore/<slug>` branch, generalizing the
+  `chore/policy-sync` exemption it originally carried.
+
+**Eligibility — all four, or it is not a chore:**
+1. No behavior change. If any test's expected value changes, it is not a chore.
+2. No decision to explain. The moment the PR body needs a paragraph of
+   rationale, the rationale belongs on an issue.
+3. Mechanically re-derivable, or externally forced — you could regenerate the
+   diff from a command, or an upstream change compelled it.
+4. Nobody would ever search for why it happened.
+
+When in doubt, file the issue: it costs a minute, and it is the durable record
+that makes the retrospective possible. What costs ten minutes is the branch,
+the gate, the CI run, the review, and the merge — and the chore lane does not
+skip those, because those are the parts that keep `dev` green.

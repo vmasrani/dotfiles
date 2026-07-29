@@ -86,18 +86,32 @@ that never reached the template (→ upstream the fix into `templates/`, don't
 mark). If the change is right for every repo, it belongs in the kit; the marker
 is only for divergences that are right for one repo.
 
-## Two lanes: strict and fast
+## Three lanes: strict, fast, chore
 
-The default lifecycle is strict: one issue, one branch, one worktree, one PR.
-Issues labeled `fast-lane` (a triage decision — `gh-setup` creates the label,
-a human or dedicated triage pass applies it, never the implementing agent) may
-be batched 2–4 per branch/PR: claim by assignment plus one comment on the lead
-issue, one commit per issue so revert/bisect stay per-issue, one `Closes #<n>`
-line per issue in the PR body. Green `ci-fast` and green PR checks still gate
-everything, but fast-lane PRs (and kit-generated `chore/policy-sync` PRs) are
-merged into `dev` by their author on green — the separate-review-agent
-requirement is reserved for strict-lane PRs, and `main` remains the user's
-alone. Full rules live in `policy/AGENT_WORKFLOW.md`.
+The default lifecycle is **strict**: one issue, one branch, one worktree, one
+PR, merged by a separate review agent.
+
+The **fast lane** batches 2–4 issues labeled `fast-lane` into one branch/PR:
+claim by assignment plus one comment on the lead issue, one commit per issue so
+revert/bisect stay per-issue, one `Closes #<n>` line per issue in the PR body,
+author self-merges on green.
+
+The label is granted at **triage — a separate act** (`gh-setup` creates the
+label; a triage pass over 2+ already-filed issues applies it, before any branch
+exists for them). Never label an issue whose branch you already hold, and never
+label a lone issue to lighten ceremony for work already underway. Eligibility
+is a four-part predicate, recorded on the issue: ≤3 files known before any code
+is written; no new interface, schema, or dependency; acceptance is an existing
+check or one assertion; independent of the filing session's design work.
+
+The **chore lane** drops the issue for work that records no decision — a
+formatter run, a lockfile regen, a comment typo, a dependency repin: branch
+`chore/<slug>`, green `ci-fast`, PR into `dev`, author self-merges. It drops
+the issue, never the branch, the gate, or the PR — `dev` is what every
+in-flight worktree branches from.
+
+Green `ci-fast` and green PR checks gate all three lanes, and `main` remains
+the user's alone. Full rules live in `policy/AGENT_WORKFLOW.md`.
 
 ## CI contract
 

@@ -48,6 +48,8 @@ readonly MANAGED_FILES=(
     "templates/ci-fast.yml:.github/workflows/agent-fast.yml"
     "templates/ci-deep.yml:.github/workflows/agent-deep.yml"
     "templates/pre-push:.githooks/pre-push"
+    "templates/tools/hydrate-worktree.sh:.agent-workflow/tools/hydrate-worktree.sh"
+    "templates/tools/README.md:.agent-workflow/tools/README.md"
 )
 
 # A managed file in the TARGET repo opts out of syncing by containing this exact
@@ -122,6 +124,88 @@ is_project_owned() {
     grep -qF "$OWNERSHIP_MARKER" "$1" 2>/dev/null
 }
 
+# Paths the kit managed BEFORE it began recording adoptions, and which a repo
+# is therefore treated as having adopted even with no manifest entry.
+#
+# The list is deliberately SHORT, and the two workflow ymls are deliberately
+# NOT on it. Grandfathering a path means "a difference here is staleness, so
+# overwrite it" -- which is right only for files no project ever edits. It is
+# wrong for `.github/workflows/agent-*.yml`: projects add real per-project steps
+# to those (a dependency install step was clobbered exactly this way), and
+# grandfathering made that loss look like a routine policy bump. They now go
+# through the normal adoption path: byte-identical auto-adopts, anything else is
+# a conflict the human resolves.
+#
+# What stays, and why removing it would false-positive: each of these is
+# kit-authored end to end and is EXPECTED to be stale in every existing repo --
+# `AGENT_WORKFLOW.md` carries a policy-version stamp that this tool exists to
+# bump, and the PR/issue templates and pre-push hook are copied verbatim and
+# never hand-edited. Requiring adoption for them would turn every first sync
+# into a conflict report about files nobody touched.
+#
+# Never add to this list: new managed paths are adopted explicitly.
+readonly LEGACY_MANAGED=(
+    ".agent-workflow/AGENT_WORKFLOW.md"
+    ".github/pull_request_template.md"
+    ".github/ISSUE_TEMPLATE/agent-task.md"
+    ".githooks/pre-push"
+)
+readonly ADOPTION_MANIFEST=".agent-workflow/.kit-manifest"
+
+# True when this repo has agreed to let the kit own this path. `init` and
+# `sync-policy` record every path they write; anything else at a managed path
+# was authored by the project and must not be overwritten on the kit's say-so.
+kit_has_adopted() {
+    local root="$1" path="$2" legacy
+    if [[ -f "$root/$ADOPTION_MANIFEST" ]]; then
+        grep -qxF "$path" "$root/$ADOPTION_MANIFEST" && return 0
+    fi
+    for legacy in "${LEGACY_MANAGED[@]}"; do
+        [[ "$path" == "$legacy" ]] && return 0
+    done
+    return 1
+}
+
+# Append a path to the adoption record, idempotently.
+record_adoption() {
+    local root="$1" path="$2"
+    mkdir -p "$(dirname -- "$root/$ADOPTION_MANIFEST")"
+    if [[ ! -f "$root/$ADOPTION_MANIFEST" ]]; then
+        printf '# Paths this repository has adopted from the workflow kit.\n' >"$root/$ADOPTION_MANIFEST"
+        printf '# sync-policy may update these in place; it refuses to overwrite anything else.\n' >>"$root/$ADOPTION_MANIFEST"
+    fi
+    grep -qxF "$path" "$root/$ADOPTION_MANIFEST" || printf '%s\n' "$path" >>"$root/$ADOPTION_MANIFEST"
+}
+
+# The adoption record is only load-bearing if it travels with the repository: a
+# manifest that stays untracked is invisible in every fresh clone, so the next
+# sync there re-derives adoptions from nothing and reports conflicts on files
+# this run already adopted. Stage it as soon as it is written.
+stage_manifest() {
+    local root="$1"
+    [[ -f "$root/$ADOPTION_MANIFEST" ]] || return 0
+    git -C "$root" add -- "$ADOPTION_MANIFEST" ||
+        fail "could not stage $ADOPTION_MANIFEST in $root; add and commit it by hand before syncing policy"
+}
+
+# True when the manifest's bytes differ from what git has recorded (including
+# "not recorded at all"). Used so a sync PR never claims to update a file it
+# left untouched.
+manifest_is_dirty() {
+    local root="$1"
+    [[ -n "$(git -C "$root" status --porcelain -- "$ADOPTION_MANIFEST")" ]]
+}
+
+# Managed files include shell scripts. A vendored script copied without its
+# executable bit fails at the call site with "permission denied" -- far from the
+# copy that caused it -- so mirror the kit's mode rather than special-casing
+# each executable by name.
+mirror_exec_bit() {
+    local source="$1" destination="$2"
+    [[ -x "$source" ]] && chmod +x "$destination"
+    return 0
+}
+
 copy_missing() {
     local source="$1"
     local destination="$2"
@@ -131,6 +215,7 @@ copy_missing() {
     fi
     mkdir -p "$(dirname -- "$destination")"
     cp "$source" "$destination"
+    mirror_exec_bit "$source" "$destination"
     printf 'created %s\n' "$destination"
 }
 
@@ -166,9 +251,17 @@ init() {
     local pair
     for pair in "${MANAGED_FILES[@]}"; do
         copy_missing "$KIT_DIR/$(managed_source "$pair")" "$root/$(managed_destination "$pair")"
+        # Record only what the kit actually placed. `copy_missing` keeps an
+        # existing project file untouched, and a path the kit did not write is a
+        # path it has not been given, so it must not be recorded as adopted.
+        [[ -f "$root/$(managed_destination "$pair")" ]] &&
+            cmp -s "$KIT_DIR/$(managed_source "$pair")" "$root/$(managed_destination "$pair")" &&
+            record_adoption "$root" "$(managed_destination "$pair")"
     done
     chmod +x "$root/$HOOK_DESTINATION"
-    printf "\nNext: add the ci-fast, ci-deep and pre-push recipes, run \`just install-hooks\`,\nthen \`project-workflow check --dir %s\` and review the Git diff.\n" "$root"
+    stage_manifest "$root"
+    printf "\nNext: add the ci-fast, ci-deep and pre-push recipes, run \`just install-hooks\`,\nthen \`project-workflow check --dir %s\` and review the Git diff.\nCommit %s along with the rest -- it is the record of which files this repo\nlet the kit own, and sync-policy refuses to overwrite anything not in it.\n" \
+        "$root" "$ADOPTION_MANIFEST"
 }
 
 has_recipe() {
@@ -198,15 +291,33 @@ check() {
     local root
     local failed=false
     root="$(project_root "$directory")"
+    # CLAUDE.md is not a managed path -- init seeds it and the project owns it
+    # from then on -- so its absence is always a failure, never an adoption
+    # question. The managed paths are checked against the adoption record below.
     local required_files=("$root/CLAUDE.md")
     local pair
     for pair in "${MANAGED_FILES[@]}"; do
         required_files+=("$root/$(managed_destination "$pair")")
     done
-    local file
+    local file relative
     for file in "${required_files[@]}"; do
+        relative="${file#"$root"/}"
         if [[ ! -f "$file" ]]; then
-            printf 'missing file %s\n' "${file#"$root"/}" >&2
+            # A managed path missing from BOTH the disk and the adoption record
+            # is a path the kit grew after this repo last synced. That is a real
+            # state with a named next action, not a broken repo -- failing here
+            # would red every existing repo the moment the kit adds a file, and
+            # `/start-task` runs this as preflight. It is reported loudly and
+            # distinctly so it can never read as "ok". A path the repo HAS
+            # adopted and then lost is still a hard failure: something deleted a
+            # file this repo agreed the kit owns.
+            if [[ "$relative" != "CLAUDE.md" ]] && ! kit_has_adopted "$root" "$relative"; then
+                # shellcheck disable=SC2016  # backticks are literal prose, not a subshell
+                printf 'pending adoption %s; the kit added it after this repo last synced -- run `project-workflow sync-policy --dir %s`\n' \
+                    "$relative" "$root"
+                continue
+            fi
+            printf 'missing file %s\n' "$relative" >&2
             failed=true
         elif is_project_owned "$file"; then
             # Present and deliberately divergent is a pass: sync-policy will
@@ -287,20 +398,61 @@ sync_policy() {
 
     local -a changed=()
     local -a skipped=()
+    local -a conflicts=()
+    local -a auto_adopted=()
     local pair
     local destination
+    local source
     for pair in "${MANAGED_FILES[@]}"; do
         destination="$(managed_destination "$pair")"
+        source="$KIT_DIR/$(managed_source "$pair")"
         # An existing copy that carries the ownership marker is never compared
         # and never copied over -- the divergence is the point.
         if [[ -f "$root/$destination" ]] && is_project_owned "$root/$destination"; then
             skipped+=("$destination")
             continue
         fi
+        # ADOPTION. When the kit ADDS a path to MANAGED_FILES, a repo that
+        # already had its own file there would be silently overwritten by the
+        # next sync -- the repo loses project-specific content it never agreed
+        # to hand over, and the loss looks like a routine policy bump. That has
+        # already happened once (a policy sync clobbered a workflow's install
+        # step), so the decision is made per file, on bytes:
+        #
+        #   byte-identical to the kit source -> nothing of the project's can be
+        #     lost by adopting it, so adopt it silently and carry on. This is
+        #     the common case for a repo that installed the file from this same
+        #     kit and never touched it.
+        #   different, and never adopted     -> CONFLICT. Reported and skipped,
+        #     never overwritten. This is the branch the workflow ymls now reach
+        #     when a project has edited them (see LEGACY_MANAGED).
+        #   different, but adopted           -> a normal kit update; sync it.
+        if [[ -f "$root/$destination" ]] && ! kit_has_adopted "$root" "$destination"; then
+            if cmp -s "$source" "$root/$destination"; then
+                auto_adopted+=("$destination")
+            else
+                conflicts+=("$destination")
+                continue
+            fi
+        fi
         # A destination that does not exist yet is a difference, not an error:
         # it means the kit grew a managed file after this repo ran init.
-        cmp -s "$KIT_DIR/$(managed_source "$pair")" "$root/$destination" 2>/dev/null || changed+=("$pair")
+        cmp -s "$source" "$root/$destination" 2>/dev/null || changed+=("$pair")
     done
+    # Conflicts are fatal and reported in full: a sync that silently declined to
+    # update some files would be the same "reported success while doing nothing"
+    # defect the kit exists to stamp out.
+    if ((${#conflicts[@]} > 0)); then
+        printf 'ADOPTION CONFLICT -- the kit now manages paths this repo already owns:\n' >&2
+        for destination in "${conflicts[@]}"; do
+            printf '  %s\n' "$destination" >&2
+        done
+        printf '\nNothing was overwritten. For each file, choose one:\n' >&2
+        printf '  keep yours   -- add the ownership marker (see project-workflow/README.md) in a comment\n' >&2
+        printf '  take the kit -- delete the file, then re-run sync-policy\n' >&2
+        printf '  migrate      -- port your content onto the kit version in a normal PR first\n' >&2
+        fail "resolve the conflicts above, then re-run sync-policy"
+    fi
     # Skips are reported before any early return, so a repo that opts a file out
     # can never quietly look like a repo the kit still owns end to end.
     if ((${#skipped[@]} > 0)); then
@@ -308,7 +460,20 @@ sync_policy() {
             printf 'skipped (project-owned): %s\n' "$destination"
         done
     fi
-    if ((${#changed[@]} == 0)); then
+    # Files adopted on byte-equality are announced, never silent: the repo is
+    # handing the kit permission to overwrite them from now on, and that belongs
+    # in the run's output as well as in the manifest.
+    if ((${#auto_adopted[@]} > 0)); then
+        for destination in "${auto_adopted[@]}"; do
+            printf 'adopted (identical to the kit): %s\n' "$destination"
+        done
+    fi
+    # Nothing to copy AND nothing new to record is the only up-to-date state.
+    # With adoptions pending there is still a real change to land -- the record
+    # itself -- and skipping it would leave the guard re-deriving the same
+    # adoptions forever, which is how a hand-edited file gets clobbered once the
+    # kit next changes it.
+    if ((${#changed[@]} == 0 && ${#auto_adopted[@]} == 0)); then
         if ((${#skipped[@]} > 0)); then
             printf 'up to date: %d of %d kit-managed files in %s match the kit; %d project-owned (skipped)\n' \
                 "$((${#MANAGED_FILES[@]} - ${#skipped[@]}))" "${#MANAGED_FILES[@]}" "$root" "${#skipped[@]}"
@@ -335,15 +500,39 @@ sync_policy() {
     # shellcheck disable=SC2064  # expand root/starting_branch now, not at exit
     trap "restore_branch '$root' '$starting_branch'" EXIT
 
+    # Both arrays can legitimately be empty here (an adoption-only sync copies
+    # nothing), and `"${empty[@]}"` is an unbound-variable error under `set -u`
+    # in bash 3.2, which is what macOS ships. Guard on the length instead.
     local -a changed_destinations=()
-    for pair in "${changed[@]}"; do
-        destination="$(managed_destination "$pair")"
-        changed_destinations+=("$destination")
-        mkdir -p "$(dirname -- "$root/$destination")"
-        cp "$KIT_DIR/$(managed_source "$pair")" "$root/$destination"
-        printf 'updated %s\n' "$destination"
-    done
+    if ((${#changed[@]} > 0)); then
+        for pair in "${changed[@]}"; do
+            destination="$(managed_destination "$pair")"
+            changed_destinations+=("$destination")
+            mkdir -p "$(dirname -- "$root/$destination")"
+            cp "$KIT_DIR/$(managed_source "$pair")" "$root/$destination"
+            mirror_exec_bit "$KIT_DIR/$(managed_source "$pair")" "$root/$destination"
+            record_adoption "$root" "$destination"
+            printf 'updated %s\n' "$destination"
+        done
+    fi
+    # Byte-identical files are not copied -- there is nothing to copy -- but the
+    # permission they just granted still has to be written down.
+    if ((${#auto_adopted[@]} > 0)); then
+        for destination in "${auto_adopted[@]}"; do
+            record_adoption "$root" "$destination"
+        done
+    fi
     chmod +x "$root/$HOOK_DESTINATION"
+    # The record travels with the sync PR so the next run in a fresh clone sees
+    # the same adoptions this one did -- but only claim it as an updated file
+    # when its bytes actually moved. Listing an unchanged file in the PR body is
+    # the same species of dishonesty as a check that passes without running.
+    stage_manifest "$root"
+    if manifest_is_dirty "$root"; then
+        changed_destinations+=("$ADOPTION_MANIFEST")
+    fi
+    ((${#changed_destinations[@]} > 0)) ||
+        fail "nothing to commit after staging; this is a bug in sync-policy -- report the run and re-check $root by hand"
 
     local version
     local message='chore: sync workflow-kit managed files'
@@ -355,6 +544,12 @@ sync_policy() {
     for destination in "${changed_destinations[@]}"; do
         body+="- \`$destination\`"$'\n'
     done
+    if ((${#auto_adopted[@]} > 0)); then
+        body+=$'\nNewly recorded as kit-owned -- these were already byte-identical to the kit, so\nadopting them changed nothing; future kit updates may now overwrite them:\n'
+        for destination in "${auto_adopted[@]}"; do
+            body+="- \`$destination\`"$'\n'
+        done
+    fi
     if ((${#skipped[@]} > 0)); then
         body+=$'\nNot synced -- these carry the `kit-sync: project-owned` marker:\n'
         for destination in "${skipped[@]}"; do

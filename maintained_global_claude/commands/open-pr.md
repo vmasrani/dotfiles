@@ -20,9 +20,20 @@ description: Run fast checks and open the current issue-owned or batch branch as
 5. Report the PR URL with `gh issue comment`: on the issue (strict lane) or on
    the batch's lowest-numbered issue only (fast lane).
 
+## Chore branches
+
+On a `chore/<slug>` branch there is no issue: skip the issue read in step 1 and
+the issue comment in step 5. The PR body carries NO `Closes #` line. Instead it
+states in one or two lines what changed and that the chore-lane criteria are
+met — no behavior change, no decision to explain, mechanically re-derivable or
+externally forced, nobody would search for why it happened. `just ci-fast` must
+still be green before pushing, and the author self-merges on mergeable-green
+per rule 6, same bar as the fast lane.
+
 Never bypass a required check. Merge the PR yourself only when it qualifies
-for fast-lane self-merge — every linked issue carries the `fast-lane` label,
-or it is a `chore/policy-sync` PR — AND it is mergeable-green (required
+for self-merge — every linked issue carries the `fast-lane` label, or it is
+any `chore/<slug>` PR (including `chore/policy-sync`) — AND it is
+mergeable-green (required
 checks passing; an advisory red blocks only if this PR introduced it): then
 `gh pr merge --merge`, or `--rebase` if the repo forbids merge commits
 (never squash; per-issue commits must survive).

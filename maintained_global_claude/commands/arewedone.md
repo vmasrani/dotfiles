@@ -64,7 +64,20 @@ terse findings/status — that is what keeps token cost bounded.
 2. Apply the **in-scope** fixes (genuine bugs, dead code the review found, perf
    regressions in this change). List but do NOT auto-apply anything that opens a
    new front — note it for follow-up instead of ballooning the commit.
-3. If you changed code, re-run the Phase-1/2 gates (incremental, fast). Confirm
+3. **Class or instance?** For every bug this change fixes, answer it explicitly
+   in the commit body: show the sweep proving no sibling instance remains
+   (`rg -n -m 40` over the pattern), or name the test that will fail on the
+   next instance. Fixing only the instance is allowed when you say so and file
+   the class — never silently. A fix that lands for one filename and leaves the
+   same defect for every other filename is a second issue, filed later, by
+   someone else.
+4. **Deferred findings become ONE hardening issue, not one issue per finding.**
+   Everything from step 2 you chose not to apply goes into a single issue —
+   title it for the PR it came from, body is a checklist with one line per
+   finding. N findings filed as N issues is N branches, N PRs, N CI runs, and
+   N reviews for one review pass. Leave it unlabeled; `/triage` decides the
+   lane later, as a separate act.
+5. If you changed code, re-run the Phase-1/2 gates (incremental, fast). Confirm
    tests are green before committing.
 
 # Phase 4 — Commit the change

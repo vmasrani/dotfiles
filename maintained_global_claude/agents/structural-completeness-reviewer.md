@@ -40,6 +40,21 @@ Your review scope is strictly limited to structural completeness and cleanliness
    - CI/CD pipelines are updated for new dependencies or build steps
    - Environment-specific configs are updated consistently across all environments
    - Feature flags or toggles are properly configured if used
+6. **Class-vs-Instance Coverage** (bug fixes only): A fix that repairs the one
+   call site the author tripped over, and leaves the identical defect at every
+   sibling call site, is an incomplete change — the most expensive kind,
+   because it looks finished and comes back as a new issue days later. For each
+   defect the diff fixes:
+   - Name the defect as a *rule* ("a guard that swallows a missing input and
+     exits 0"), not as a location.
+   - Sweep the repo for siblings of that rule (`rg -n -m 40`), and report the
+     hit count. Unfixed siblings are a finding.
+   - Check that something will catch the NEXT instance: a test that fails on
+     it, a lint, or a shared helper the sibling sites now route through. A fix
+     with no such mechanism is debt-inducing even when the sweep is clean.
+   - A comment in the diff that documents having fixed this class before, for a
+     different input, is a blocking finding — it is direct evidence the class
+     was left open.
 **Your Review Output Format:**
 Structure your review as a checklist with clear pass/fail indicators:
 ✅ **Clean Removals**: [State if old/replaced code is fully removed or list what remains]
@@ -49,6 +64,7 @@ Structure your review as a checklist with clear pass/fail indicators:
 ✅ **Docs In Sync**: [Confirm comments/docstrings/headers match the changed code, or list drift]
 ✅ **Dependencies Clean**: [Confirm or list issues]
 ✅ **Configs Updated**: [Confirm or list missing updates]
+✅ **Class Not Instance**: [Bug fixes only: name the rule, give the sibling sweep count, and say what catches the next instance — or list the siblings left unfixed]
 **Critical Issues** (if any):
 - [List any findings that will cause immediate problems]
 **Technical Debt Risks** (if any):
