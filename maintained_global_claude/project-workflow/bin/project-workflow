@@ -72,7 +72,7 @@ usage() {
 Usage:
   project-workflow init --dir PATH
   project-workflow check --dir PATH
-  project-workflow sync-policy --dir PATH
+  project-workflow sync-policy --dir PATH [--adopt REPO-RELATIVE-PATH]...
   project-workflow gh-setup --dir PATH [--repo OWNER/REPO] [--apply]
 
 `init` creates only missing files. It never replaces an existing project file.
@@ -83,6 +83,12 @@ ran `init` and, when they differ, opens a pull request into dev that updates
 them. It never merges, and it never touches CLAUDE.md or the justfile.
 A managed file in the repo containing `kit-sync: project-owned` is never synced;
 it is reported as skipped and stops receiving kit updates until that is removed.
+`--adopt PATH` (repeatable) resolves ONE adoption conflict by taking the kit
+version: the repo's copy is overwritten and the path is recorded as kit-owned.
+It is YOUR ATTESTATION that the file is stale kit lineage -- installed by the
+kit, never hand-edited -- verified by you in the repo's Git history. This tool
+does not and cannot check that. It errors if PATH is not a kit-managed
+destination, or is not currently in the adoption-conflict state.
 `gh-setup` prints the exact gh commands by default; --apply creates labels and
 applies the branch-protection settings after you have reviewed them.
 EOF
@@ -117,6 +123,37 @@ managed_source() {
 
 managed_destination() {
     printf '%s' "${1#*:}"
+}
+
+# Every destination the kit owns, one indented line each. Printed when --adopt
+# names something that is not managed, so the operator sees the whole valid set
+# instead of guessing at a spelling.
+managed_destinations() {
+    local pair
+    for pair in "${MANAGED_FILES[@]}"; do
+        printf '  %s\n' "$(managed_destination "$pair")"
+    done
+}
+
+is_managed_destination() {
+    local candidate="$1" pair
+    for pair in "${MANAGED_FILES[@]}"; do
+        [[ "$(managed_destination "$pair")" == "$candidate" ]] && return 0
+    done
+    return 1
+}
+
+# Bash 3.2 (what macOS ships) has no associative arrays, so membership is a
+# loop. The needle comes first because "${array[@]}" has to be the last argument.
+# Callers guard with a length check: "${empty[@]}" is an unbound-variable error
+# under `set -u` in that bash.
+contains() {
+    local needle="$1" item
+    shift
+    for item in "$@"; do
+        [[ "$item" == "$needle" ]] && return 0
+    done
+    return 1
 }
 
 # True when the repo's copy of a managed file claims ownership of itself.
@@ -371,13 +408,32 @@ restore_branch() {
 
 sync_policy() {
     local directory=""
+    # Paths the operator has attested are stale kit lineage. See the --adopt
+    # block below the conflict scan for what the attestation buys and costs.
+    local -a adopt_requests=()
     while (($#)); do
         case "$1" in
             --dir) directory="${2:-}"; shift 2 ;;
+            --adopt)
+                [[ -n "${2:-}" ]] || fail "--adopt requires a repo-relative path"
+                adopt_requests+=("$2")
+                shift 2
+                ;;
             *) fail "unknown sync-policy argument: $1" ;;
         esac
     done
     [[ -n "$directory" ]] || fail "sync-policy requires --dir PATH"
+    # A misspelled --adopt is caught before any git work: an unknown path could
+    # otherwise sit there looking accepted while the file it meant to resolve
+    # still reports as a conflict.
+    local requested
+    if ((${#adopt_requests[@]} > 0)); then
+        for requested in "${adopt_requests[@]}"; do
+            is_managed_destination "$requested" ||
+                fail "$(printf -- '--adopt %s is not a kit-managed path. Valid destinations:\n%s' \
+                    "$requested" "$(managed_destinations)")"
+        done
+    fi
     require_command git
     require_command gh
     require_command cmp
@@ -400,6 +456,7 @@ sync_policy() {
     local -a skipped=()
     local -a conflicts=()
     local -a auto_adopted=()
+    local -a operator_adopted=()
     local pair
     local destination
     local source
@@ -427,9 +484,22 @@ sync_policy() {
         #     never overwritten. This is the branch the workflow ymls now reach
         #     when a project has edited them (see LEGACY_MANAGED).
         #   different, but adopted           -> a normal kit update; sync it.
+        #   different, never adopted, named by --adopt -> the operator has read
+        #     this file's Git history and attested the difference is kit
+        #     STALENESS, not project content. Overwrite it with the kit source
+        #     and record it, exactly as for an adopted file. The attestation is
+        #     the operator's; nothing here verifies it, which is why it has to
+        #     be spelled out per path on the command line rather than being a
+        #     blanket --force.
         if [[ -f "$root/$destination" ]] && ! kit_has_adopted "$root" "$destination"; then
             if cmp -s "$source" "$root/$destination"; then
                 auto_adopted+=("$destination")
+            elif ((${#adopt_requests[@]} > 0)) && contains "$destination" "${adopt_requests[@]}"; then
+                # Falls through to the normal byte-compare below: the bytes
+                # differ, so this lands in `changed` and is copied and recorded
+                # like any other synced file. The array only exists so the run
+                # output and the PR body can say it was an operator decision.
+                operator_adopted+=("$destination")
             else
                 conflicts+=("$destination")
                 continue
@@ -439,6 +509,31 @@ sync_policy() {
         # it means the kit grew a managed file after this repo ran init.
         cmp -s "$source" "$root/$destination" 2>/dev/null || changed+=("$pair")
     done
+    # A --adopt that resolved nothing is fatal, and it is checked BEFORE the
+    # conflict report so a stale invocation is corrected first. The flag grants
+    # permission to overwrite a file; letting it succeed as a no-op would mean a
+    # copy-pasted command line keeps claiming to resolve a conflict long after
+    # that conflict is gone, and the operator never learns the state changed.
+    if ((${#adopt_requests[@]} > 0)); then
+        local -a unresolved_adopts=()
+        for requested in "${adopt_requests[@]}"; do
+            if ((${#operator_adopted[@]} > 0)) && contains "$requested" "${operator_adopted[@]}"; then
+                continue
+            fi
+            unresolved_adopts+=("$requested")
+        done
+        if ((${#unresolved_adopts[@]} > 0)); then
+            printf -- '--adopt named %d path(s) that are not in the adoption-conflict state:\n' \
+                "${#unresolved_adopts[@]}" >&2
+            for requested in "${unresolved_adopts[@]}"; do
+                printf '  %s\n' "$requested" >&2
+            done
+            # shellcheck disable=SC2016  # backticks are literal prose, not a subshell
+            printf -- '\n--adopt resolves only a file that EXISTS in the repo, DIFFERS from the kit\nsource, and is not already recorded in %s. A path that is\nalready adopted, byte-identical to the kit, absent, or carrying the\n`%s` marker needs no flag: drop --adopt for it.\n' \
+                "$ADOPTION_MANIFEST" "$OWNERSHIP_MARKER" >&2
+            fail "drop the --adopt flags listed above, then re-run sync-policy"
+        fi
+    fi
     # Conflicts are fatal and reported in full: a sync that silently declined to
     # update some files would be the same "reported success while doing nothing"
     # defect the kit exists to stamp out.
@@ -449,8 +544,17 @@ sync_policy() {
         done
         printf '\nNothing was overwritten. For each file, choose one:\n' >&2
         printf '  keep yours   -- add the ownership marker (see project-workflow/README.md) in a comment\n' >&2
-        printf '  take the kit -- delete the file, then re-run sync-policy\n' >&2
         printf '  migrate      -- port your content onto the kit version in a normal PR first\n' >&2
+        # Deleting the file and re-running cannot work and is deliberately not
+        # offered: deleting a TRACKED file dirties the tree, and the clean-tree
+        # precondition above then refuses to run at all.
+        printf '  take the kit -- re-run with --adopt PATH for each file you have VERIFIED in this\n' >&2
+        printf '                  repo'"'"'s Git history to be untouched kit lineage (installed by the\n' >&2
+        printf '                  kit, never hand-edited). It is overwritten with the kit version.\n' >&2
+        printf '                  --adopt is YOUR attestation; this tool does not check history:\n' >&2
+        for destination in "${conflicts[@]}"; do
+            printf '                    --adopt %s\n' "$destination" >&2
+        done
         fail "resolve the conflicts above, then re-run sync-policy"
     fi
     # Skips are reported before any early return, so a repo that opts a file out
@@ -512,7 +616,11 @@ sync_policy() {
             cp "$KIT_DIR/$(managed_source "$pair")" "$root/$destination"
             mirror_exec_bit "$KIT_DIR/$(managed_source "$pair")" "$root/$destination"
             record_adoption "$root" "$destination"
-            printf 'updated %s\n' "$destination"
+            if ((${#operator_adopted[@]} > 0)) && contains "$destination" "${operator_adopted[@]}"; then
+                printf 'adopted at operator request (overwrote this repo'"'"'s copy): %s\n' "$destination"
+            else
+                printf 'updated %s\n' "$destination"
+            fi
         done
     fi
     # Byte-identical files are not copied -- there is nothing to copy -- but the
@@ -542,8 +650,21 @@ sync_policy() {
 
     local body="Propagates the current workflow-kit files into this repository."$'\n\n'"Updated files:"$'\n'
     for destination in "${changed_destinations[@]}"; do
+        # Operator adoptions get their own heading below. Listing them here too
+        # would file an overwrite of a repo-authored file under the same label
+        # as a routine template bump -- which is exactly the misreading the
+        # adoption guard exists to prevent.
+        if ((${#operator_adopted[@]} > 0)) && contains "$destination" "${operator_adopted[@]}"; then
+            continue
+        fi
         body+="- \`$destination\`"$'\n'
     done
+    if ((${#operator_adopted[@]} > 0)); then
+        body+=$'\nAdopted at operator request (verified kit lineage, overwritten with kit version)\n-- these differed from the kit and were NOT recorded as kit-owned. The operator\npassed `--adopt` to attest, from this repo\'s Git history, that the difference was\nkit staleness rather than project content. Review these lines with that in mind:\n'
+        for destination in "${operator_adopted[@]}"; do
+            body+="- \`$destination\`"$'\n'
+        done
+    fi
     if ((${#auto_adopted[@]} > 0)); then
         body+=$'\nNewly recorded as kit-owned -- these were already byte-identical to the kit, so\nadopting them changed nothing; future kit updates may now overwrite them:\n'
         for destination in "${auto_adopted[@]}"; do
