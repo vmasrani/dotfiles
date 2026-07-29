@@ -13,6 +13,8 @@ false-positive shape that must keep working.
 """
 
 import json
+import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -20,6 +22,9 @@ from pathlib import Path
 
 HOOKS = Path(__file__).resolve().parent
 PY = "/usr/bin/python3"
+# resolve() above already followed the ~/.claude/hooks symlink into the dotfiles
+# repo, so testq is a sibling of the hooks that rewrite commands into it.
+TESTQ = HOOKS.parents[1] / "tools" / "testq"
 
 fails = []
 
@@ -51,6 +56,13 @@ def expect(label, got, want):
     if got != want:
         fails.append(f"{label}: wanted {want}, got {got}")
     print(f"  [{status}] {label}  -> {got}")
+
+
+def expect_at_least(label, got, floor):
+    ok = got is not None and got >= floor
+    if not ok:
+        fails.append(f"{label}: wanted weight >= {floor}, got {got}")
+    print(f"  [{'ok  ' if ok else 'FAIL'}] {label}  -> weight {got} (floor {floor})")
 
 
 print("\n== bash_footgun_guard: must DENY ==")
@@ -235,6 +247,63 @@ proc = run_hook(
     {"tool_name": "Bash", "tool_input": {"command": 'rg -n "a|cargo test" justfile'}},
 )
 expect("quoted 'cargo test' not queued", proc.stdout.strip() or "pass", "pass")
+
+print("\n== hook <-> testq: nothing the hook queues may weigh 1 ==")
+# THE INVARIANT, in one line: if the hook thinks a command is heavy enough to
+# queue, the queue must think it is heavy enough to reserve capacity for.
+#
+# These are two files that decide "heavy" independently -- test_queue_guard.py
+# by argv token, testq's classify() by weight table -- and they drifted apart
+# twice. `just ci-fast` was heavy to the hook and weight 1 to the queue; every
+# hook-wrapped `zsh -c '...'` was weight 1 because the queue never unwrapped the
+# shell the hook is REQUIRED to add. Both failures look like normal operation:
+# jobs queue, jobs run, twelve suites overlap and the box thrashes. So the test
+# feeds the hook's real output into the real classifier rather than asserting
+# against a copy of either table.
+if not TESTQ.exists():
+    print(f"  [FAIL] cannot find testq at {TESTQ}")
+    fails.append(f"testq not found at {TESTQ}")
+
+
+def queue_weight(command):
+    """Hook -> rewritten command -> testq --explain. None if the hook passed it through."""
+    proc = run_hook("test_queue_guard.py", {"tool_name": "Bash", "tool_input": {"command": command}})
+    if not proc.stdout.strip():
+        return None
+    rewritten = json.loads(proc.stdout)["hookSpecificOutput"]["updatedInput"]["command"]
+    argv = shlex.split(rewritten)
+    argv = argv[argv.index("testq") + 1 :]  # drop any TESTQ_SESSION= prefix and `testq`
+    out = subprocess.run(
+        [str(TESTQ), "--explain", *argv], capture_output=True, text=True, check=True
+    )
+    return int(re.search(r"weight=(\d+)", out.stdout).group(1))
+
+
+# Floor 9 = runs a suite (must be effectively exclusive); floor 3 = compiles.
+for cmd, floor in [
+    ("cargo nextest run --workspace", 9),
+    ("cargo test", 9),
+    ("cargo +nightly test -p parot-daemon", 9),
+    ("cargo bench --bench index", 9),
+    ("cargo miri test", 9),
+    ("just test", 9),
+    ("just test-unit", 9),
+    ("just ci-fast", 9),
+    ("just ci-deep", 9),
+    ("just bench", 9),
+    ("cd /repo && cargo nextest run", 9),
+    ("RUST_LOG=debug cargo test", 9),
+    ("cargo build && cargo nextest run", 9),
+    ("just ci-fast > /tmp/x.log 2>&1", 9),
+    ("cargo nextest run 2>&1 | tail -20", 9),
+    ("cargo-slot agent-1 cargo test", 9),
+    ("cargo build --release", 3),
+    ("cargo check --workspace", 3),
+    ("cargo clippy --all-targets -- -D warnings", 3),
+    ("cargo install --path .", 3),
+    ("just lint", 3),
+]:
+    expect_at_least(cmd, queue_weight(cmd), floor)
 
 print("\n== test_count_guard ==")
 NEXTEST_742 = "    Summary [   9.293s] 742 tests run: 742 passed, 3 skipped"
