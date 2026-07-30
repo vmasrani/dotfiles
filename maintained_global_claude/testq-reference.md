@@ -5,6 +5,45 @@ riding along on every Python/frontend session. The four rules that prevent real
 mistakes stayed in `CLAUDE.md`; everything below is lookup material — read it when you
 actually need it.
 
+## This machine (Linux VM — verified 2026-07-24)
+
+64 threads (2×16-core Xeon Platinum 8280L, 2 threads/core), **503 GB RAM**, ext4 on `/` (497 G)
+and `/data` (1 T). Present: `cargo`, `clippy`, `miri`, `rustfmt`, `rust-analyzer`, `just`,
+`tsp`/`testq`. **NOT installed: `cargo-nextest`, `sccache`.** Everything below marked *M4* was
+measured on the macOS laptop and has **not** been reproduced here — the hardware gap is large
+enough to invalidate the reasoning, not just the constants.
+
+- **No nextest.** Archive fan-out (`cargo nextest archive --archive-file …`), `-E 'test(...)'`
+  filter expressions and `--no-fail-fast` output shapes all fail loudly here. Correct responses:
+  `cargo install cargo-nextest`, or deliberately write the `cargo test` form and say so. Never
+  substitute silently.
+- **No sccache**, so the M4 sccache bullets are moot. Don't set `CARGO_INCREMENTAL=0` reasoning
+  about sccache — with no sccache in play it only makes cold builds slower. (Kept so nobody
+  re-derives it: sccache hashes the compile's `cwd`, so two worktrees never share cache work;
+  `SCCACHE_BASEDIRS` covers only the C/C++ path, issue #2652, Rust fix unmerged, PR #2678.)
+- **No copy-on-write.** `/`, `/home` and `/data` are ext4; `cp --reflink=always` fails with
+  `Operation not supported`, and macOS `cp -c -R` doesn't exist in GNU coreutils. Seeding a slot
+  from a warm `target/` is a full multi-GB byte copy here, not 0.59 s at zero bytes — let slots
+  build cold. (The M4 measurement showed only ~12 s of payoff even *with* free cloning, so
+  nothing is lost.)
+- **`cargo-slot` needs `CARGO_SLOT_ROOT=/data/.cargo-targets`** exported — its built-in default
+  `/Volumes/external/.cargo-targets` does not exist here.
+- **Cheap jobs overlapping a suite are genuinely free here.** On the M4 a concurrent `cargo check`
+  really did take cores from a suite running ~9x parallel on 10 cores; at 64 threads that suite
+  leaves ~55 idle.
+- **Build-time numbers do not transfer and have not been re-measured.** Reference only: 573-crate
+  cold build of parot-core ≈58 s on the M4 (59.8 / 58 / 58). This Xeon has many more cores at a
+  much lower clock, so the figure here could land either side. Measure once (`time cargo build
+  --workspace`) and write it down instead of reasoning from the M4 value.
+- **`TESTQ_BUDGET=12` is almost certainly far too conservative here — but do not change it without
+  measuring.** Its justification was 10 cores / 16 GB where the 1 GB bench alone peaked ~7.5 GB
+  RSS, so two suites thrashed. That constraint is absent: 503 GB makes eight concurrent suites
+  (~60 GB at the M4's own peak) ~12% of memory, and a suite at ~9x parallelism is about a seventh
+  of the CPU. The binding constraint here is CPU oversubscription alone, biting around 6–7
+  concurrent suites, not two. Suite peak RSS has never been recorded on *either* machine — until
+  someone measures it, 12 stands and suites stay serialized. Change the budget and you must
+  re-derive the weight table, and vice versa.
+
 ## What the hook does
 
 A PreToolUse hook rewrites heavy cargo/just commands (`cargo nextest|test|build|check|clippy|bench|install|miri`, `just test*|bench*|lint*|ci-fast|ci-deep`) into `testq zsh -c '<cmd>'` — a machine-wide weighted queue shared by every agent and repo. **Never add the prefix yourself** — the hook applies it quote-safely and never double-wraps. Trivial verbs (`fmt`, `metadata`, `tree`, `add`, …) stay instant and unqueued.
@@ -28,7 +67,7 @@ The hook must wrap in `zsh -c` (a bare prefix breaks `cd … && cargo test` and 
 
 ## Scheduling model
 
-Jobs are weighted against `TESTQ_BUDGET` (default 12: fmt/doc 1, check/clippy/build 3 and `just lint*|check*` 3, test/nextest 9 and `just test*|ci-fast*` 9, bench/miri 12 and `just bench*|ci-deep*` 12) — one suite plus one check overlap, two suites never do, a bench runs alone. `ci-fast` fans out to the full suite and `ci-deep` is a superset of it, hence 9 and 12. Don't raise the budget without measuring RAM; that's the binding constraint.
+Jobs are weighted against `TESTQ_BUDGET` (default 12: fmt/doc 1, check/clippy/build 3 and `just lint*|check*` 3, test/nextest 9 and `just test*|ci-fast*` 9, bench/miri 12 and `just bench*|ci-deep*` 12) — one suite plus one check overlap, two suites never do, a bench runs alone. `ci-fast` fans out to the full suite and `ci-deep` is a superset of it, hence 9 and 12. Don't raise the budget without measuring — on the M4 the binding constraint was RAM; on this box it is CPU oversubscription (see the machine section above).
 
 Classification looks only at words in COMMAND position, so `rg -n 'cargo test' justfile` stays weight 1, while `cd`, `FOO=bar` and `cargo +nightly` prefixes are seen through. A chain takes its **heaviest** segment, not its first: `cargo build && cargo nextest run` weighs 9, because under-weighting a chain silently lets two suites overlap.
 
@@ -38,7 +77,10 @@ Byte-identical commands in an unchanged tree coalesce: followers attach to the l
 
 Measured, closed questions:
 
-- clippy does NOT thrash build artifacts
-- sccache never shares across worktrees (upstream gap)
-- CoW-seeding a target dir saves only ~12 s — not worth orchestration
+- clippy does NOT thrash build artifacts (cargo hashes the workspace wrapper into the artifact
+  filename — `build → clippy → build` in one shared target dir recompiled 0 crates; a separate
+  `target/clippy` buys nothing)
+- sccache never shares across worktrees (upstream gap) — *moot here, sccache isn't installed*
+- CoW-seeding a target dir saves only ~12 s — not worth orchestration; *and it is impossible here,
+  ext4 has no reflink*
 - Agents share one warm `target/` per worktree — `cargo-slot` only matters if you raise the budget

@@ -74,7 +74,10 @@ A PreToolUse hook rewrites heavy cargo/just commands into `testq zsh -c '<cmd>'`
 - **`| tail` destroys the exit code** — read `testq --exit-code --last` before claiming a suite passed.
 - **Agents write, the lead builds.** Subagents edit code; ONE process compiles and runs the suite.
 
-Flags, the weight/budget model, coalescing, and the settled don't-re-investigate list live in `~/dotfiles/maintained_global_claude/testq-reference.md` — read it only when you need it.
+- **This box has NO `cargo-nextest` and NO `sccache`** (Linux VM: 64 threads, 503 GB RAM, ext4 — no reflink/CoW). A nextest command failing with "no such subcommand" is the CORRECT outcome: never silently rewrite it to `cargo test` and report success, and never read `cargo test` output with nextest semantics. Write the command you meant and say which you used.
+- **`TESTQ_BUDGET=12` is a Mac-derived number and is unverified here.** The 10-core / 16 GB reasoning behind it does not describe this box — don't reason from it, and don't change it without measuring.
+
+Flags, the weight/budget model, coalescing, the settled don't-re-investigate list, and this machine's hardware/toolchain facts live in `~/dotfiles/maintained_global_claude/testq-reference.md` — read it only when you need it.
 
 # Evidence discipline — a green is a claim, not proof
 
