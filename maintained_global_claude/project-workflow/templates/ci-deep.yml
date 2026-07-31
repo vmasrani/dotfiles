@@ -41,8 +41,20 @@ jobs:
         if: hashFiles('**/Cargo.toml') != ''
       - uses: taiki-e/install-action@nextest
         if: hashFiles('**/Cargo.toml') != ''
+      # `cache-on-failure` is load-bearing: without it a run cancelled by
+      # `timeout-minutes` never saves its cache, so the next run starts cold and
+      # is cancelled too -- a closed loop no ceiling short of absurd would break
+      # (parot-core Deep CI lived in it from Jul 24-29, seven cancelled runs).
+      # With it, a killed run banks every crate it compiled and successive runs
+      # finish the build incrementally -- across ALL cargo profiles ci-deep
+      # touches, which a one-shot warm job running only ci-fast cannot do
+      # (measured: parot-core run 30225847048 seeded ci-fast's debug profile in
+      # 21m, and integration still timed out cold-building the gauntlet's
+      # `quick` profile).
       - uses: Swatinem/rust-cache@v2
         if: hashFiles('**/Cargo.toml') != ''
+        with:
+          cache-on-failure: true
       - uses: astral-sh/setup-uv@v6
         if: hashFiles('**/pyproject.toml') != ''
       - uses: actions/setup-node@v4
