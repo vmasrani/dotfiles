@@ -65,16 +65,17 @@ Subagents start at ~34k and stay small; the main session sits at 175k. Anything 
 
 Scale reasoning effort to task difficulty.
 
-# Rust builds — the test queue (`testq`)
+# Rust builds — the job queue (`queue`)
 
-A PreToolUse hook rewrites heavy cargo/just commands into `testq zsh -c '<cmd>'` — a machine-wide weighted queue shared by every agent and repo. **Never add the prefix yourself.** `testq X` behaves exactly like `X`: it blocks until there's capacity, then streams live output and returns the command's own exit code.
+**Always add the prefix yourself** on `cargo test|nextest|bench|miri` and `just test*|bench*|ci-fast|ci-deep` — nothing rewrites your command; a PreToolUse hook only DENIES the unqueued ones. `queue X` behaves exactly like `X`: it waits for a free slot (`QUEUE_SLOTS`, default 1), then streams live output and returns the command's own exit code. Leave `cargo check|clippy|build` and `just lint*` unqueued — not queueing them is what keeps them instant.
 
-- **A pause before output is the QUEUE, not a hang.** Check `testq -l`; never re-run to "work around" a slow start.
+- **`queue cd /repo && cargo test` is WRONG** — the shell splits on `&&` first, so only the `cd` gets queued. Pass one quoted string: `queue 'cd /repo && cargo test'`.
+- **A pause before output is the QUEUE, not a hang.** Check `queue -l`; never re-run to "work around" a slow start.
 - **Run long suites detached** (`run_in_background`) — queue wait + suite time routinely exceeds the 10-minute shell cap.
-- **`| tail` destroys the exit code** — read `testq --exit-code --last` before claiming a suite passed.
+- **`| tail` destroys the exit code** — read `queue --exit-code --last` before claiming a suite passed.
 - **Agents write, the lead builds.** Subagents edit code; ONE process compiles and runs the suite.
 
-Flags, the weight/budget model, coalescing, and the settled don't-re-investigate list live in `~/dotfiles/maintained_global_claude/testq-reference.md` — read it only when you need it.
+Flags, `--solo`, the slots model, coalescing, and the settled don't-re-investigate list live in `~/dotfiles/maintained_global_claude/queue-reference.md` — read it only when you need it.
 
 # Evidence discipline — a green is a claim, not proof
 
@@ -82,7 +83,13 @@ These rules target failures that produce confident, plausible, wrong output inst
 
 - **Reconcile the test COUNT against an explicit baseline every run** (e.g. `main @ 4ee8817 = 1502`). A count that goes DOWN without deletions means the binary doesn't contain your code — force a rebuild.
 - **Never read a summary line as proof.** Grep explicitly: `rg -n 'FAIL|test run failed|^error'`.
-- **Never pipe a test or build run** — `cmd | tail` exits with tail's status. Capture in full: `<cmd> > /tmp/run.log 2>&1; echo "exit=$?"; tail -40 /tmp/run.log`. **Then extract from the log with `rg -n 'FAIL|error'` — never `cat` it, never Read it whole, and never read the same log twice.** A captured log is a file on disk you can re-query with a command; it is not something to park in context.
+- **Never pipe a test or build run** — `cmd | tail` exits with tail's status. Capture in full, and **end the command with the run's own status, never with an `echo`**:
+
+      <cmd> > /tmp/run.log 2>&1; rc=$?; echo "exit=$rc" | tee -a /tmp/run.log; exit $rc
+
+  The older form of this rule, `<cmd> > log 2>&1; echo "exit=$?"`, prints the right number but leaves the SHELL exiting with `echo`'s status — always 0. Harmless in the foreground, where you read the printed line. **Silently wrong with `run_in_background`, where the task-completion notification has only the process status** and will announce "exit code 0" for a run that failed. The trailing `exit $rc` is the entire fix; wrapping in `( … )` does not help, since a subshell also exits with its last command. This bit three background `ci-fast` runs in one session, each reported as passing while its log said `CI_FAST_EXIT=1`.
+- **A background task's reported exit code is the wrapper's, not the command's.** Never accept it over the log. Grep the log for both the status line and the failure patterns.
+- **Then extract from a captured log with `rg -n 'FAIL|error'` — never `cat` it, never Read it whole, and never read the same log twice.** A captured log is a file on disk you can re-query with a command; it is not something to park in context.
 - **Verify a test filter selected what you think.** A pass over zero tests is a pass. Prefer positional filters; with `-E` expressions, confirm a non-zero expected count first.
 - **Anchor the working directory.** Absolute `cd` at the head of every build command, or prefix `pwd &&`.
 - **A conditional action needs a conditional marker.** `git commit; echo done` prints the marker even when nothing committed. Compare `git rev-parse HEAD` before/after, or guard: `git diff --cached --quiet || git commit`.

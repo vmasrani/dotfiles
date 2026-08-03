@@ -49,13 +49,35 @@ NEXTEST_RE = re.compile(r"(\d+) tests run:\s*(\d+) passed")
 CARGO_TEST_RE = re.compile(r"test result:.*?(\d+) passed;\s*(\d+) failed")
 
 
+# Flags that precede the real command in a `queue` invocation and carry no
+# meaning for identity -- `queue --solo X` and `queue X` are the same X.
+_QUEUE_FLAGS = {"--solo", "--priority", "--events", "--"}
+
+
 def unwrap(command):
-    """Strip the `testq zsh -c '<real command>'` wrapper the queue guard adds,
-    so a command keys the same whether or not it was routed through the queue."""
+    """Strip a `queue` prefix so a command keys the SAME whether or not it was
+    queued -- otherwise the baseline resets every time you add the prefix, and a
+    reset baseline is indistinguishable from a healthy first run.
+
+    Three shapes reach here, and all three must collapse to the same key:
+        queue cargo nextest run            <- the ordinary explicit prefix
+        queue 'cd /repo && cargo test'     <- the quoted form, for `&&` chains
+        queue zsh -c 'cargo test'          <- written out by hand, and the shape
+                                              the old rewriting hook emitted
+    `testq`/`ts` stay in the list because job records and shell history from
+    before the 2026-08-03 rename still carry them.
+    """
     parts = shlex.split(command)
-    if len(parts) == 4 and parts[0] in ("testq", "ts") and parts[2] == "-c":
-        return parts[3].strip()
-    return command.strip()
+    while parts and parts[0] in ("queue", "testq", "ts"):
+        parts = parts[1:]
+        while parts and parts[0] in _QUEUE_FLAGS:
+            parts = parts[1:]
+    # `<shell> -c '<one string>'`, however we arrived at it.
+    if len(parts) == 3 and parts[0] in ("sh", "zsh", "bash") and parts[1] == "-c":
+        return parts[2].strip()
+    if len(parts) == 1:
+        return parts[0].strip()
+    return " ".join(parts).strip() if parts else command.strip()
 
 
 def extract_counts(text):

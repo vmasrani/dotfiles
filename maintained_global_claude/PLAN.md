@@ -142,7 +142,7 @@ what `/check-pr` is for; no generic manifest scanner.
 
 ## Part B — bats suite
 
-`tools/tests/project-workflow.bats`, following `tools/tests/testq.bats` conventions
+`tools/tests/project-workflow.bats`, following `tools/tests/queue.bats` conventions
 (hermetic, `BATS_TEST_TMPDIR`, no network, fake `gh` on `PATH` recording argv to a trace
 file). Written against the simplified surface:
 

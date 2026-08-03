@@ -117,14 +117,14 @@ def migrate_settings():
 def migrate_hooks():
     print("Migrating hooks.json...")
     hooks_json = {
-        "test-queue-guard": {
+        "unqueued-heavy-guard": {
             "PreToolUse": [
                 {
                     "matcher": "run_command",
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "/usr/bin/python3 /Users/vmasrani/.gemini/antigravity-cli/hooks/test_queue_guard.py"
+                            "command": "/usr/bin/python3 /Users/vmasrani/.gemini/antigravity-cli/hooks/unqueued_heavy_guard.py"
                         }
                     ]
                 }
@@ -228,16 +228,14 @@ def migrate_hooks():
                     "('waiting for your input' not in (input_data.get('message') or ''))"
                 )
 
-                # In test_queue_guard.py, handle updatedInput rewrite
-                if item.name == "test_queue_guard.py":
-                    old_rewrite = """    new_input = dict(tool_input)
-    new_input["command"] = queued(command)"""
-                    new_rewrite = """    new_input = dict(tool_input)
-    if "command" in new_input:
-        new_input["command"] = queued(command)
-    else:
-        new_input["CommandLine"] = queued(command)"""
-                    content = content.replace(old_rewrite, new_rewrite)
+                # NOTE (2026-08-03): test_queue_guard.py used to need an
+                # updatedInput fixup here, because it REWROTE the command into
+                # `testq zsh -c '<cmd>'` and Antigravity carries the command in
+                # `CommandLine` rather than `command`. Its replacement,
+                # unqueued_heavy_guard.py, only ever DENIES -- it never emits
+                # updatedInput -- so there is no input to rewrite and no
+                # harness-specific fixup to apply. The generic CommandLine
+                # fallbacks above are all it needs.
 
                 # In pre_tool_use.py, handle is_env_file_access
                 if item.name == "pre_tool_use.py":
@@ -417,8 +415,10 @@ def migrate_misc():
     content = content.replace("~/.claude/", "~/.gemini/antigravity-cli/")
     content = content.replace(".claude/", ".gemini/antigravity-cli/")
     content = content.replace("Bash hook", "run_command hook")
-    content = content.replace("PreToolUse hook (~/.gemini/antigravity-cli/hooks/test_queue_guard.py)", "PreToolUse hook (~/.gemini/antigravity-cli/hooks/test_queue_guard.py)")
-    
+    # (A no-op rule that replaced a string with itself, naming the retired
+    # test_queue_guard.py, was removed on 2026-08-03. CLAUDE.md no longer
+    # references any hook path, so there is nothing here to rewrite.)
+
     agents_md.write_text(content)
 
 def main():
