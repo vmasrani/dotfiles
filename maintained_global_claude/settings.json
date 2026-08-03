@@ -40,7 +40,7 @@
       "/Users/vmasrani"
     ]
   },
-  "model": "claude-fable-5[1m]",
+  "model": "opus[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -52,7 +52,7 @@
           },
           {
             "type": "command",
-            "command": "/usr/bin/python3 ~/.claude/hooks/test_queue_guard.py"
+            "command": "/usr/bin/python3 ~/.claude/hooks/unqueued_heavy_guard.py"
           }
         ]
       }

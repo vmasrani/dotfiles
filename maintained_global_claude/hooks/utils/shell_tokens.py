@@ -2,10 +2,10 @@
 
 WHY THIS IS A SHARED MODULE AND NOT COPY-PASTE
     Two hooks inspect the same Bash command for different reasons --
-    `test_queue_guard.py` rewrites heavy builds, `bash_footgun_guard.py`
-    blocks commands that fabricate evidence. If they disagreed about where a
-    command *starts*, one of them would be wrong about every compound command.
-    One parser, one answer.
+    `unqueued_heavy_guard.py` refuses a suite that was not sent to the queue,
+    `bash_footgun_guard.py` blocks commands that fabricate evidence. If they
+    disagreed about where a command *starts*, one of them would be wrong about
+    every compound command. One parser, one answer.
 
 WHY TOKENIZE INSTEAD OF REGEX-OVER-THE-RAW-STRING
     A regex cannot see shell quoting. Anchoring on shell operators (|, &&, ;)
