@@ -157,7 +157,15 @@ The bootstrap intentionally does not mutate remote settings for existing
 projects. After the migration PR merges, configure labels and branch rules with
 the commands printed by `project-workflow gh-setup`; `--apply` runs them. The
 required status-check contexts are the job names in the vendored workflows:
-`Project checks`, `Secret scan`, `Workflow lint`, `Deep integration checks`.
+`Secret scan`, `Workflow lint` (dev PRs) and `Deep integration checks` (main).
+
+The `Project checks` job (`just ci-fast` on Linux) was removed from the vendored
+`ci-fast.yml` on 2026-08-03, along with `ci-deep.yml`'s `push: [dev]` trigger, to
+cut Actions spend. dev PRs therefore run only the two ~1-minute required checks
+and dev pushes run nothing at all; **`just ci-fast` in the worktree, enforced by
+the pre-push hook, is the only test gate before dev.** Restoring either is a
+deliberate spend decision — and for `push: [dev]`, only after confirming
+`ci-deep` can finish inside `timeout-minutes` on a cold runner.
 
 ## Known CI hazard: private git dependencies
 

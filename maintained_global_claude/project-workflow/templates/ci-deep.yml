@@ -3,9 +3,13 @@ name: Deep CI
 # Vendored, placeholder-free. Toolchain setup keys off what is actually in the
 # tree, so one template serves every project and nothing needs rendering.
 
+# The `push: [dev]` trigger was REMOVED to cut Actions spend on the dev branch.
+# `pull_request: [main]` below is retained and remains the real gate.
+#
+# DO NOT restore `push: [dev]` without first confirming `ci-deep` can finish
+# inside `timeout-minutes` on a cold runner. Where it cannot, the trigger burns
+# a full timeout per push and returns no signal at all.
 on:
-  push:
-    branches: [dev]
   pull_request:
     branches: [main]
   workflow_dispatch:
