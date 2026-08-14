@@ -31,8 +31,10 @@ The same applies to `|`, `;` and `>`. A leading `FOO=bar` is fine either way, si
 - `queue --ahead` — how many jobs a new submission would wait behind
 - `queue --solo <cmd>` — take every slot and run alone; `queue --priority <cmd>` — jump the queue (for work a human is waiting on)
 - `queue --events <cmd>` — detached mode emitting machine-readable `QUEUED`/`RUNNING`/`DONE` lines (pairs with Monitor); output goes to the `out=` file instead of streaming — notifications or streaming, not both
+- `queue --cancel <id|label|--last>` — drop a **queued** job. Always use this rather than a bare `ts -r <id>`: `ts` on its own talks to task-spooler's *default* socket, not the queue's, so the removal is addressed to a daemon that never heard of the job and fails with "The job cannot be removed" — which reads as a stuck job rather than a misaddressed one. It refuses a job that is already **running** and prints the exact `TS_SOCKET=… ts -k <id>` to run instead; it never kills anything itself. A foreign job with no queue record is still cancellable by id.
+- `queue --triage` — **report only**, exits 0, cancels nothing. Walks the queued+running jobs and flags three things: *duplicates* (same effective cwd and same command, normalised for a trailing `2>&1`) with the `queue --cancel` line for the later ones; *same target dir* (distinct jobs contending for one `target/` — overlap, reviewed by a human, since true subset detection would need test-filter semantics); and *needn't be queued* (`cargo clippy|check|build`, `just lint*` — the keep-instant category). A job with no record is listed as unidentifiable, never guessed at. A clean queue prints an explicit "nothing to flag" line.
 - `queue --slots [N]` shows, or sets for this session, how many jobs may run at once; `queue -- <cmd>` if the command starts with a flag; `--clear` forgets finished jobs; `--kill` stops the daemon (not a running job)
-- Env knobs: `QUEUE_SLOTS` (default 1), `QUEUE_NO_DEDUP=1` opts out of coalescing, `QUEUE_QUIET=1` silences the heartbeat
+- Env knobs: `QUEUE_SLOTS` (default 1), `QUEUE_NO_DEDUP=1` opts out of coalescing, `QUEUE_QUIET=1` silences the heartbeat, `QUEUE_QUICK_RATIO` (default 3) is the shortest-job-first threshold below
 - Obsolete: `queue --budget` errors outright; `QUEUE_BUDGET`/`TESTQ_BUDGET` and `QUEUE_WEIGHT`/`TESTQ_WEIGHT` are ignored with a loud warning rather than honoured — a `12` that meant twelve weight units would now mean twelve concurrent suites. `testq` itself is a gravestone script that exits 127 pointing at `queue`.
 
 ## Slots — the whole scheduling model
@@ -45,7 +47,15 @@ The default is 1, not 2, because a single suite already runs at ~9x parallelism 
 
 An empty queue is deliberately not fast-pathed: "nothing is running, so exec directly" is a check-then-act race where two agents both observe an empty queue and both start heavy jobs, unaccounted — and it would save milliseconds of socket round-trip against jobs measured in minutes.
 
-Byte-identical commands in an unchanged tree coalesce: followers attach to the leader's output and exit code instead of re-running. The key includes HEAD plus a dirty-file fingerprint, so a tree that has moved never coalesces. Scheduling round-robins across sessions, so one agent's fan-out can't starve others.
+Byte-identical commands in an unchanged tree coalesce: followers attach to the leader's output and exit code instead of re-running. The key includes HEAD plus a dirty-file fingerprint, so a tree that has moved never coalesces. A **trailing `2>&1` is normalised away** before hashing — merging the streams changes what the caller sees, never what the run produces, and the follower is replayed the leader's separately-captured stdout and stderr either way. Nothing else is normalised: `> file` and `2>/dev/null` are genuinely different work. Scheduling round-robins across sessions, so one agent's fan-out can't starve others.
+
+### Shortest-job-first promotion, and what the duration history is keyed on
+
+A queued job may jump the jobs ahead of it when **every** queued job ahead has a measured median at least `QUEUE_QUICK_RATIO` (default 3) times its own, and its `target/` is not already locked by something running. It is the third promotion rule, after anti-affinity and fair-share, and all three share one flag: **at most one promotion per job, ever**, whichever rule fires. That single-shot budget is what bounds starvation — a suite can be jumped once, not repeatedly by a stream of quick jobs.
+
+This is not the deleted weight classifier returning. The classifier read the command *text* and decided what it must be; this reads `history_median` for the exact keys involved and nothing else. A command the queue has never run has **no** median, and an unknown median blocks the promotion rather than defaulting — an unseen command is far likelier to be a suite than a one-liner.
+
+Which means the history has to actually accumulate, so a job's duration key is `<repo> <display command>`: the repo is git's *common* dir (shared by every worktree of one repo), and the command is the unwrapped, `cd`-stripped form. Worktrees here are created per issue and deleted with it, and the old key — the submitter's `$PWD` plus the raw argv — gave every fresh worktree an empty history for a command that had run twenty times next door, and keyed `queue 'cd /wt-9 && just ci-fast'` apart from `just ci-fast` on top of that. Rows written under the old key simply orphan and age out with the weekly prune.
 
 ## Settled — don't re-investigate
 

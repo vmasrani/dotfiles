@@ -46,6 +46,8 @@
 #   queue --exit-code [id|--last]  print just that job's exit code
 #   queue --ahead                  how many jobs a new submission waits for
 #   queue --slots [N]              show, or set, how many jobs may run at once
+#   queue --cancel <id|label>      drop a QUEUED job (never kills a running one)
+#   queue --triage                 report duplicate / overlapping / needless jobs
 #   queue --clear                  forget finished jobs
 #   queue --kill                   stop the queue daemon (not a running job)
 #
@@ -55,6 +57,7 @@
 #   queue --solo cargo bench --bench x
 #   queue -- cargo build --release        # `--` if the command starts with a flag
 #   queue --exit-code --last              # ground truth after piping output
+#   queue --triage && queue --cancel 41   # what is redundant, then drop it
 #
 # SEMANTICS
 #   Blocks until there is a free slot, then runs the command IN THIS PROCESS:
@@ -169,6 +172,7 @@ die() { print -u2 "$SELF: $*"; exit 1 }
 if [[ -n "${QUEUE_ACTIVE:-}" ]]; then
   case "${1:-}" in
     -h|--help|-l|--list|status|--watch|--slots|--budget|--clear|--kill) ;;
+    --cancel|--triage) ;;
     --status|--exit-code|--ahead|--ahead-of|"") ;;
     # A LOOP, not a single shift: submission flags stack (`--solo --priority`),
     # and stripping only the first would exec `--priority cargo test` -- i.e.
@@ -289,6 +293,12 @@ readonly SLOTS="${QUEUE_SLOTS:-1}"
   || die "QUEUE_SLOTS must be a positive integer, got '$SLOTS'"
 readonly HEARTBEAT="${QUEUE_HEARTBEAT:-30}"
 readonly QUIET="${QUEUE_QUIET:-}"
+# How many times longer than us a queued job ahead has to be before we may jump
+# it. Validated here rather than in the supervisor, which runs in the background
+# where a `die` would be invisible.
+readonly QUICK_RATIO="${QUEUE_QUICK_RATIO:-3}"
+[[ "$QUICK_RATIO" == <-> && "$QUICK_RATIO" -ge 1 ]] \
+  || die "QUEUE_QUICK_RATIO must be a positive integer, got '$QUICK_RATIO'"
 
 # `ts -S` starts the daemon if it isn't up, and pins the slot count if it is.
 # Both are idempotent, so this is safe to call on every invocation.
@@ -437,9 +447,41 @@ history_median() {
   print -r -- "$vals" | sort -n | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}'
 }
 
-# A stable identity for "the same command in the same place", used to look up
-# how long this kind of job usually takes.
-cmd_key() { print -r -- "$PWD $*" | shasum | cut -c1-12 }
+# WHICH REPO a job belongs to, not which directory it was launched from. The git
+# COMMON dir is shared by every worktree of one repo, so it survives the way work
+# is actually organised here: a worktree is created for an issue and deleted with
+# it, and keying on the worktree gave each new one an empty history -- no median,
+# so no ETA in the heartbeat and nothing for promote_if_quick to decide on, for
+# a command that had already run twenty times next door.
+#
+# `rev-parse` may answer RELATIVELY (`.git` from the main worktree), and a
+# relative path would key on whatever cwd the reader happened to have. `:A` fixes
+# that and also collapses /var vs /private/var, so a `cd`-chain and a plain
+# submission in the same directory agree. Outside a repo there is nothing better
+# than the directory itself.
+repo_identity() {
+  local base="${1:-$PWD}" common
+  common=$(git -C "$base" rev-parse --git-common-dir 2>/dev/null) && [[ -n "$common" ]] \
+    || { print -r -- "${base:A}"; return }
+  [[ "$common" == /* ]] || common="$base/$common"
+  print -r -- "${common:A}"
+}
+
+# A stable identity for "this command, in this repo", used to look up how long
+# this kind of job usually takes.
+#
+# BOTH halves are the resolved forms, never what was typed. The submitter's $PWD
+# is the wrong directory whenever the command carries its own `cd` -- which is
+# the SUPPORTED answer to the `&&` trap, so it is the common shape, not an edge
+# case -- and the raw argv is wrong for the same reason: `zsh -c 'cd /wt-9 &&
+# just ci-fast'` and `just ci-fast` are one command with one runtime, and keying
+# them apart split every measurement this file makes into unusable fragments.
+#
+# Rows written under the old key simply orphan; prune_state ages them out.
+cmd_key() {
+  print -r -- "$(repo_identity "${EFFECTIVE_CWD:-$PWD}") $(display_cmd "$@")" \
+    | shasum | cut -c1-12
+}
 
 # Where cargo will take its exclusive artifact lock. Two jobs sharing this
 # cannot really compile at once whatever the queue says. Resolved from
@@ -531,12 +573,48 @@ dedup_env() {
   done
 }
 
+# A trailing `2>&1` is the ONE thing normalised out of the dedup key, and only at
+# the very end of the command string. Merging the two streams changes what the
+# CALLER sees; it cannot change what the run produces, and a follower is replayed
+# the leader's separately-captured .out and .err either way -- so it receives the
+# same bytes whether or not the leader wrote the redirect.
+#
+# NOTHING ELSE QUALIFIES, and the boundary is the point: `> file` puts output
+# somewhere the leader never wrote it, and `2>/dev/null` says the caller does not
+# want stderr handed back at all. Two jobs differing there are different work.
+#
+# OBSERVED: two `just ci-fast` submissions against one unchanged tree, one of
+# them written with a trailing `2>&1`. Byte-identity said they were different
+# jobs, so both suites ran.
+strip_trailing_merge() {
+  setopt localoptions extended_glob
+  local s="$1"
+  while [[ "$s" == *[[:space:]]##"2>&1" ]]; do
+    s="${s%%[[:space:]]##"2>&1"}"
+  done
+  print -r -- "$s"
+}
+
+# The argv as the dedup hash should see it. `set --` rather than an array so the
+# quoting expression below stays the one the record uses, character for
+# character. Only the `zsh -c <string>` shape (what a quoted submission becomes)
+# and a lone string are touched.
+dedup_argv() {
+  setopt localoptions extended_glob
+  if [[ $# -eq 3 && "${1:t}" == (sh|zsh|bash|dash|ksh) && "$2" == -[a-z]#c ]]; then
+    set -- "$1" "$2" "$(strip_trailing_merge "$3")"
+  elif [[ $# -eq 1 ]]; then
+    set -- "$(strip_trailing_merge "$1")"
+  fi
+  print -r -- "${(j: :)${(q+)@}}"
+}
+
 dedup_key() {
   local fp
   fp=$(tree_fingerprint) || return 1
   {
     print -r -- "$PWD"
-    print -r -- "${(j: :)${(q+)@}}"
+    dedup_argv "$@"
     print -r -- "$fp"
     dedup_env
   } | shasum | cut -c1-24
@@ -616,6 +694,161 @@ describe_blocker() {
 
 say() { [[ -n "$QUIET" ]] || print -u2 "$SELF: $*" }
 
+# ── dropping a job ───────────────────────────────────────────────────────────
+# WHY THIS IS NOT "just use ts -r". A bare `ts -r <id>` typed by hand talks to
+# task-spooler's DEFAULT socket, not this queue's, so it is addressed to a daemon
+# that has never heard of the job; it fails with "The job cannot be removed",
+# which reads as a stuck job rather than a misaddressed one. This file already
+# exports the right TS_SOCKET, so the flag exists to make that impossible to get
+# wrong -- not as a convenience alias.
+#
+# It never kills. Dropping a job that has not started costs nothing and the
+# submitter finds out immediately; killing one that has been compiling for eight
+# minutes is a different act with a different blast radius. So the remedy is
+# PRINTED, exactly, and a human decides to run it.
+cancel_job() {
+  local ref="${1:-}" id recfile="" disp st
+  [[ -n "$ref" ]] || die "--cancel needs a job id, a label, or --last"
+
+  # A bare number is used as-is, so a job submitted by something other than this
+  # wrapper is still cancellable -- it holds a slot like any other.
+  if [[ "$ref" == <-> ]]; then
+    id="$ref"
+    recfile=$(rec_path "$ref" 2>/dev/null) || recfile=""
+  else
+    recfile=$(rec_path "$ref" 2>/dev/null) \
+      || die "no job matches '$ref' -- '$SELF -l' lists the ids"
+    id=$(rec_get "$recfile" id) \
+      || die "'$ref' has no job id recorded, so it never reached the queue"
+  fi
+
+  st=$(state_of_id "$id")
+  case "$st" in
+    queued) ;;
+    running)
+      die "job $id is already RUNNING -- --cancel never kills. To stop it anyway: TS_SOCKET=$TS_SOCKET ts -k $id" ;;
+    *)
+      die "job $id is not queued (state: ${st:-unknown}); nothing to cancel" ;;
+  esac
+
+  ts -r "$id" >/dev/null 2>&1 \
+    || die "could not remove job $id from the queue at $TS_SOCKET"
+
+  if [[ -n "$recfile" ]]; then
+    disp=$(rec_get "$recfile" display) || disp=$(rec_get "$recfile" cmd) || disp="?"
+    rec_put "$recfile" cancelled "$(date +%s)"
+    print "$SELF: cancelled queued job $id ($disp)"
+  else
+    print "$SELF: cancelled queued job $id (no record filed under that id, so its command is not named here)"
+  fi
+}
+
+# ── triage ───────────────────────────────────────────────────────────────────
+# REPORT ONLY, deliberately. Two of the three findings are heuristics: sharing a
+# target dir is overlap, not proof of duplication, and real subset detection
+# (module tests ⊆ full suite) needs test-filter semantics nothing in this file
+# has. Acting on a heuristic means silently discarding somebody's work; printing
+# the ids and the exact command to run does not. A job with no record is named as
+# unidentifiable rather than guessed at, the same rule reap_abandoned follows.
+#
+# A leading `RUSTFLAGS=…` is environment, not the command, so it is stripped
+# before asking what the job actually is -- otherwise one assignment hides a
+# clippy run from the "needn't be queued" check.
+strip_leading_assignments() {
+  setopt localoptions extended_glob
+  local s="$1"
+  while [[ "$s" == [A-Za-z_][A-Za-z0-9_]#=*[[:space:]]* ]]; do
+    s="${s#*[[:space:]]}"
+  done
+  print -r -- "$s"
+}
+
+# Same category the unqueued-heavy guard deliberately does NOT flag: these are
+# meant to stay instant, and queueing one parks it behind a suite for nothing.
+needs_no_queue() {
+  local d
+  d="$(strip_leading_assignments "$1")"
+  [[ "$d" == just[[:space:]]lint*                             ]] && return 0
+  [[ "$d" == cargo[[:space:]](clippy|check|build)             ]] && return 0
+  [[ "$d" == cargo[[:space:]](clippy|check|build)[[:space:]]* ]] && return 0
+  return 1
+}
+
+triage_queue() {
+  local line id st lbl recfile cwd disp tdir
+  local table="" unknown="" report="" n=0
+  local -a fields
+
+  # The LABEL as well as the id, because the by-id index is written by the
+  # background supervisor a beat AFTER `ts` starts listing the job -- so a
+  # by-id-only join reports a job this very wrapper submitted a moment ago as
+  # unidentifiable, which is a wrong answer that looks like a finding. The
+  # record is filed under its label BEFORE submission, so the label always
+  # resolves and "unidentifiable" keeps its real meaning: not ours.
+  for line in ${(f)"$(ts -l 2>/dev/null | tail -n +2 | awk '$2=="queued"||$2=="running" {
+        lbl=""; if (match($0, /\[[^][]+\]/)) lbl = substr($0, RSTART+1, RLENGTH-2)
+        print $1 "\t" $2 "\t" lbl }')"}; do
+    [[ -n "$line" ]] || continue
+    fields=("${(@ps:\t:)line}")
+    id="${fields[1]}"
+    st="${fields[2]}"
+    lbl="${fields[3]:-}"
+    (( n++ ))
+    recfile=$(rec_path "$id" 2>/dev/null) || recfile=""
+    if [[ -z "$recfile" && -n "$lbl" ]]; then
+      recfile=$(rec_path "$lbl" 2>/dev/null) || recfile=""
+    fi
+    if [[ -z "$recfile" ]]; then
+      unknown+="$id "
+      continue
+    fi
+    cwd=$(rec_get "$recfile" effective_cwd) || cwd=$(rec_get "$recfile" cwd) || cwd="?"
+    disp=$(rec_get "$recfile" display)      || disp=$(rec_get "$recfile" cmd) || disp="?"
+    tdir=$(rec_get "$recfile" target_dir)   || tdir="?"
+    # Normalised the same way the dedup key is, so the two agree about what
+    # "the same command" means.
+    table+="$id"$'\t'"$st"$'\t'"$cwd"$'\t'"$(strip_trailing_merge "$disp")"$'\t'"$tdir"$'\n'
+  done
+
+  report+=$(print -r -- "$table" | awk -F'\t' -v self="$SELF" '
+    NF>=5 { k = $3 SUBSEP $4; ids[k] = ids[k] " " $1; n[k]++; cmd[k] = $4 }
+    END { for (k in n) if (n[k] > 1) {
+            s = substr(ids[k], 2); c = split(s, a, " ")
+            line = sprintf("duplicates: jobs %s all run `%s` in the same directory -- cancel the later one(s):", s, cmd[k])
+            for (i = 2; i <= c; i++) line = line sprintf(" %s --cancel %s", self, a[i])
+            print line } }')$'\n'
+
+  report+=$(print -r -- "$table" | awk -F'\t' '
+    NF>=5 { t = $5; g[t] = g[t] " " $1; n[t]++
+            if ($2 == "queued") q[t] = 1
+            k = t SUBSEP $3 SUBSEP $4
+            if (!(k in seen)) { seen[k] = 1; distinct[t]++ } }
+    END { for (t in n) if (n[t] > 1 && (t in q) && distinct[t] > 1)
+            printf "same target dir: jobs %s all build in %s -- possible subset/overlap, review\n",
+                   substr(g[t], 2), t }')$'\n'
+
+  for line in ${(f)table}; do
+    [[ -n "$line" ]] || continue
+    fields=("${(@ps:\t:)line}")
+    needs_no_queue "${fields[4]}" \
+      && report+="needn't be queued: job ${fields[1]} (${fields[4]}) -- run it unqueued; not queueing it is what keeps it instant"$'\n'
+  done
+
+  [[ -n "$unknown" ]] \
+    && report+="unidentifiable: job(s) ${unknown% } have no queue record -- submitted outside $SELF, so nothing is claimed about them"$'\n'
+
+  # Honest empty state: silence would be indistinguishable from a triage that
+  # failed to read the queue at all.
+  if [[ -z "${report//[[:space:]]/}" ]]; then
+    print "$SELF: nothing to flag — $n unfinished job(s), no duplicates, no shared target dirs, nothing that belongs outside the queue"
+    return 0
+  fi
+  print -r -- "$report" | while IFS= read -r line; do
+    [[ -n "$line" ]] && print -r -- "$SELF: $line"
+  done
+  return 0
+}
+
 # ── management subcommands ───────────────────────────────────────────────────
 case "${1:-}" in
   -h|--help)
@@ -640,6 +873,14 @@ case "${1:-}" in
     exit 0 ;;
   --budget)
     die "--budget is obsolete: there are no weight units any more. Use --slots (whole jobs), or --solo to run one job alone." ;;
+  --cancel)
+    state_init; ensure_server
+    cancel_job "${2:-}"
+    exit 0 ;;
+  --triage)
+    state_init; ensure_server
+    triage_queue
+    exit 0 ;;
   --clear)
     ensure_server; exec ts -C ;;
   --kill)
@@ -801,7 +1042,7 @@ supervise() {
     st=$(state_of_id "$id")
     [[ "$st" == "running" || "$st" == "finished" || -z "$st" ]] && break
 
-    if (( ! promoted )) && { promote_if_unblocked "$id" || promote_if_starved "$id" }; then
+    if (( ! promoted )) && { promote_if_unblocked "$id" || promote_if_starved "$id" || promote_if_quick "$id" }; then
       promoted=1
     fi
 
@@ -880,6 +1121,58 @@ promote_if_starved() {
     osess=$(rec_get "$op" session) || return 1
     contains_line "$running_sessions" "$osess" || return 1
   done
+
+  ts -u "$id" >/dev/null 2>&1
+}
+
+# SHORTEST JOB FIRST, decided entirely on MEASURED durations. A two-second job
+# parked behind a nine-minute suite pays 270x its own runtime to wait; letting it
+# past costs the suite two seconds. That trade is only worth making when both
+# numbers are known, so this rule refuses to fire on anything it has not timed.
+#
+# THIS IS NOT THE WEIGHT CLASSIFIER COMING BACK. That one read the command TEXT
+# and decided what it must be -- a table that had to stay in sync with a second
+# copy inside the hook, and that was simply wrong about anything nobody had
+# taught it. Nothing here looks at what the command says. It reads
+# history_median for the exact keys involved, and an unknown median BLOCKS the
+# promotion rather than defaulting: a command this queue has never run is far
+# likelier to be a suite than a one-liner, and guessing the other way would let
+# a first-ever `cargo build --release` jump every suite on the machine.
+#
+# Like the other two rules it fires at most once per job -- the caller's single
+# `promoted` flag is shared by all three -- which is what bounds starvation. A
+# job can be jumped, but not repeatedly by an endless stream of quick ones.
+promote_if_quick() {
+  local id="$1" mine mykey mydir other op okey omed running_dirs="" ahead=0
+  mykey=$(rec_get "$RECORD" cmdkey) || return 1
+  mine=$(history_median "$mykey")   || return 1
+  # A 0s median would make every ratio comparison below vacuously true.
+  (( mine < 1 )) && mine=1
+
+  mydir=$(rec_get "$RECORD" target_dir) || return 1
+  # An empty state list expands to one EMPTY word, and rec_path "" means
+  # `--last` -- i.e. our own record. Skip it explicitly rather than reason about
+  # what conclusion that accident happens to reach.
+  for other in ${(f)"$(ids_in_state running)"}; do
+    [[ -n "$other" ]] || continue
+    op=$(rec_path "$other" 2>/dev/null) || return 1   # unknown job: don't guess
+    running_dirs+="$(rec_get "$op" target_dir || true)"$'\n'
+  done
+  # Jumping the queue only to sit on someone else's cargo lock helps nobody.
+  contains_line "$running_dirs" "$mydir" && return 1
+
+  for other in ${(f)"$(ids_in_state queued)"}; do
+    [[ -n "$other" ]] || continue
+    (( other >= id )) && continue
+    ahead=1
+    op=$(rec_path "$other" 2>/dev/null) || return 1
+    okey=$(rec_get "$op" cmdkey)        || return 1
+    omed=$(history_median "$okey")      || return 1
+    (( omed >= QUICK_RATIO * mine ))    || return 1
+  done
+  # Only QUEUED jobs can be jumped; a running one cannot be preempted, so with
+  # nothing queued ahead of us there is no reordering to do.
+  (( ahead )) || return 1
 
   ts -u "$id" >/dev/null 2>&1
 }

@@ -41,7 +41,12 @@ setup() {
 }
 
 teardown() {
-    TS_SOCKET="$QUEUE_SOCKET" ts -K 2>/dev/null || true
+    # `drain`, not a bare `ts -K`: several tests below pin fixtures behind a
+    # 20-second blocker, and an assertion that fails before the test's own
+    # cleanup would otherwise leave that blocker running -- holding bats' output
+    # pipe open and hanging the whole FILE on one failed test. Teardown always
+    # runs, so the teardown is where this belongs.
+    drain
 }
 
 # ── position reporting (item 3) ───────────────────────────────────────────
@@ -394,6 +399,41 @@ setup_git_repo() {
     [ "$follower_status" -eq 9 ]
 }
 
+@test "dedup: a trailing 2>&1 does not defeat the coalesce" {
+    # OBSERVED IN PRODUCTION: two `just ci-fast` submissions against one tree,
+    # one of them written with a trailing `2>&1`. Byte-identity said they were
+    # different jobs and both suites ran. Merging the streams changes what the
+    # CALLER sees, never what the run produces -- and a follower replays the
+    # leader's separately-captured .out/.err either way.
+    setup_git_repo
+    local body="echo ran >>$COUNTER; sleep 1"
+    "$QUEUE" "$body" >/dev/null &
+    sleep 0.4
+    "$QUEUE" "$body 2>&1" >/dev/null &
+    wait 2>/dev/null || true
+
+    run wc -l <"$COUNTER"
+    [ "$(echo "$output" | tr -d ' ')" = "1" ]
+    # ...and the follower says so in its own record, not just by not running.
+    run "$QUEUE" --status --last
+    [[ "$output" == *"deduped_from="* ]]
+}
+
+@test "dedup: a trailing 2>/dev/null is NOT normalised away" {
+    # The boundary of the normalisation: discarding stderr changes what the
+    # command emits, so two jobs differing there are genuinely different work
+    # and a follower would be handed output its own redirect said to drop.
+    setup_git_repo
+    local body="echo ran >>$COUNTER; sleep 1"
+    "$QUEUE" "$body" >/dev/null &
+    sleep 0.4
+    "$QUEUE" "$body 2>/dev/null" >/dev/null &
+    wait 2>/dev/null || true
+
+    run wc -l <"$COUNTER"
+    [ "$(echo "$output" | tr -d ' ')" = "2" ]
+}
+
 # ── transparency contract ─────────────────────────────────────────────────
 
 @test "transparency: the job inherits the caller's cwd" {
@@ -558,4 +598,326 @@ setup_git_repo() {
     run "${BATS_TEST_DIRNAME}/../testq" cargo nextest run
     [ "$status" -eq 127 ]
     [[ "$output" == *"queue"* ]]
+}
+
+# ── shared helpers for the scheduling / management groups below ───────────
+#
+# Poll, never sleep-and-hope: how long a submission takes to reach the daemon
+# depends on the tree it has to fingerprint, not on us.
+
+# `</dev/null` on every `ts` here, and never a bare `ts -l` once the daemon is
+# gone. A task-spooler CLIENT that finds no server FORKS ONE, and the forked
+# daemon inherits the caller's descriptors -- which under bats are the runner's
+# own pipes. A daemon leaked that way outlives the whole file and holds the pipe
+# open, so bats reports every test passing and then never exits. That is exactly
+# how it hung here: teardown's `ts -l` ran after `ts -K` had removed the server,
+# forked a replacement, and the second `ts -K` raced its startup.
+
+count_in_state() {
+    [ -S "$QUEUE_SOCKET" ] || { echo 0; return 0; }
+    TS_SOCKET="$QUEUE_SOCKET" ts -l 2>/dev/null </dev/null | tail -n +2 |
+        awk -v s="$1" '$2==s {n++} END{print n+0}'
+}
+
+ids_in_state_t() {
+    [ -S "$QUEUE_SOCKET" ] || return 0
+    TS_SOCKET="$QUEUE_SOCKET" ts -l 2>/dev/null </dev/null | tail -n +2 |
+        awk -v s="$1" '$2==s {print $1}'
+}
+
+wait_for_state() {   # $1 = state, $2 = how many
+    local tries=0 n=0
+    while (( tries++ < 150 )); do
+        n=$(count_in_state "$1")
+        if [ "$n" -ge "$2" ]; then return 0; fi
+        sleep 0.1
+    done
+    echo "timed out waiting for $2 job(s) in state $1 (saw $n)" >&2
+    TS_SOCKET="$QUEUE_SOCKET" ts -l >&2
+    return 1
+}
+
+# Tests below pin fixtures behind a long blocker so they never actually run.
+# Tear that down in the right order -- drop the QUEUED jobs first, because
+# killing the blocker frees the slot and the fixtures would start. Idempotent:
+# teardown calls it for every test, and a test may call it earlier to assert on
+# what did NOT run.
+drain() {
+    local id
+    if [ -S "$QUEUE_SOCKET" ]; then
+        for id in $(ids_in_state_t queued); do
+            TS_SOCKET="$QUEUE_SOCKET" ts -r "$id" >/dev/null 2>&1 </dev/null || true
+        done
+        for id in $(ids_in_state_t running); do
+            TS_SOCKET="$QUEUE_SOCKET" ts -k "$id" >/dev/null 2>&1 </dev/null || true
+        done
+        TS_SOCKET="$QUEUE_SOCKET" ts -K >/dev/null 2>&1 </dev/null || true
+    fi
+    # The socket file outlives the daemon often enough that leaving it would let
+    # the NEXT `ts` here fork a replacement server.
+    rm -f "$QUEUE_SOCKET" 2>/dev/null || true
+    wait 2>/dev/null || true
+}
+
+distinct_history_keys() {
+    awk -F'\t' 'NF>1 {print $1}' "$QUEUE_STATE/history.tsv" | sort -u | wc -l | tr -d ' '
+}
+
+# ── duration history is keyed on the REPO, not the submitter's cwd ────────
+
+setup_worktree_repo() {
+    # The shape this exists for: one repo, one ephemeral per-issue worktree.
+    MAIN="${BATS_TEST_TMPDIR}/main"
+    git init -q "$MAIN"
+    cd "$MAIN"
+    echo one >file.txt
+    git add -A
+    git -c user.email=t@t -c user.name=t commit -qm init
+    WT="${BATS_TEST_TMPDIR}/wt"
+    git -c user.email=t@t -c user.name=t worktree add -q -b wt "$WT" >/dev/null 2>&1
+}
+
+@test "history key: two worktrees of one repo share one duration key" {
+    # Worktrees here are created and destroyed per issue. Keying on the cwd
+    # gave every fresh one an empty history, which blanks the heartbeat ETA and
+    # starves the shortest-job promotion of the very numbers it decides on.
+    export QUEUE_NO_DEDUP=1
+    setup_worktree_repo
+    cd "$MAIN"; "$QUEUE" true
+    cd "$WT";   "$QUEUE" true
+    [ "$(distinct_history_keys)" = "1" ]
+}
+
+@test "history key: a cd-chain keys the same as running in place" {
+    # `queue 'cd /worktree && just ci-fast'` is the supported answer to the
+    # `&&` trap, so it is the COMMON shape -- and it used to key on wherever
+    # the submitting agent happened to be sitting.
+    export QUEUE_NO_DEDUP=1
+    setup_worktree_repo
+    cd "$MAIN"
+    "$QUEUE" sleep 0
+    cd "$BATS_TEST_TMPDIR"
+    "$QUEUE" "cd $MAIN && sleep 0"
+    [ "$(distinct_history_keys)" = "1" ]
+}
+
+@test "history key: different repos never share a key" {
+    export QUEUE_NO_DEDUP=1
+    local d
+    for d in r1 r2; do
+        git init -q "${BATS_TEST_TMPDIR}/$d"
+        cd "${BATS_TEST_TMPDIR}/$d"
+        echo x >f
+        git add -A
+        git -c user.email=t@t -c user.name=t commit -qm init
+        "$QUEUE" true
+    done
+    [ "$(distinct_history_keys)" = "2" ]
+}
+
+# ── shortest-job-first promotion ──────────────────────────────────────────
+#
+# The promotion reads MEASURED durations, so every fixture below first RUNS
+# each command once to give it a history. Jobs live in two directories on
+# purpose: the blocker must not hold the promoted job's target dir, or the
+# anti-affinity guard (correctly) refuses to promote.
+
+@test "quick: a job with a short history jumps a queued long one" {
+    local A="${BATS_TEST_TMPDIR}/a" B="${BATS_TEST_TMPDIR}/b"
+    mkdir -p "$A" "$B"
+    local slow="echo slow >>$TRACE; sleep 3"
+    local fast="echo fast >>$TRACE"
+
+    cd "$A"
+    "$QUEUE" sh -c "$slow" >/dev/null
+    "$QUEUE" sh -c "$fast" >/dev/null
+    : >"$TRACE"
+
+    cd "$B"
+    "$QUEUE" sh -c "sleep 6" >/dev/null 2>&1 &
+    wait_for_state running 1
+
+    cd "$A"
+    "$QUEUE" sh -c "$slow" >/dev/null 2>&1 &
+    wait_for_state queued 1
+    # Let the long job take its own one-shot promotion first. Every rule here
+    # fires at most once per job and the LAST `ts -u` wins, so without this the
+    # test would be measuring which supervisor woke up first.
+    sleep 1
+    "$QUEUE" sh -c "$fast" >/dev/null 2>&1 &
+    wait_for_state queued 2
+    wait 2>/dev/null || true
+
+    run cat "$TRACE"
+    [[ "$output" == "fast"*"slow"* ]]
+}
+
+@test "quick: a job with no history never jumps" {
+    # An unseen command is probably a suite. Guessing otherwise would let the
+    # promotion do exactly what the deleted weight classifier did.
+    local A="${BATS_TEST_TMPDIR}/a" B="${BATS_TEST_TMPDIR}/b"
+    mkdir -p "$A" "$B"
+    local slow="echo slow >>$TRACE; sleep 3"
+
+    cd "$A"
+    "$QUEUE" sh -c "$slow" >/dev/null
+    : >"$TRACE"
+
+    cd "$B"
+    "$QUEUE" sh -c "sleep 6" >/dev/null 2>&1 &
+    wait_for_state running 1
+
+    cd "$A"
+    "$QUEUE" sh -c "$slow" >/dev/null 2>&1 &
+    wait_for_state queued 1
+    sleep 1
+    "$QUEUE" sh -c "echo novel >>$TRACE" >/dev/null 2>&1 &
+    wait_for_state queued 2
+    wait 2>/dev/null || true
+
+    run cat "$TRACE"
+    [[ "$output" == "slow"*"novel"* ]]
+}
+
+@test "quick: no jump when the job ahead is quick too" {
+    # The ratio is the whole point: jumping a job that is barely longer than
+    # you buys nothing and costs it its place.
+    local A="${BATS_TEST_TMPDIR}/a" B="${BATS_TEST_TMPDIR}/b"
+    mkdir -p "$A" "$B"
+    local one="echo one >>$TRACE; sleep 1"
+    local two="echo two >>$TRACE; sleep 1"
+
+    cd "$A"
+    "$QUEUE" sh -c "$one" >/dev/null
+    "$QUEUE" sh -c "$two" >/dev/null
+    : >"$TRACE"
+
+    cd "$B"
+    "$QUEUE" sh -c "sleep 6" >/dev/null 2>&1 &
+    wait_for_state running 1
+
+    cd "$A"
+    "$QUEUE" sh -c "$one" >/dev/null 2>&1 &
+    wait_for_state queued 1
+    sleep 1
+    "$QUEUE" sh -c "$two" >/dev/null 2>&1 &
+    wait_for_state queued 2
+    wait 2>/dev/null || true
+
+    run cat "$TRACE"
+    [[ "$output" == "one"*"two"* ]]
+}
+
+# ── --cancel ──────────────────────────────────────────────────────────────
+#
+# The incident: agents reach for a bare `ts -r <id>`, which talks to
+# task-spooler's DEFAULT socket rather than the queue's, so the removal is
+# addressed to a daemon that has never heard of the job and fails with "The job
+# cannot be removed" -- which reads as a stuck job, not a misaddressed one.
+
+@test "cancel: removes a queued job" {
+    cd "$BATS_TEST_TMPDIR"
+    "$QUEUE" sh -c "sleep 20" >/dev/null 2>&1 &
+    wait_for_state running 1
+    "$QUEUE" sh -c "echo victim >>$TRACE" >/dev/null 2>&1 &
+    wait_for_state queued 1
+    local id
+    id=$(ids_in_state_t queued | head -1)
+
+    run "$QUEUE" --cancel "$id"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"cancelled"* ]]
+    [[ "$output" == *"$id"* ]]
+
+    [ "$(count_in_state queued)" = "0" ]
+    drain
+    run grep -c victim "$TRACE" 2>/dev/null || true
+    [ "${output:-0}" = "0" ]
+}
+
+@test "cancel: refuses a running job and names the kill command instead" {
+    cd "$BATS_TEST_TMPDIR"
+    "$QUEUE" sh -c "sleep 20" >/dev/null 2>&1 &
+    wait_for_state running 1
+    local id
+    id=$(ids_in_state_t running | head -1)
+
+    run "$QUEUE" --cancel "$id"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"ts -k"* ]]
+    [ "$(count_in_state running)" = "1" ]
+    drain
+}
+
+@test "cancel: an unknown job id is a loud error, not a no-op" {
+    run "$QUEUE" --cancel 99999
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not queued"* ]]
+}
+
+@test "cancel: with no reference at all is an error" {
+    run "$QUEUE" --cancel
+    [ "$status" -ne 0 ]
+}
+
+# ── --triage ──────────────────────────────────────────────────────────────
+
+@test "triage: flags a duplicate pair and suggests cancelling the later one" {
+    cd "$BATS_TEST_TMPDIR"
+    export QUEUE_NO_DEDUP=1
+    "$QUEUE" sh -c "sleep 20" >/dev/null 2>&1 &
+    wait_for_state running 1
+    "$QUEUE" sh -c "sleep 5" >/dev/null 2>&1 &
+    "$QUEUE" sh -c "sleep 5" >/dev/null 2>&1 &
+    wait_for_state queued 2
+
+    run "$QUEUE" --triage
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"duplicate"* ]]
+    [[ "$output" == *"--cancel"* ]]
+    # REPORT ONLY: nothing was removed.
+    [ "$(count_in_state queued)" = "2" ]
+    drain
+}
+
+@test "triage: flags a queued job that needn't be queued at all" {
+    cd "$BATS_TEST_TMPDIR"
+    "$QUEUE" sh -c "sleep 20" >/dev/null 2>&1 &
+    wait_for_state running 1
+    "$QUEUE" cargo clippy --version >/dev/null 2>&1 &
+    wait_for_state queued 1
+
+    run "$QUEUE" --triage
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"unqueued"* ]]
+    [[ "$output" == *"clippy"* ]]
+    drain
+}
+
+@test "triage: an env-assignment prefix does not hide a clippy run" {
+    cd "$BATS_TEST_TMPDIR"
+    "$QUEUE" sh -c "sleep 20" >/dev/null 2>&1 &
+    wait_for_state running 1
+    "$QUEUE" "RUSTFLAGS=-Awarnings cargo check --workspace" >/dev/null 2>&1 &
+    wait_for_state queued 1
+
+    run "$QUEUE" --triage
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"unqueued"* ]]
+    drain
+}
+
+@test "triage: a clean queue says so explicitly" {
+    # Honest empty state: silence would be indistinguishable from a triage that
+    # failed to read the queue at all.
+    run "$QUEUE" --triage
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"nothing to flag"* ]]
+}
+
+@test "cli: --help lists the cancel and triage flags" {
+    run "$QUEUE" --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"--cancel"* ]]
+    [[ "$output" == *"--triage"* ]]
 }
