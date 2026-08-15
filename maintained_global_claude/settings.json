@@ -31,7 +31,15 @@
       "Read(//Volumes/external/**)",
       "Edit(//Volumes/external/**)",
       "Read(//Users/vmasrani/**)",
-      "Edit(//Users/vmasrani/**)"
+      "Edit(//Users/vmasrani/**)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh issue close:*)",
+      "Bash(gh issue edit:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh issue comment:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh run rerun:*)"
     ],
     "deny": [],
     "defaultMode": "auto",
@@ -40,7 +48,7 @@
       "/Users/vmasrani"
     ]
   },
-  "model": "opus[1m]",
+  "model": "sonnet",
   "hooks": {
     "PreToolUse": [
       {
