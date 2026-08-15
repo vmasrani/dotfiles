@@ -80,7 +80,18 @@ HEAVY_CARGO_VERBS = {"nextest", "test", "bench", "miri"}
 # every agent runs before opening a PR; in a python project it fans out to a
 # full pytest suite, so no cargo-shaped rule would ever catch it. `lint*` is
 # omitted alongside `cargo clippy`, per the note above.
-JUST_HEAVY_RE = re.compile(r"\A(?:test|bench|ci-fast|ci-deep)[a-z0-9-]*\Z")
+#
+# `-release`-suffixed and `build-{linux,mac,windows}` recipes are ALSO heavy on
+# purpose, despite the "build is cheap" rule above: those are full optimized
+# workspace/cross-compile builds (`build-cartridge-release`, `test-release`,
+# `build-linux`, ...), not the fast incremental `cargo build`/`cargo check`
+# the exclusion was written for. Caught a `just build-cartridge-release` full
+# release compile running unqueued on an already-oversubscribed box (2026-08-14).
+JUST_HEAVY_RE = re.compile(
+    r"\A(?:test|bench|ci-fast|ci-deep)[a-z0-9-]*\Z"
+    r"|\A[a-z0-9-]*-release\Z"
+    r"|\Abuild-(?:linux|mac|windows)\Z"
+)
 
 
 def _heavy_at(tokens, i):
@@ -92,6 +103,10 @@ def _heavy_at(tokens, i):
             j += 1
         if j < len(tokens) and tokens[j] in HEAVY_CARGO_VERBS:
             return f"cargo {tokens[j]}"
+        # `cargo build`/`install` are cheap in debug but a full optimized
+        # `--release` workspace build is exactly as heavy as a test suite.
+        if j < len(tokens) and tokens[j] in ("build", "install") and "--release" in tokens[j + 1 :]:
+            return f"cargo {tokens[j]} --release"
     if tok == "just" and i + 1 < len(tokens) and JUST_HEAVY_RE.match(tokens[i + 1]):
         return f"just {tokens[i + 1]}"
     return None
