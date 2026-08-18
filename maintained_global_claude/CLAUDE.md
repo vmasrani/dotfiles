@@ -7,6 +7,7 @@
 Context tokens are re-read every turn (~43× each over a session, a ~6× effective price amplification) and context never shrinks. So:
 
 - **`/clear` between unrelated tasks — break-even is ~5 messages.** If >5 messages of work remain and the history isn't load-bearing, clearing is strictly cheaper. Hand off via the issue/PR, not by keeping the session alive.
+- **The orchestrator is not exempt — `/clear` between waves/batches too.** Measured (fast-dedup 2026-08-17): the orchestrator session alone cost 62M cache-read tokens at 159k average context — ~80% of what its entire 5-worker wave consumed — because wave-1 history rode along under every wave-2 turn. The handoff already lives on the issues/PRs; a fresh session runs the next wave at half the context.
 - **One session, one task.**
 - **Cheapest token is the one never read.** Before any bulk-returning tool call, ask what the smallest sufficient slice is.
 
@@ -55,6 +56,9 @@ Subagents start at ~34k and stay small; the main session sits at 175k. Anything 
 - **Prefer a fresh agent with a self-contained prompt over a fork** — a fork inherits the whole 175k context and saves nothing.
 - **Close out idle agents** with `TaskStop({task_id: "<agent-name>"})` when their thread is genuinely closed; sweep at the end of any spawning turn. But don't stop an agent whose context you might still want — `SendMessage` reuses its research; respawning pays again. Idle agents don't burn tokens; this is roster hygiene, not cost saving.
 - **Default known-slow commands to `run_in_background: true` up front** — full test suites, `cargo`/`just` build-and-test recipes, `queue`/`testq`, CI watches (`gh run watch`), anything with a "queue wait + suite time" shape. There is no auto-background setting in Claude Code (checked 2026-08-14) — this is a standing habit, and it must be stated explicitly in delegation prompts, since fresh subagents don't inherit this file.
+- **Never spend a turn polling.** Tracked background work re-invokes the session on completion; a `queue -l`/`git log` status-poll turn buys nothing and re-reads the full context (~159k) to do it. Poll only external state the harness can't see, and batch it with real work.
+- **Mandate terse structured reports in every dispatch prompt** — ≤12 lines: SHA / exact counts / conflicts resolved / anything left undone. A worker's report lands in the orchestrator's context and is re-read every turn thereafter; prose narratives compound forever.
+- **Put a context-hygiene line in every dispatch prompt** (bounded Reads, `rg -n -m 20` caps, batch independent tool calls, never re-read). Measured: wave workers averaged 100–126k context — ~70–90k of avoidable file/tool output on top of their 34k start — and cost scales as turns × context.
 
 # Model selection for subagents — Opus 5 is BANNED
 
@@ -64,6 +68,8 @@ Subagents start at ~34k and stay small; the main session sits at 175k. Anything 
 - simple tasks, and ALL research-type subagents (context files, codebase exploration, doc fan-outs) → `sonnet` (haiku for the most trivial scouting)
 - moderately difficult (standard implementation, code review, test writing) → `opus` (4.8)
 - very difficult → `opus` (4.8) with max reasoning effort
+
+**Grade per FEATURE, not per wave.** In a multi-feature batch, each worker gets its own model: opus (4.8) only where the algorithmic seam is genuinely tricky; `sonnet` (~1/5 the price) for adapters, I/O plumbing, format/spec-following code, and scaffolding. Measured (2026-08-17): a 5-feature wave ran all-opus when at least 2 features were sonnet-shaped — ~30-40% of worker cost for no quality gain.
 
 **HARD RULE — always pass `model` explicitly on every subagent; never `model: fable`, never let a subagent silently inherit the session model.** Scale reasoning effort to task difficulty.
 
@@ -122,7 +128,7 @@ These rules target failures that produce confident, plausible, wrong output. Som
 - **Static gates stay per-feature:** `cargo check` + `clippy` (unqueued, instant) green before a feature agent reports done. A compile error caught per-feature costs nothing; caught at merge it entangles six diffs.
 - **One worktree per batch, not per feature.** Parallel agents partition by file/module ownership, declared in each dispatch prompt — disjoint files mean no conflicts and ONE target dir instead of N cold ones.
 - **One commit per feature → one branch → ONE PR, reviewed once.** In kitted repos, file ONE issue scoped to the batch with a per-feature checklist (the feature-work analogue of a fast-lane batch). When the test round goes red, attribute mechanically — per-feature commits make `git bisect` / single-commit revert pinpoint the culprit; never hand-debug the union.
-- **The one round is: full suite on the merged result — run by the LEAD, queued, detached, count-reconciled.** All evidence-discipline rules apply. A red triggers per-commit isolation and a fix commit; it does not reopen per-feature test cycles.
+- **The one round is: full suite on the merged result — queued, detached, count-reconciled, run ONCE, by the agent who MERGES.** "One round" binds the reviewer too: when author≠merger, the integrator does merges + static checks only, and the merger runs the single full gate with its own eyes before merging. Never two identical full gates on the same SHA (measured: integrator-gate + reviewer-regate doubled the wave's gate cost for zero information). All evidence-discipline rules apply. A red triggers per-commit isolation and a fix commit; it does not reopen per-feature test cycles.
 - **Cap batches at ~5-6 features.** Past that, failure attribution and review both degrade.
 
 # GitHub projects — issue → worktree → PR → CI
