@@ -111,6 +111,15 @@ These rules target failures that produce confident, plausible, wrong output. Som
 - **A conditional action needs a conditional marker.** `git commit; echo done` prints the marker even when nothing committed. Compare `git rev-parse HEAD` before/after, or guard: `git diff --cached --quiet || git commit`.
 - **Re-run the full suite on the MERGED result** — per-branch greens don't cover the combination.
 
+# Benchmark economy — never re-measure what you already have
+
+**SEVERE, measured dev-velocity sink (2026-08-17): expensive runs that answer no question.** Every solo-queue benchmark/profile run must be justified by a question ONLY that run can answer — an unnecessary 30–60 min solo job stalls every session on the machine, twice over when it later gets re-run.
+
+- **Before enqueueing any expensive run, check for existing numbers first** — search the durable results dir (experiment CSVs/logs) for the same (commit SHA, corpus, flags). Re-measuring stored results is a bug, not diligence.
+- **Baseline (control) runs are gated on evidence the change can affect them.** Run the treatment build FIRST with mechanism counters enabled; run the baseline ONLY for inputs where the counters show the changed code path actually executed. A pre/post pair where the diff'd code never runs measures noise at full price (measured: fast-regex #18 sweep — 2 corpora × pre runs bought zero information; counters showed the new path never fired).
+- **Persist every expensive result durably at birth** — CSV/log named with commit SHA + corpus + flags, in the shared experiment dir, never only /tmp or a session transcript. A number that isn't stored WILL be re-bought at full price (measured: fast-dedup hero benches nearly re-ran 30–60 min baselines because no stored baselines existed).
+- **Plans and handoffs must carry the reuse map:** which numbers already exist, where, and at what SHA — so the next session extends the dataset instead of regenerating it.
+
 # Workflow defaults
 
 - **Red-green TDD stays the rule for bug fixes and core-invariant changes** — the reproducing test IS the spec: write it first, watch it fail. Multi-feature work follows "Implementation batching" below: tests written per feature, executed ONCE on the merged batch.
