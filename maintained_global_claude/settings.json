@@ -31,7 +31,15 @@
       "Read(//home/vmasrani/**)",
       "Edit(//home/vmasrani/**)",
       "Read(//data/**)",
-      "Edit(//data/**)"
+      "Edit(//data/**)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh issue close:*)",
+      "Bash(gh issue edit:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh issue comment:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh run rerun:*)"
     ],
     "deny": [],
     "defaultMode": "auto",
@@ -40,7 +48,7 @@
       "/data"
     ]
   },
-  "model": "claude-fable-5[1m]",
+  "model": "sonnet",
   "hooks": {
     "PreToolUse": [
       {
@@ -52,7 +60,7 @@
           },
           {
             "type": "command",
-            "command": "/usr/bin/python3 ~/.claude/hooks/test_queue_guard.py"
+            "command": "/usr/bin/python3 ~/.claude/hooks/unqueued_heavy_guard.py"
           }
         ]
       }

@@ -1,0 +1,209 @@
+name: CI
+
+# Vendored, placeholder-free. Toolchain setup keys off what is actually in the
+# tree, so ONE file serves every project and nothing needs rendering.
+#
+# ── The contract ───────────────────────────────────────────────────────────
+#
+# This workflow knows exactly three things about a project:
+#
+#   just ci-fast       what a PR into dev must pass
+#   just ci-deep       what a PR into main must pass
+#   just pre-push      the local hook (fast, no tests) -- not run here
+#
+# NOTE the recipe names. The drafted kit called these `ci` / `ci-release`. This
+# org's documented CI contract has always been `ci-fast` / `ci-deep` -- in
+# CLAUDE.md, .agent-workflow/AGENT_WORKFLOW.md, the pre-push hook and 7 sibling
+# repos -- so the KIT was adapted to the contract, rather than 8 repos renamed
+# to the kit.
+#
+# Everything else is the project's business. `init.sh` verifies those recipes
+# exist and fails loud at setup if they don't.
+#
+# ── Why there is an aggregator job ─────────────────────────────────────────
+#
+# The required-status-check context is a STRING, matched exactly. Coupling it to
+# a job name means renaming a job silently orphans the branch rule -- the check
+# never reports, the PR waits forever, and nothing anywhere emits an error.
+# That is not hypothetical: it is what blocked `main` in hetzner-cli and
+# radar-apps, and what left five other repos unmergeable for months.
+#
+# So exactly ONE job here is named `CI`, it is the only context the ruleset
+# names, and it does no work of its own -- it reports the aggregate of the jobs
+# that do. The work fans out across parallel matrix legs whose names are free to
+# change forever without the ruleset caring.
+#
+# The fan-out is not decoration. parot-core's release gate is three recipes of
+# ~20 min, >30 min and a few more; running them in one job summed past a single
+# timeout and produced 15 consecutive cancelled runs -- zero signal at full
+# runner cost (sophiaconsulting/parot-core#39). Wall-clock here is the slowest
+# single recipe, not their sum, and each leg carries its own timeout so a
+# regression fails loud and specific instead of silently re-summing.
+
+# `main` ONLY, deliberately. A PR into `dev` does NOT run this workflow.
+#
+# `pull_request` fires when a PR TARGETS a listed branch -- on open and on each
+# new commit -- never on the merge itself. There is no `push:` trigger here, so
+# merging runs nothing; the gate has already run on the PR.
+#
+# dev PRs stay advisory-only (Secret scan + Workflow lint from agent-fast.yml,
+# ~2 min), which is the 2026-08-03 posture recorded in CLAUDE.md. Adding `dev`
+# here would have put a ~22-minute `ci-fast` on every dev PR. `just ci-fast` in
+# the worktree, enforced by .githooks/pre-push, remains the real dev gate.
+#
+# This costs nothing for the ruleset: `dev` is not protected, so no context is
+# required there. `CI` reports on main-bound PRs, which is where enforcement
+# lives.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Decide which recipes this PR runs. A project may fan its gate out across
+  # several parallel legs by shipping `.ci/recipes.json`:
+  #
+  #   { "ci-fast": ["ci-fast"], "ci-deep": ["ci-fast", "test-perf"] }
+  #
+  # Absent -- the common case -- the gate is the single matching recipe. The
+  # file is READ, never generated, and it is the only project-shaped input to
+  # this workflow.
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      recipes: ${{ steps.pick.outputs.recipes }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        env:
+          # `base_ref` is the branch being merged INTO, which is what decides
+          # how heavy the gate is. Read from env, not inlined into the script:
+          # a branch name is attacker-influenced text and must never reach a
+          # shell as code.
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          gate=ci-fast
+          [ "$BASE" = main ] && gate=ci-deep
+          if [ -f .ci/recipes.json ]; then
+            # `// empty` so a file that omits this gate falls through to the
+            # default rather than emitting a literal "null" the matrix would
+            # then try to run as a recipe name.
+            recipes=$(jq -c --arg g "$gate" '.[$g] // empty' .ci/recipes.json)
+          else
+            recipes=""
+          fi
+          [ -n "$recipes" ] || recipes="[\"$gate\"]"
+          echo "recipes=$recipes" >> "$GITHUB_OUTPUT"
+          echo "gate=$gate recipes=$recipes"
+
+  checks:
+    # Deliberately NOT named `CI`. These names are free to change.
+    name: ${{ matrix.recipe }}
+    needs: [plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      # One leg's failure must not cancel its siblings: a run that reports
+      # "gauntlet failed, perf passed" is worth more than one that reports
+      # "gauntlet failed, perf unknown".
+      fail-fast: false
+      matrix:
+        recipe: ${{ fromJSON(needs.plan.outputs.recipes) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every setup step below is conditional on what is IN THE TREE, which is
+      # what lets one file serve a Rust repo, a Python repo and a JS repo with
+      # no rendering and no placeholders.
+
+      # A debug build fills the runner's ~15 GB of free disk and SIGBUSes the
+      # linker. Must follow checkout.
+      - name: Reclaim runner disk
+        if: hashFiles('**/Cargo.toml') != ''
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /usr/local/share/powershell
+          df -h /
+      - uses: dtolnay/rust-toolchain@stable
+        if: hashFiles('**/Cargo.toml') != ''
+      # Not bundled with the toolchain.
+      - uses: taiki-e/install-action@nextest
+        if: hashFiles('**/Cargo.toml') != ''
+      # `cache-on-failure` is load-bearing: without it a run cancelled by
+      # `timeout-minutes` never saves its cache, so the next run starts cold and
+      # is cancelled too -- the loop that produced 15 straight cancellations.
+      # `shared-key` per recipe keeps each leg's entry independent; they build
+      # different cargo profiles (debug/quick/release) and would thrash one
+      # shared entry.
+      - uses: Swatinem/rust-cache@v2
+        if: hashFiles('**/Cargo.toml') != ''
+        with:
+          cache-on-failure: true
+          shared-key: ci-${{ matrix.recipe }}
+      - uses: astral-sh/setup-uv@v6
+        if: hashFiles('**/pyproject.toml') != ''
+      - uses: actions/setup-node@v4
+        if: hashFiles('**/package.json') != ''
+        with:
+          node-version: 22
+      - uses: taiki-e/install-action@just
+
+      # setup-node installs a RUNTIME, not dependencies. Checks that need an
+      # installed tree refuse to create one and fail loud instead; installing is
+      # setup, so it lives here rather than inside a gate. Keyed on the
+      # lockfile, not package.json -- `npm ci` requires one and errors without
+      # it. Must follow install-action@just.
+      - name: Install JS dependencies
+        if: hashFiles('**/package-lock.json') != ''
+        run: just install-js
+
+      - name: Run ${{ matrix.recipe }}
+        env:
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
+        run: just ${{ matrix.recipe }}
+
+      - name: Disk after checks
+        if: always()
+        run: df -h /
+
+  # ── The one and only required context ────────────────────────────────────
+  #
+  # Named `CI` forever. It runs no checks; it reports whether the ones that
+  # matter passed. Keeping the required name off the working jobs is the entire
+  # point -- rename, split or renumber those freely and the ruleset never needs
+  # another edit.
+  ci:
+    name: CI
+    needs: [plan, checks]
+    # `always()` so this job still REPORTS when a leg fails or is skipped.
+    # Without it a failed leg leaves `CI` skipped -- and a required check that
+    # never reports is a PR that waits forever with no error anywhere, which is
+    # the exact failure this design exists to prevent.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # For a matrix job, `needs.checks.result` is the AGGREGATE: `success`
+      # only if every leg succeeded. Anything else -- failure, cancelled,
+      # skipped -- fails here. `skipped` must fail rather than pass: it means
+      # the checks never ran, and "did not run" must never be observably
+      # identical to "passed".
+      - name: Report aggregate result
+        env:
+          PLAN: ${{ needs.plan.result }}
+          CHECKS: ${{ needs.checks.result }}
+        run: |
+          set -euo pipefail
+          echo "plan=$PLAN checks=$CHECKS"
+          [ "$PLAN" = success ] || { echo "::error::plan job did not succeed ($PLAN)"; exit 1; }
+          [ "$CHECKS" = success ] || { echo "::error::checks did not all succeed ($CHECKS)"; exit 1; }
+          echo "all checks passed"

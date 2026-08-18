@@ -1,0 +1,110 @@
+#!/usr/bin/env zsh
+# Media stack daily checkup — runs once a day via LaunchAgent at 8am.
+#
+# Complements the existing 5-minute watchdog (container/NAS/Docker-level
+# checks) and the 4am backup job with an APPLICATION-level pass that those
+# can't see: *arr SQLite integrity (docker can report a container "healthy"
+# while its database is silently corrupted at the btree level — this
+# happened to Sonarr on 2026-07-31 and went undetected for weeks), VPN
+# health, qBittorrent auth, indexer health, and stalled/rejected downloads
+# (e.g. a quality profile rejecting the only releases that exist for old
+# content).
+#
+# Delegates the actual diagnosis/fix to Claude Code (media-manager skill)
+# since these failure modes need judgment, not a fixed script — a database
+# recovery looks different every time depending on what's salvageable.
+#
+# Scope: restarts, auth resets, DB corruption repair (always backs up
+# first), retriggered searches, and per-item quality profile fixes when a
+# title has zero releases at its current floor. NEVER touches library
+# content, orphan removal, or recycle bin cleanup — those still require a
+# human. Alerts via the existing throttled email channel only when
+# something was found or fixed; silent on a clean run.
+
+set -uo pipefail
+
+LOG="$HOME/logs/media-stack-daily-checkup.log"
+PLEX_DIR="$HOME/dev/plex"
+ALERT="$HOME/tools/media-stack-alert"
+CLAUDE="$HOME/.local/bin/claude"
+
+mkdir -p "$(dirname "$LOG")"
+log() { echo "[$(date '+%F %T')] $1" >> "$LOG"; }
+
+if [[ ! -x "$CLAUDE" ]]; then
+  log "ERROR: claude binary not found at $CLAUDE"
+  echo "claude binary missing at $CLAUDE — daily checkup could not run" | "$ALERT" "Daily checkup FAILED to start"
+  exit 1
+fi
+
+log "=== Starting daily checkup ==="
+
+PROMPT="$(cat <<'EOF'
+Use the media-manager skill to run a full health check of my Plex media
+stack, then fix anything broken. Run entirely non-interactively — this is
+an unattended daily job, so make the reasonable call yourself rather than
+asking questions; err on the side of NOT doing anything destructive if
+genuinely unsure.
+
+Beyond the skill's normal Health Check & Diagnostics / Fix Problems
+workflow, specifically also do this, since it's a known gap in the
+existing 5-minute container watchdog:
+
+1. Run `sqlite3 -readonly <db> "PRAGMA integrity_check;"` directly against
+   sonarr.db and radarr.db in their appdata dirs. A container can report
+   "healthy" via Docker while the app's SQLite database is corrupted at
+   the btree level (this happened to Sonarr's DB and went undetected for
+   weeks because the health check never inspects the database itself).
+2. If a database is corrupted: copy it (and its -wal/-shm) to a timestamped
+   backup file in the same appdata dir BEFORE touching anything. Stop the
+   container, run `sqlite3 <db> ".recover"` into a fresh database file,
+   verify the fresh file passes `PRAGMA integrity_check`, swap it in,
+   restart the container, then actually exercise the app's API (e.g. list
+   series/movies, trigger a search) to confirm it works end to end — if a
+   query fails referencing a specific column with malformed leftover data
+   (this happened with IndexerStatus.LastRssSyncReleaseInfo containing
+   truncated JSON), null out just that column's bad data and retry. Keep
+   the corrupted backup; do not delete it.
+3. For anything monitored with zero grabbed releases for longer than a few
+   days: pull the release list and check rejections. If EVERY available
+   release is being rejected by the quality profile (e.g. content old
+   enough that no 1080p release exists anywhere, only 720p/DVD), and
+   that's the ONLY reason nothing is downloading, it's fine to bump just
+   that single item's quality profile down to one that accepts what's
+   actually available, and re-trigger a search. Do not change the global
+   default profile. If there are simply zero releases found anywhere
+   (nothing to grab, obscure/unseeded content), that's not a bug — leave
+   it monitored and move on, don't loop retrying it forever.
+
+Explicitly OUT OF SCOPE for this unattended run — never do these, even if
+you notice something that looks like an opportunity: removing orphaned
+movies/shows, clearing the Synology recycle bin, deleting any files,
+emptying Plex trash. Flag those in your summary for a human to review
+instead of acting.
+
+When you're done, send exactly ONE summary email via:
+  ~/tools/media-stack-alert "<short subject: e.g. 'all healthy' or 'N issues found, N fixed'>"
+piping in a short plain-text body listing what was checked, what (if
+anything) was wrong, and what you did about it — including anything you
+flagged as out-of-scope for a human to review. If literally everything
+was healthy and nothing needed fixing, it is fine to skip sending an email
+entirely (silence == all good, matching how the existing watchdog
+behaves) — just log that in your final response instead.
+EOF
+)"
+
+"$CLAUDE" -p "$PROMPT" \
+  --permission-mode bypassPermissions \
+  --model sonnet \
+  --add-dir "$PLEX_DIR" \
+  >> "$LOG" 2>&1
+rc=$?
+
+if (( rc != 0 )); then
+  log "ERROR: claude exited with code $rc"
+  tail -n 50 "$LOG" | "$ALERT" "Daily checkup FAILED (exit $rc)"
+else
+  log "=== Daily checkup finished (exit 0) ==="
+fi
+
+exit $rc

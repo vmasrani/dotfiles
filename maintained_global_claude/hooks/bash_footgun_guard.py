@@ -18,11 +18,14 @@ WHY THIS EXISTS
     and measured; it failed. Hence a deny.
 
 WHY DENY AND NOT REWRITE
-    The sibling hook (`test_queue_guard.py`) rewrites commands, because there
-    the intent is unambiguous and the correct form is mechanical. Here the
-    intent is NOT recoverable: only the caller knows whether `rg -rn foo` meant
-    `-n` or meant a real replacement. Guessing would substitute one silent
-    wrong answer for another. So: refuse, and name the correct form.
+    Every PreToolUse guard here now denies rather than rewrites, and this hook
+    is why the rule generalised: only the caller knows whether `rg -rn foo`
+    meant `-n` or meant a real replacement, so guessing would substitute one
+    silent wrong answer for another. The queue guard used to be the exception
+    -- it rewrote heavy builds into the queue, on the reasoning that the
+    correct form was mechanical -- and the machinery needed to keep that
+    rewrite exactly right outgrew the problem. It denies too now. So: refuse,
+    and name the correct form.
 
 FAILURE POSTURE
     Fails OPEN but never SILENTLY: an unexpected error exits 1 (non-blocking),
@@ -52,9 +55,24 @@ from shell_tokens import (  # noqa: E402
     tokenize,
 )
 
-# "What counts as a heavy build" is owned by the queue guard -- importing it
-# keeps one definition. Importing is safe: that module only acts under __main__.
-from test_queue_guard import HEAVY_CARGO_VERBS, JUST_HEAVY_RE  # noqa: E402
+# These used to be imported from the queue guard, on the reasoning that "heavy"
+# was one definition with one owner. It isn't, and the 2026-08-03 queue rewrite
+# is what made the difference visible: the two hooks ask different questions.
+#
+#   unqueued_heavy_guard: "must this WAIT for the machine?"  -> suites and
+#       benches only. `cargo check` is deliberately absent, because forcing it
+#       into a one-slot queue is what put a 30-second check 9 minutes behind a
+#       suite in the first place.
+#   here:                 "does piping this destroy evidence?" -> ALSO builds
+#       and checks. `cargo build | tail` exits with tail's status and hides the
+#       compile errors exactly as thoroughly as it hides test failures.
+#
+# So this list is intentionally WIDER, and it is local because it is this
+# hook's policy. Sharing them again would silently couple "what must queue" to
+# "what must not be piped" -- and the last time they were coupled, tightening
+# one of them would have loosened the other without any test noticing.
+HEAVY_CARGO_VERBS = {"nextest", "test", "build", "check", "clippy", "bench", "install", "miri"}
+JUST_HEAVY_RE = re.compile(r"\A(?:test|bench|lint|ci-fast|ci-deep)[a-z0-9-]*\Z")
 
 # ripgrep short flags that CONSUME the rest of their cluster as a value.
 # This is what makes `-rn` mean `--replace=n` rather than `-r -n`, and it is

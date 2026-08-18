@@ -61,6 +61,68 @@ remove_stale_ssh_host_key() {
     IFS="$old_ifs"
 }
 
+# Data disks are attached AFTER `az vm create`, so the VM has already booted
+# without them. Any /etc/fstab entry for a data disk is therefore skipped at
+# boot -- silently, if it is marked `nofail` -- and systemd never revisits it
+# once local-fs.target is reached. Re-run mount now that the disks are present.
+# Uses run-command (via the Azure agent) rather than SSH so this needs no key,
+# user, or ssh_config assumptions.
+mount_restored_data_disks() {
+    local disk_count="$1"
+    if [[ "$disk_count" -eq 0 ]]; then
+        return 0
+    fi
+
+    local remote_script
+    remote_script=$(cat <<'REMOTE'
+systemctl daemon-reload
+mount -a
+lsblk -rno NAME,TYPE,FSTYPE,MOUNTPOINT | while read -r name type fstype mnt; do
+  case "$type" in disk|part) ;; *) continue ;; esac
+  [ -z "$fstype" ] && continue
+  case "$fstype" in swap|squashfs) continue ;; esac
+  [ -n "$mnt" ] && continue
+  echo "UNMOUNTED $name ($fstype)"
+done
+REMOTE
+)
+
+    gum_dim "Mounting restored data disks via the VM agent (takes ~30s)..."
+
+    # The agent may not be ready immediately after boot; retry before giving up.
+    local attempt=1
+    local max_attempts=3
+    local output=""
+    local rc=0
+    while (( attempt <= max_attempts )); do
+        output=$(az vm run-command invoke -g "$RG" -n "$vm_name" \
+            --command-id RunShellScript --scripts "$remote_script" \
+            --query "value[0].message" -o tsv 2>&1) && rc=0 && break
+        rc=1
+        if (( attempt < max_attempts )); then
+            gum_dim "VM agent not ready yet; retrying ($attempt/$max_attempts)..."
+            sleep 20
+        fi
+        attempt=$((attempt+1))
+    done
+
+    if [[ "$rc" -ne 0 ]]; then
+        gum_error "Could not mount data disks: the VM agent did not respond after $max_attempts attempts."
+        gum_error "The disks ARE attached. Mount them by hand: ssh into $vm_name and run 'sudo mount -a'."
+        exit 1
+    fi
+
+    local unmounted
+    unmounted=$(printf '%s\n' "$output" | grep '^UNMOUNTED ' || true)
+    if [[ -n "$unmounted" ]]; then
+        gum_warning "Attached but NOT mounted -- no matching /etc/fstab entry:"
+        printf '%s\n' "$unmounted" | sed 's/^UNMOUNTED /  \/dev\//'
+        gum_warning "Add an fstab entry (LABEL=... is safest) or mount these by hand."
+    else
+        gum_success "Data disks mounted."
+    fi
+}
+
 status_vm() {
     gum_info "Checking status for VM: $vm_name"
     local vm_exists
@@ -316,6 +378,7 @@ restore_vm() {
         restored_data_disk_id=$(az disk show -n "$restored_data_disk_name" -g "$RG" --query "id" -o tsv)
         
         restored_data_disk_ids+=("$restored_data_disk_id")
+        gum_success "Data Disk created: $restored_data_disk_name."
         idx=$((idx+1))
     done
 
@@ -342,8 +405,11 @@ restore_vm() {
         local lun
         lun=$(jq -r ".storageProfile.dataDisks[$idx].lun" "$manifest_file")
         gum_spin_wait "Attaching restored data disk with LUN $lun..." az vm disk attach -g "$RG" --vm-name "$vm_name" --disk "$data_disk_id" --lun "$lun"
+        gum_success "Data Disk attached at LUN $lun."
         idx=$((idx+1))
     done
+
+    mount_restored_data_disks "${#restored_data_disk_ids[@]}"
 
     gum_box_success "Restore complete for $vm_name."
 }
