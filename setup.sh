@@ -52,6 +52,7 @@ install_if_missing bfs install_bfs # Breadth-first search for filesystem travers
 install_if_missing eza install_eza # Modern replacement for ls with color and git integration
 install_if_missing fzf install_fzf # Command-line fuzzy finder for files, history, and more
 install_if_missing cargo install_cargo # Rust package manager and build system
+install_if_missing sccache install_sccache # Shared compilation cache wired into ~/.cargo/config.toml
 install_if_missing uv install_uv # Python package manager (must be before uvx_tools)
 install_if_missing tldr install_tealdeer # Simplified and community-driven man pages
 install_if_missing hx install_helix # Modern terminal-based text editor

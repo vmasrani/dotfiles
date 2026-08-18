@@ -398,6 +398,29 @@ install_cargo() {
 	source "$HOME/.cargo/env"
 }
 
+install_sccache() {
+	install_on_brew_or_mac "sccache"
+
+	local cargo_config="$HOME/.cargo/config.toml"
+	mkdir -p "$HOME/.cargo"
+
+	if [[ -f "$cargo_config" ]] && grep -q "rustc-wrapper" "$cargo_config"; then
+		gum_dim "sccache already wired into $cargo_config."
+		return 0
+	fi
+
+	if [[ -f "$cargo_config" ]] && grep -q "^\[build\]" "$cargo_config"; then
+		# Insert the key into the existing [build] table rather than
+		# appending a duplicate header (which some TOML parsers reject).
+		awk '{print} /^\[build\]/ && !done {print "rustc-wrapper = \"sccache\""; done=1}' "$cargo_config" >"${cargo_config}.tmp"
+		mv "${cargo_config}.tmp" "$cargo_config"
+	else
+		printf '\n[build]\nrustc-wrapper = "sccache"\n' >>"$cargo_config"
+	fi
+
+	gum_success "sccache wired into $cargo_config as rustc-wrapper."
+}
+
 install_uv() {
 	curl -LsSf https://astral.sh/uv/install.sh | sh
 	export PATH="$HOME/.local/bin:$PATH"
