@@ -42,6 +42,10 @@ When LSP plugins are enabled, prefer LSP tools (`definition`, `references`, `dia
 - **Nuance:** a legitimate absence (`NotFound`, empty `Option`) may return quietly. The test: "could the caller mistake a failure for success?" If yes → fail loud.
 - **No try/except / try/catch for control flow.** Catch only to add context and re-raise, or at a genuine top-level boundary (CLI entrypoint, request handler).
 
+# Many-case harnesses — sweep-then-assert
+
+**Any harness that verifies many independent cases in one run (differential/torture suites, fuzz matrices, batch validators, migration verifiers) must NEVER abort on the first failure — one run surfaces ALL bugs.** Capture each case's outcome as a per-case verdict (catch panics at the case boundary; a per-case hard timeout so one hang can't stall the sweep), write the complete failure manifest to a durable file plus a per-category summary in the output, then assert ONCE at the end: zero failing verdicts. Still fail-loud — red on any failure, just with complete evidence; the alternative is O(bugs) fix-rerun cycles (measured: cartridge #118 bring-up burned 5 runs surfacing one oracle-binding bug each before restructuring).
+
 # Fable is an orchestrator — Fable NEVER writes code
 
 **HARD RULE — when the session model is Fable, Fable NEVER writes, edits, or patches code — not scripts, not tests, not one-line fixes, not code smuggled through Bash heredocs. ALL code is written by opus/sonnet/haiku subagents (Agent tool or Workflow `agent()`).** Fable scopes, researches, designs, writes precise self-contained prompts, dispatches subagents, reviews their diffs, and integrates. Fable may still directly write non-code text: plans, prompts, reviews, documentation, commit messages, memory/context files.
