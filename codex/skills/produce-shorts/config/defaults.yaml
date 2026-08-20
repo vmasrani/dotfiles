@@ -1,0 +1,85 @@
+# Pipeline defaults for produce-shorts. Override per episode by copying the
+# relevant block into episode.yaml (episode values win over these defaults).
+
+transcription:
+  engine: assemblyai          # assemblyai | mlx-whisper — explicit; scripts fail loud
+                              # if the engine's requirements (API key / isolated
+                              # tracks for diarization) are missing.
+  language: en
+
+mining:
+  chunk_minutes: 16
+  overlap_minutes: 2
+  score_threshold: 6.5        # mean of the nine candidate scores required to survive
+                              # the merge; borderline-but-flagged candidates survive
+                              # regardless (senior editor decides).
+
+sync:
+  min_confidence: 0.90        # below this, sync_cameras.py exits nonzero
+
+subtitles:
+  font: "Inter Semibold"
+  font_fallbacks: ["Arial Bold", "Helvetica Bold"]
+  base_color: "#FFFFFF"
+  max_lines: 2
+  # 42 was too permissive for 1080x1920: the renderer auto-fits type to the longest line,
+  # so a 42-character card shrinks the whole clip's subtitles to ~42px — small on a phone.
+  # Shorter lines let the fit land larger (measured 42px -> 64px on the same clip).
+  max_chars_per_line: 32
+  max_chars_per_second: 20
+  min_display_seconds: 0.8
+  emphasis_max_word_fraction: 0.15
+  # Outline weight as a fraction of font size. Was hard-coded at 0.05, which put a 3px edge on
+  # a 57px font — measurably too light: white captions over a speaker's cream shirt rendered
+  # effectively white-on-white. 0.10 is the thinnest weight that stayed legible over the worst
+  # case in this series (a blown-out white observatory dome behind white text).
+  outline_fraction: 0.10
+  outline_color: "#101010"
+  shadow_fraction: 0.04
+  # "outline" = stroked glyphs (the default, keeps the picture visible).
+  # "plate"   = a semi-opaque box behind the text; use only where footage is so busy or bright
+  #             that no stroke survives. It is heavier and hides more of the frame.
+  border_style: outline
+  plate_opacity: 0.55
+
+safe_zones:                   # 1080x1920 reference frame, pixels
+  top: 200
+  bottom: 320
+  right: 120
+  left: 60
+
+platform_profiles:
+  - name: youtube-shorts
+    aspect: "9:16"
+    resolution: "1080x1920"
+    fps: 30
+    max_duration_s: 180
+    container: mp4
+    video_codec: h264
+    audio_codec: aac
+    loudness_lufs: -14.0
+    true_peak_dbtp: -1.0
+  - name: tiktok
+    aspect: "9:16"
+    resolution: "1080x1920"
+    fps: 30
+    max_duration_s: 180
+    container: mp4
+    video_codec: h264
+    audio_codec: aac
+    loudness_lufs: -14.0
+    true_peak_dbtp: -1.0
+
+providers:                    # asset researcher may ONLY touch providers listed here
+  pexels:
+    api_key_env: PEXELS_API_KEY
+    license: "Pexels License"
+    credit_required: false
+  pixabay:
+    api_key_env: PIXABAY_API_KEY
+    license: "Pixabay Content License"
+    credit_required: false
+
+render:
+  internal_cut_crossfade_ms: 8   # audio micro-crossfade at internal cuts
+  qc_loudness_tolerance_lu: 1.0

@@ -1,0 +1,17 @@
+# Model routing for produce-shorts subagents.
+# The orchestrator reads this at runtime — roles are never hard-coded in SKILL.md
+# or in prompts. Values are Agent-tool model aliases.
+#
+# Environment rules (do not violate):
+#   - never pass the session model (fable) to a subagent
+#   - Opus here always means Opus 4.8; Opus 5 is banned as a worker
+roles:
+  # Candidate mining, senior story editing, visual direction, synthesis passes.
+  strong_reasoning: opus
+  # B-roll discovery, licensing checks, provider research.
+  research: sonnet
+  # Independent critique. Kept distinct from strong_reasoning so critique can be
+  # routed to a different model family for genuine independence if desired.
+  critic: opus
+  # Mechanical validation glue that a deterministic script can't cover.
+  mechanical: haiku

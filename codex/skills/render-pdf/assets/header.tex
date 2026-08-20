@@ -1,0 +1,98 @@
+\usepackage{wrapfig}
+
+% eisvogel's linkcolor/urlcolor/toccolor metadata fields are passed to
+% hyperref as raw color NAMES (not hex) — unlike titlepage-color, which the
+% template wraps in \definecolor itself. Define a named color here so
+% frontmatter can reference "linkaccent" instead of a raw hex string.
+\definecolor{linkaccent}{HTML}{3b82f6}
+
+% Pandoc 3.9 sets \LTcaptype to "none" to suppress table numbering,
+% but the caption package tries to use "none" as a counter, which fails.
+% Newer TeX Live already defines \c@none in some configurations, so guard it.
+\ifcsname c@none\endcsname\else\newcounter{none}\fi
+
+% Pandoc code blocks (Verbatim/fvextra) sometimes show wrap-continuation symbols.
+% Keep wrapping, but disable those symbols.
+\usepackage{fvextra}
+\fvset{breaksymbolleft={}, breaksymbolright={}}
+
+% Center pandocbounded images (only if the command exists)
+\ifdefined\pandocbounded
+  \let\originalpandocbounded\pandocbounded
+  \renewcommand*\pandocbounded[1]{%
+    \begin{center}
+      \originalpandocbounded{#1}%
+    \end{center}
+  }
+\fi
+
+% ── Callout boxes via tcolorbox ──
+\usepackage[most]{tcolorbox}
+
+\definecolor{warnbg}{HTML}{fef3c7}
+\definecolor{warnborder}{HTML}{f59e0b}
+\definecolor{notebg}{HTML}{eff6ff}
+\definecolor{noteborder}{HTML}{3b82f6}
+\definecolor{dangerbg}{HTML}{fee2e2}
+\definecolor{dangerborder}{HTML}{ef4444}
+\definecolor{tipbg}{HTML}{ecfdf5}
+\definecolor{tipborder}{HTML}{10b981}
+
+\newtcolorbox{warningbox}{
+  colback=warnbg,
+  colframe=warnborder,
+  fonttitle=\bfseries,
+  title=Warning,
+  boxrule=1pt,
+  arc=2pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt,
+  before skip=0.8em, after skip=0.8em
+}
+
+\newtcolorbox{notebox}{
+  colback=notebg,
+  colframe=noteborder,
+  fonttitle=\bfseries,
+  title=Note,
+  boxrule=1pt,
+  arc=2pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt,
+  before skip=0.8em, after skip=0.8em
+}
+
+\newtcolorbox{dangerbox}{
+  colback=dangerbg,
+  colframe=dangerborder,
+  fonttitle=\bfseries,
+  title=Danger,
+  boxrule=1pt,
+  arc=2pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt,
+  before skip=0.8em, after skip=0.8em
+}
+
+\newtcolorbox{tipbox}{
+  colback=tipbg,
+  colframe=tipborder,
+  fonttitle=\bfseries,
+  title=Tip,
+  boxrule=1pt,
+  arc=2pt,
+  left=6pt, right=6pt, top=4pt, bottom=4pt,
+  before skip=0.8em, after skip=0.8em
+}
+
+% ── Action badge colors ──
+\definecolor{addgreen}{HTML}{16a34a}
+\definecolor{removered}{HTML}{dc2626}
+\definecolor{modifyamber}{HTML}{d97706}
+
+% Repeat table headers across page breaks (longtable)
+\usepackage{longtable}
+
+% ── Table auto-fit: shrink monospace font in tables to prevent column overflow ──
+\usepackage{etoolbox}
+\AtBeginEnvironment{longtable}{\small}
+
+% Allow line breaks in monospace spans inside tables
+\usepackage{tabularx}

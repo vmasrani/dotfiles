@@ -89,6 +89,10 @@ install_dotfiles() {
 		"$home/.claude/CLAUDE.md"
 		"$home/.claude/settings.json"
 		"$home/.claude/statusline.sh"
+		"$home/.codex/agents"
+		"$home/.codex/hooks"
+		"$home/.codex/skills"
+		"$home/.codex/AGENTS.md"
 		"$home/.codex/config.toml"
 		"$home/.gemini/antigravity-cli/agents"
 		"$home/.gemini/antigravity-cli/hooks"
@@ -231,6 +235,10 @@ install_dotfiles() {
 		"$dotfiles/maintained_global_claude/settings.json:$home/.claude/settings.json"
 		"$dotfiles/maintained_global_claude/statusline.sh:$home/.claude/statusline.sh"
 		"$dotfiles/maintained_global_claude/CLAUDE.md:$home/.claude/CLAUDE.md"
+		"$dotfiles/codex/agents:$home/.codex/agents"
+		"$dotfiles/codex/hooks:$home/.codex/hooks"
+		"$dotfiles/codex/skills:$home/.codex/skills"
+		"$dotfiles/codex/AGENTS.md:$home/.codex/AGENTS.md"
 
 		# agy directories and files (symlink contents to ~/.gemini/antigravity-cli)
 		"$dotfiles/maintained_global_agy/agents:$home/.gemini/antigravity-cli/agents"

@@ -1,0 +1,28 @@
+{
+  "name": "produce-shorts-composition",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deterministic Remotion composition for produce-shorts stage 8 — renders exactly what props.json (generated from clip.yaml) says.",
+  "scripts": {
+    "props": "node gen-props.mjs",
+    "preview": "npx remotion studio --props=props.json",
+    "render": "npx remotion render Short out/short.mp4 --props=props.json",
+    "typecheck": "npx tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.506",
+    "@remotion/fonts": "4.0.506",
+    "js-yaml": "4.1.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.506",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "4.0.9",
+    "@types/node": "22.18.12",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5.9.3"
+  }
+}

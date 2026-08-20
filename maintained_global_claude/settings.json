@@ -48,7 +48,7 @@
       "/Users/vmasrani"
     ]
   },
-  "model": "claude-fable-5[1m]",
+  "model": "sonnet",
   "hooks": {
     "PreToolUse": [
       {
@@ -128,7 +128,16 @@
     "commit-commands@claude-plugins-official": false,
     "claude-mem@thedotmack": false,
     "skill-creator@claude-plugins-official": true,
-    "telegram@claude-plugins-official": false
+    "telegram@claude-plugins-official": false,
+    "cloudflare@cloudflare": true
+  },
+  "extraKnownMarketplaces": {
+    "cloudflare": {
+      "source": {
+        "source": "github",
+        "repo": "cloudflare/skills"
+      }
+    }
   },
   "sandbox": {
     "filesystem": {
