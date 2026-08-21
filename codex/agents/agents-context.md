@@ -6,7 +6,7 @@
 |-------|---------|
 | `context-researcher.md` | Analyzes a single directory and writes a `*-context.md` file; called by the `/research` skill |
 | `structural-completeness-reviewer.md` | Post-change hygiene reviewer — checks dead code, incomplete integrations, dev artifacts; NOT a logic reviewer |
-| `plan-writer.md` | Converts research findings + success criteria into a step-by-step implementation plan with exact file paths; uses opus |
+| `plan-writer.md` | Converts research findings + success criteria into a step-by-step implementation plan with exact file paths; uses GPT-5.6 Terra |
 | `spec-interviewer.md` | Interviews the user to extract requirements and produce a declarative spec; reads NO code |
 | `codebase-researcher.md` | Maps a codebase via `ctx-index`/`ctx-peek` to find integration points for a feature |
 | `test-generator.md` | Generates failing test suites across 5 categories and verifies the red phase |
@@ -17,7 +17,7 @@
 
 ## Conventions
 
-Each agent file uses YAML front matter with `name`, `description`, and `model` fields. The `description` field is what the Claude harness matches against to auto-invoke the agent — it doubles as the trigger condition and must be precise. Agents that should run on opus say so explicitly in front matter; the rest default to sonnet.
+Each agent file uses YAML front matter with `name`, `description`, and `model` fields. The `description` field is what the harness matches against to auto-invoke the agent — it doubles as the trigger condition and must be precise. Every agent explicitly uses `gpt-5.6-terra`.
 
 These files are the source of truth — edits must be made here in `codex/agents/`, never directly in `~/.codex/agents/`, which is a symlink target managed by `setup.sh`.
 

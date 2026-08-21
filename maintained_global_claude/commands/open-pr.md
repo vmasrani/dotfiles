@@ -30,11 +30,9 @@ externally forced, nobody would search for why it happened. `just ci-fast` must
 still be green before pushing, and the author self-merges on mergeable-green
 per rule 6, same bar as the fast lane.
 
-Never bypass a required check. Merge the PR yourself only when it qualifies
-for self-merge — every linked issue carries the `fast-lane` label, or it is
-any `chore/<slug>` PR (including `chore/policy-sync`) — AND it is
+Never bypass a required check. Merge the PR yourself once it is
 mergeable-green (required
 checks passing; an advisory red blocks only if this PR introduced it): then
 `gh pr merge --merge`, or `--rebase` if the repo forbids merge commits
-(never squash; per-issue commits must survive).
-Everything else waits for a separate review agent.
+(never squash; per-issue commits must survive). No separate review agent is
+required for a `dev` merge, in any lane.

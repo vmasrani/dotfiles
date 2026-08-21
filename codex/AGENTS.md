@@ -24,7 +24,19 @@ There is one correct fast path. If it cannot run, stop with a loud, actionable e
 Batch validators, fuzz sweeps, and migration checks should capture all per-case outcomes and assert once at the end.
 
 - Do not abort on the first failure when the point is to surface the full failure set.
-- Record a durable failure manifest when a sweep produces many independent results.
+- Give each independent case a hard timeout so one hang cannot block the sweep.
+- Record a durable failure manifest and a category summary when a sweep produces many independent results.
+
+# Test economy
+
+Repeated failures showed that broad suites, duplicate full gates, and first-failure loops consume shared capacity while adding little evidence. Test thoroughly, but make each expensive execution answer a new question.
+
+- After an edit or known failure, run the smallest affected test or module first. Escalate only for a stated integration, regression, or release question.
+- For each commit SHA, run at most one comprehensive/full suite. Record its SHA, purpose, and owner; reuse its result unless the SHA, flags, or cross-module risk changed.
+- Never use a full suite to diagnose a known failure. Fix from the focused result, rerun the smallest discriminating test, then use the single merged-result gate.
+- Before a heavy run, confirm the absolute working directory, that the filter selects a non-zero expected count, and that no equivalent job or durable result already exists.
+- Use fast syntax, type, and lint checks per change. Batch integration, coverage, exhaustive matrices, and full-suite execution after the merged batch.
+- For Rust heavy commands, use `queue` with the full compound command quoted, run the job detached, and never rerun a matching queued or running job.
 
 # Working style
 
@@ -70,7 +82,7 @@ Codex config should live under `codex/` in the repo and be symlinked into `~/.co
 
 ## Editing rules
 
-- Use `apply_patch` for file edits.
+- Use the available exact-match edit tool for file edits.
 - Do not overwrite unrelated work.
 - Prefer `rg` for search and `rg --files` for file enumeration.
 - Keep commands and code snippets concise.

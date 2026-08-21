@@ -41,6 +41,10 @@ maintained_global_claude/plugins/marketplaces
 /tools/media-stack-backup
 /tools/media-stack-watchdog
 
+# Codex auto-materializes its bundled system skills here since
+# codex/skills is symlinked to ~/.codex/skills
+codex/skills/.system/
+
 # Ignore specific subdirectories in maintained_global_agy
 maintained_global_agy/.checksums
 maintained_global_agy/.gemini/
