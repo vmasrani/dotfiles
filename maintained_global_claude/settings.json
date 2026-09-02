@@ -48,7 +48,7 @@
       "/Users/vmasrani"
     ]
   },
-  "model": "sonnet",
+  "model": "fable[1m]",
   "hooks": {
     "PreToolUse": [
       {

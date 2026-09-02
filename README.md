@@ -140,13 +140,12 @@ The tmux configuration is built around a single-line status bar powered by [tmux
 |--------|--------|---------|
 | CPU % | `cpu_percent.sh` | 5s |
 | Memory | `mem_usage.sh` | 5s |
-| GPU (SSH only) | `gpu_status.sh` | 5s |
+| GPU (SSH only, when detected) | `gpu_status.sh` | 5s |
 | Battery (local only) | `pmset` | 60s |
 | Clock | `date` | 30s |
-| Hostname | `hostname -s` | 3600s |
-| SSH indicator (SSH only) | `ssh_status.sh` | 30s |
+| Host (user@host, +SSH client IP when remote) | `host_status.sh` | 30s |
 
-Each widget is rendered as a colored pill in the status bar. SSH sessions add GPU and SSH-indicator widgets and drop battery (servers do not have batteries). Local sessions do the reverse.
+Each widget is rendered as a colored pill in the status bar. SSH sessions add a GPU widget (when a GPU is detected) and drop battery (servers do not have batteries). Local sessions do the reverse.
 
 ### Sessions and Popups
 

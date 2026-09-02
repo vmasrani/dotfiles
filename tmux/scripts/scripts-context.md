@@ -11,7 +11,7 @@
 | `agents_count.sh` | Counts active panes in the `agents` tmux session matching claude/node processes |
 | `claude_code_status.sh` | Counts `pgrep claude` processes; outputs empty string (hides widget) when count is 0 — used in Dracula theme |
 | `pm2_status_wrapper.sh` | Wraps `pm2_status.sh` with dynamic tmux background colors (green = all running, pink = stopped) |
-| `cpu_status.sh`, `ram_status.sh`, `load_status.sh`, `battery_status.sh`, `gpu_status.sh`, `network_status.sh`, `weather_status.sh`, `ssh_status.sh`, `mem_usage.sh`, `cpu_percent.sh` | Standard system metric scripts for tmux status bar; cross-platform macOS/Linux where applicable |
+| `cpu_status.sh`, `ram_status.sh`, `load_status.sh`, `battery_status.sh`, `gpu_status.sh`, `network_status.sh`, `weather_status.sh`, `host_status.sh`, `mem_usage.sh`, `cpu_percent.sh` | Standard system metric scripts for tmux status bar; cross-platform macOS/Linux where applicable |
 | **backup/** | Old Dracula and Catppuccin theme shell files kept for reference |
 
 <!-- peek -->

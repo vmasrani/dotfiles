@@ -417,7 +417,7 @@ All in `~/dotfiles/tmux/scripts/`, called from status bar or hooks:
 | `mem_usage.sh` | Memory usage % (macOS, uses `vm_stat`) | 5s |
 | `gpu_status.sh` | GPU util/mem via `nvidia-smi` (SSH only) | 5s |
 | `weather_status.sh` | Weather from API, cached 30min | 1800s |
-| `ssh_status.sh` | Shows hostname when in SSH, empty otherwise | 30s |
+| `host_status.sh` | Shows user@hostname, plus SSH client IP when remote | 30s |
 | `battery_status.sh` | Battery % with dynamic color/icon | 60s |
 | `agents_status_bar.sh` | Replaces center status in agents session | - |
 | `agents_count.sh` | Count active Claude agents in agents session | - |
@@ -456,18 +456,17 @@ MEM (󰍛)  → mem_usage.sh     │ #cba6f7 mauve    │ 5s
 BAT (󰂄)  → pmset -g batt    │ #a6e3a1 green    │ 60s
 WTH (󰖐)  → weather_status   │ #f9e2af yellow   │ 1800s
 TIME (󰃰) → date             │ #74c7ec sapphire │ 30s
-USER (󰒋) → whoami@hostname  │ #f5c2e7 pink     │ 3600s
+HOST (󰒋) → host_status.sh   │ #f5c2e7 pink     │ 30s
 ```
 
 **SSH (remote server):**
 ```
 CPU (󰘚)  → cpu_percent.sh   │ #f5a97f peach    │ 5s
 MEM (󰍛)  → mem_usage.sh     │ #c6a0f6 mauve    │ 5s
-GPU (󰢮)  → gpu_status.sh    │ #a6da95 green    │ 5s
-SSH (󰣀)  → ssh_status.sh    │ #8aadf4 blue     │ 30s
+GPU (󰢮)  → gpu_status.sh    │ #a6da95 green    │ 5s (only when a GPU is detected)
 WTH (󰖐)  → weather_status   │ #eed49f yellow   │ 1800s
 TIME (󰃰) → date             │ #7dc4e4 sapphire │ 30s
-USER (󰒋) → whoami@hostname  │ #f5bde6 pink     │ 3600s
+HOST (󰒋) → host_status.sh   │ #f5bde6 pink     │ 30s
 ```
 
 ### Key Powerkit Options
