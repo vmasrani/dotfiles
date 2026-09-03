@@ -57,6 +57,7 @@ install_dotfiles() {
 	mkdir -p "$HOME"/bin
 	mkdir -p "$HOME/dev/projects"
 	mkdir -p "$HOME/.config/helix"
+	mkdir -p "$HOME/.config/htop"
 	mkdir -p "$HOME/.local/bin"
 	mkdir -p "$HOME/.claude"
 	mkdir -p "$HOME/.codex"
@@ -306,6 +307,15 @@ install_dotfiles() {
 			ensure_symlink "$skill_dir" "$dotfiles/maintained_global_agy/skills/$skill_name" "false"
 		done
 	fi
+
+	# htop: OS-specific variant (macOS has no procfs, so it lacks the
+	# DiskIO/NetworkIO meters and IO_*/M_SHARE fields the Linux config has).
+	# See htop/README.md for the field-ID provenance.
+	local htop_source="$dotfiles/htop/htoprc.linux"
+	if [[ "$(uname -s)" == "Darwin" ]]; then
+		htop_source="$dotfiles/htop/htoprc.macos"
+	fi
+	ensure_symlink "$htop_source" "$home/.config/htop/htoprc" "true"
 
 }
 
