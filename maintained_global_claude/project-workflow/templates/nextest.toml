@@ -1,6 +1,8 @@
 # Seeded by project-workflow init for Rust projects. Per-job parallelism is NOT
 # set here on purpose: NEXTEST_TEST_THREADS from the shell env caps it as
 # cpus / QUEUE_SLOTS so concurrent queued suites don't oversubscribe the box.
+# ci.yml greps this file for the "Seeded by project-workflow init" phrase to
+# decide whether to export NEXTEST_PROFILE=ci -- do not edit that phrase away.
 [profile.default]
 fail-fast = false                                        # sweep-then-assert: never stop at the first failure
 slow-timeout = { period = "60s", terminate-after = 5 }   # a hung test can't hold a queue slot forever

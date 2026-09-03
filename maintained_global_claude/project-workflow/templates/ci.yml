@@ -171,10 +171,13 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: |
           # nextest ERRORS on an unknown --profile, so only select `ci` when
-          # this project actually seeded .config/nextest.toml (project-workflow
-          # init, Rust projects only) -- a repo without one keeps nextest's
-          # built-in default profile.
-          if [ -f .config/nextest.toml ]; then
+          # this project's .config/nextest.toml is the one project-workflow
+          # init seeded (Rust projects only) -- a project-OWNED nextest.toml
+          # may define its own `profile.ci` with different semantics (e.g. a
+          # deep/full-suite profile), so file existence alone isn't enough;
+          # gate on the kit's seeded marker comment instead. A repo without a
+          # seeded file keeps nextest's built-in default profile.
+          if grep -q 'Seeded by project-workflow init' .config/nextest.toml 2>/dev/null; then
             export NEXTEST_PROFILE=ci
           fi
           just ${{ matrix.recipe }}
