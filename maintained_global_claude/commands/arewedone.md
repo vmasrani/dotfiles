@@ -41,8 +41,9 @@ Launch all of the following **in a single message** so they run at once:
 
 - **Build + test, backgrounded** (Bash `run_in_background`): the slow gate.
   - Rust: `cargo clippy --all-targets --all-features -- -D warnings` then the
-    test recipe (`just test` if present, else `cargo test`; workspace-excluded
-    crates need their own `--manifest-path` run). Zero warnings is the bar.
+    test recipe (`just test` if present, else `queue cargo nextest run
+    --workspace`; workspace-excluded crates need their own `--manifest-path`
+    run). Zero warnings is the bar.
   - Python: `uvx ruff check . && uvx ty check` then the test runner
     (`uv run pytest` / project recipe).
 - **`structural-completeness-reviewer` agent** — integration, dead code,

@@ -35,32 +35,17 @@ fi
 # Stash with: security add-generic-password -s gog-keyring -a "$USER" -w
 export GOG_KEYRING_PASSWORD="$(security find-generic-password -s gog-keyring -a "$USER" -w 2>/dev/null)"
 
-# Global build/test queue (see ~/dotfiles/tools/testq). Pinned in .zshenv, not
+# Global build/test queue (see ~/dotfiles/tools/queue). Pinned in .zshenv, not
 # .zshrc, so NON-INTERACTIVE shells -- which is how agents run commands -- see
 # it too. One socket machine-wide is the whole point: it is what makes agents
 # in different repos share a single queue instead of one queue each.
 export TS_SOCKET="/tmp/testq-${UID}.sock"
 # `:-` matters. .zshenv is sourced by EVERY zsh, including non-interactive
-# `zsh -c`, so a bare `export TESTQ_BUDGET=12` runs AFTER a caller's assignment
-# prefix and silently clobbers it -- `TESTQ_BUDGET=24 testq ...` was a no-op,
-# and `testq --budget N`'s own "export to persist" advice was undone by the
-# next shell. Defaulting instead of assigning lets an explicit value survive.
-#
-# TESTQ_BUDGET counts UNITS, not jobs (it replaced TESTQ_SLOTS on 2026-07-20).
-# Each job declares a cost -- check/clippy/build 3, test/nextest 9, bench/miri
-# 12 -- and the queue admits until the budget fills. The units are a RELATIVE
-# scale chosen so the arithmetic enforces the policy: at 12, one suite plus one
-# check fits, two suites (18) never do, and a bench runs alone. So a 20-second
-# `cargo check` stops waiting out a 9-minute suite for no resource reason,
-# while the suite-exclusivity that justified this queue is untouched.
-# `testq --explain <cmd>` shows what any command would weigh.
-#
-# Do NOT raise this without measuring first. 13 GB usable is the ceiling, a
-# suite already saturates 10 cores on its own, and the peak RSS of a suite plus
-# a concurrent check has never actually been recorded -- so extra concurrency
-# would be bought from suite wall-clock and from unverified RAM headroom.
-export TESTQ_BUDGET="${TESTQ_BUDGET:-12}"
-export TESTQ_HEARTBEAT="${TESTQ_HEARTBEAT:-30}"
+# `zsh -c`, so a bare `export QUEUE_SLOTS=1` runs AFTER a caller's assignment
+# prefix and silently clobbers it -- `QUEUE_SLOTS=3 queue ...` would become a
+# no-op, and any "export to persist" advice from the tool itself would be
+# undone by the next shell. Defaulting instead of assigning lets an explicit
+# value survive.
 
 # The `cargo` shim (~/dotfiles/tools/shims/cargo) must precede ~/.cargo/bin so
 # that heavy cargo work cannot run outside the queue. It lives HERE, not in
@@ -81,3 +66,25 @@ export PATH
 
 # Job queue: 3 concurrent jobs (raised from 1 on 2026-09-02; 64c/503GB box)
 export QUEUE_SLOTS=3
+# Per-machine concurrency for `queue` (see ~/dotfiles/tools/queue). Defaults to
+# 1; a machine-specific override (e.g. this box's Linux-only config) sets it
+# earlier in the sourcing chain and this default leaves that untouched.
+export QUEUE_SLOTS="${QUEUE_SLOTS:-1}"
+
+# nextest defaults to one test process PER LOGICAL CPU, PER RUN -- so
+# QUEUE_SLOTS concurrent jobs oversubscribe (e.g. 64 cpus x 3 slots = 192 test
+# processes). Cap per-job threads at cpus/slots, floored at 1; an explicit
+# NEXTEST_TEST_THREADS already in the environment always wins.
+if command -v nproc >/dev/null 2>&1; then
+  _dotfiles_cpus="$(nproc)"
+elif command -v sysctl >/dev/null 2>&1; then
+  _dotfiles_cpus="$(sysctl -n hw.logicalcpu 2>/dev/null)"
+fi
+if [[ -n "${_dotfiles_cpus:-}" ]]; then
+  _dotfiles_threads=$(( _dotfiles_cpus / QUEUE_SLOTS ))
+  (( _dotfiles_threads < 1 )) && _dotfiles_threads=1
+  export NEXTEST_TEST_THREADS="${NEXTEST_TEST_THREADS:-$_dotfiles_threads}"
+else
+  print -u2 "zshenv: neither nproc nor sysctl -n hw.logicalcpu found -- leaving NEXTEST_TEST_THREADS unset"
+fi
+unset _dotfiles_cpus _dotfiles_threads

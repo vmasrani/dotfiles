@@ -82,9 +82,9 @@ test-cov *ARGS:
 **Rust:**
 ```just
 test *ARGS:
-    cargo test {{ARGS}}
+    queue cargo nextest run {{ARGS}}
 test-verbose *ARGS:
-    cargo test -- --nocapture {{ARGS}}
+    queue cargo nextest run --no-capture {{ARGS}}
 ```
 
 **Go:**

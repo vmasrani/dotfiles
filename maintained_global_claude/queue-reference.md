@@ -9,18 +9,19 @@ below is lookup material — read it when you actually need it.
 
 64 threads (2×16-core Xeon Platinum 8280L, 2 threads/core), **503 GB RAM**, ext4 on `/` (497 G)
 and `/data` (1 T). Present: `cargo`, `clippy`, `miri`, `rustfmt`, `rust-analyzer`, `just`,
-`tsp`/`queue`. **NOT installed: `cargo-nextest`, `sccache`.** Everything below marked *M4* was
+`tsp`/`queue`, `cargo-nextest` (0.9.143) and `sccache` (wired as `rustc-wrapper`) — both verified
+2026-09-03; earlier notes saying they were missing are obsolete. Everything below marked *M4* was
 measured on the macOS laptop and has **not** been reproduced here — the hardware gap is large
 enough to invalidate the reasoning, not just the constants.
 
-- **No nextest.** Archive fan-out (`cargo nextest archive --archive-file …`), `-E 'test(...)'`
-  filter expressions and `--no-fail-fast` output shapes all fail loudly here. Correct responses:
-  `cargo install cargo-nextest`, or deliberately write the `cargo test` form and say so. Never
-  substitute silently.
-- **No sccache**, so the M4 sccache bullets are moot. Don't set `CARGO_INCREMENTAL=0` reasoning
-  about sccache — with no sccache in play it only makes cold builds slower. (Kept so nobody
-  re-derives it: sccache hashes the compile's `cwd`, so two worktrees never share cache work;
-  `SCCACHE_BASEDIRS` covers only the C/C++ path, issue #2652, Rust fix unmerged, PR #2678.)
+- **nextest is the runner here.** `queue cargo nextest run --workspace`; fail-fast is off via the
+  seeded `.config/nextest.toml`; `NEXTEST_TEST_THREADS` = cpus / `QUEUE_SLOTS` (64 / 3 = 21, from
+  `.zshenv`) caps each job so three slots never oversubscribe the box. `cargo nextest
+  list|--version|show-config` and `cargo test --list` are read-only and run unqueued.
+- **sccache is live, so the M4 sccache bullets apply.** It still never shares across worktrees:
+  sccache hashes the compile's `cwd` (`SCCACHE_BASEDIRS` covers only the C/C++ path, issue #2652,
+  Rust fix unmerged, PR #2678). `SCCACHE_DIR` falls back to `~/.cache/sccache` on Linux
+  (`.aliases-and-envs.zsh`).
 - **No copy-on-write.** `/`, `/home` and `/data` are ext4; `cp --reflink=always` fails with
   `Operation not supported`, and macOS `cp -c -R` doesn't exist in GNU coreutils. Seeding a slot
   from a warm `target/` is a full multi-GB byte copy here, not 0.59 s at zero bytes — let slots
@@ -35,11 +36,11 @@ enough to invalidate the reasoning, not just the constants.
   cold build of parot-core ≈58 s on the M4 (59.8 / 58 / 58). This Xeon has many more cores at a
   much lower clock, so the figure here could land either side. Measure once (`time cargo build
   --workspace`) and write it down instead of reasoning from the M4 value.
-- **`QUEUE_SLOTS` (default 1) is unmeasured on this box.** The old weighted-budget reasoning
-  (10 cores / 16 GB, 1 GB bench peaking ~7.5 GB RSS) doesn't describe this machine — 503 GB makes
-  even several concurrent suites a small fraction of memory, and a suite at ~9x parallelism on the
-  M4 leaves most of this box's 64 threads idle. That doesn't mean raising `QUEUE_SLOTS` is safe:
-  suite peak RSS has never been recorded on *either* machine. Don't change it without measuring.
+- **`QUEUE_SLOTS=3` here since 2026-09-02 (`.zshenv`), still unmeasured.** The old weighted-budget
+  reasoning (10 cores / 16 GB, 1 GB bench peaking ~7.5 GB RSS) doesn't describe this machine — 503 GB
+  makes even several concurrent suites a small fraction of memory, and `NEXTEST_TEST_THREADS=21`
+  keeps 3 slots inside 64 threads. That doesn't make raising it further safe: suite peak RSS has
+  never been recorded on *either* machine. Don't change it without measuring.
 
 ## Semantics
 
@@ -48,6 +49,8 @@ enough to invalidate the reasoning, not just the constants.
 You type the prefix yourself; nothing rewrites your command. `unqueued_heavy_guard.py` (PreToolUse) **denies** — never rewrites — an unqueued `cargo test|nextest|bench|miri` or `just test*|bench*|ci-fast|ci-deep`, and names the corrected form. It deliberately does NOT flag `cargo check|clippy|build|install` or `just lint*`: those are meant to stay unqueued and instant. A denier is allowed to be an imperfect keyword table because both of its error directions are cheap — a miss is just "no hook", an over-match costs one retype and shows its reasoning. The old rewriter was not allowed to be imperfect, which is why it grew a classifier that had to stay in sync with a second one inside the queue.
 
 A queued job runs with `QUEUE_ACTIVE=1`; `queue` seeing that set runs the command directly instead of enqueuing, so a queued `just test` whose recipe itself calls `queue` can't deadlock waiting on capacity its own parent holds.
+
+The heavy-guard hook denies only `cargo nextest run|r` and `cargo test` (without `--list`); `cargo nextest list|--version|show-config` and `cargo test --list` are read-only and stay unqueued. `.zshenv` exports `NEXTEST_TEST_THREADS = cpus / QUEUE_SLOTS` so slots × threads never exceeds the box.
 
 ## The `&&` trap
 

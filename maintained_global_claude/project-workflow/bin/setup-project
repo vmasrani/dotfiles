@@ -98,6 +98,22 @@ copy_starter_justfile() {
     gum style --foreground 46 "Created a starter justfile for $language"
 }
 
+# Greenfield only, Rust projects. Same shape as copy_starter_justfile: an
+# existing project owns its nextest config, so the kit never overwrites one.
+# Not a MANAGED_FILES entry (those are language-agnostic) -- a Python/JS repo
+# must never grow a .config/nextest.toml.
+copy_starter_nextest_config() {
+    local root="$1"
+    local language="$2"
+    [[ "$language" == rust ]] || return
+    if [[ -f "$root/.config/nextest.toml" ]]; then
+        return
+    fi
+    mkdir -p "$root/.config"
+    cp "$TEMPLATE_DIR/nextest.toml" "$root/.config/nextest.toml"
+    gum style --foreground 46 "Created a starter .config/nextest.toml for $language"
+}
+
 # Bootstraps a fresh private repo. Callers (interactive or script mode) supply
 # the three answers; validation lives here so both entry points share it.
 new_project() {
@@ -115,7 +131,9 @@ new_project() {
     root="$(repo_root "$directory")"
     "$WORKFLOW" init --dir "$root"
     copy_starter_justfile "$root" "$language"
+    copy_starter_nextest_config "$root" "$language"
     git -C "$root" add CLAUDE.md .agent-workflow .github .githooks justfile
+    [[ -f "$root/.config/nextest.toml" ]] && git -C "$root" add .config/nextest.toml
     # core.hooksPath is per-clone local config and cannot be committed, so arm
     # it here for THIS clone. Every other clone runs `just install-hooks` once.
     git -C "$root" config core.hooksPath .githooks
