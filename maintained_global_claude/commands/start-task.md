@@ -39,6 +39,17 @@ batch), optionally followed by a short branch suffix.
      worktree. No per-issue claim comments.
    No other session may work on a claimed issue without an explicit handoff.
 
+## Concurrent lane: 2+ agents on 2+ issues at once
+
+Before dispatching any worker, the orchestrator creates `pre-dev` from `dev`
+(`git branch pre-dev dev`) in its own worktree (`<repo>-pre-dev`) and pushes it
+(`git push -u origin pre-dev`). At most one `pre-dev` exists per repo at a
+time — its existence is the machine-visible signal that concurrent
+integration is active, and a hook denies workers' gates while it stands.
+Workers still run steps 1–6 above unchanged and still branch from `dev`, not
+from `pre-dev` — they merge into `pre-dev` only when done (see `/open-pr`).
+Full rules: `.agent-workflow/AGENT_WORKFLOW.md`.
+
 ## Chore mode: `/start-task chore <slug>`
 
 Work too small for an issue — a formatter run, a lockfile regen, a comment

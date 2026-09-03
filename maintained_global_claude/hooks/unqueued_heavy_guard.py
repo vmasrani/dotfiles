@@ -50,6 +50,7 @@ FAILURE POSTURE
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -145,6 +146,69 @@ def inspect(command):
     return offender, queued_somewhere
 
 
+def _heavy_ignoring_queue(tokens):
+    """Like inspect(), but treats a `queue`/`testq` prefix as transparent.
+
+    Used only by the pre-dev concurrent-work guard below, where even a
+    correctly queued heavy command must be denied off the `pre-dev` branch --
+    the queue's job is scheduling, not exemption from "workers never run
+    gates".
+    """
+    for _sep, head in command_heads(tokens):
+        i = skip_env_assigns(tokens, head)
+        if i >= len(tokens):
+            continue
+        if tokens[i] in QUEUE_CMDS:
+            i = skip_env_assigns(tokens, i + 1)
+            if i >= len(tokens):
+                continue
+        offender = _heavy_at(tokens, i)
+        if offender:
+            return offender
+    return None
+
+
+def _git(cwd, *args, timeout=5):
+    """`git -C cwd <args>` stdout, or None on any failure -- no git, no repo,
+    and a missing ref are all a legitimate absence, not something to raise."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(cwd), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def pre_dev_offender(tokens, cwd):
+    """Concurrent work = pre-dev integration (CLAUDE.md): while
+    `refs/heads/pre-dev` exists, heavy gates run ONCE, from `pre-dev`, by the
+    orchestrator -- a worker's own `queue` prefix is not an exemption. Returns
+    the offending command name, or None when the rule does not apply here
+    (no cwd, no git, not a repo, no `pre-dev` ref, or already on `pre-dev`)."""
+    if not cwd:
+        return None
+    if _git(cwd, "rev-parse", "--verify", "--quiet", "refs/heads/pre-dev") is None:
+        return None
+    branch = _git(cwd, "rev-parse", "--abbrev-ref", "HEAD")
+    if branch is None or branch == "pre-dev":
+        return None
+    return _heavy_ignoring_queue(tokens)
+
+
+def reason_pre_dev(offender):
+    return (
+        f"pre-dev integration is active: workers never run gates. `{offender}` is denied "
+        f"here even though it looks queued -- `queue` schedules, it does not exempt.\n\n"
+        f"Merge into pre-dev and let the orchestrator run the single `{offender}` from the "
+        f"pre-dev worktree -- never from a worker branch. See CLAUDE.md: "
+        f'"Concurrent work = pre-dev integration".'
+    )
+
+
 # Strip the misplaced prefix (and any env assignments before it) so the
 # suggested fix is copy-pasteable. Without this the message reads
 # `queue 'queue cd /repo && cargo test'` and has to apologise for itself.
@@ -187,6 +251,30 @@ def main():
         sys.exit(0)
 
     offender, queued_somewhere = inspect(command)
+
+    # Concurrent-work guard runs even when the command above came back clean
+    # because it was correctly queued -- pre-dev's "workers never run gates"
+    # is not something a queue prefix can opt out of.
+    try:
+        tokens = tokenize(command)
+    except ValueError:
+        tokens = None
+    if tokens is not None:
+        pd_offender = pre_dev_offender(tokens, data.get("cwd"))
+        if pd_offender:
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": reason_pre_dev(pd_offender),
+                        }
+                    }
+                )
+            )
+            sys.exit(0)
+
     if not offender:
         sys.exit(0)
 

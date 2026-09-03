@@ -31,5 +31,6 @@ Format: **rule** — incident (date, repo/issue): measurement.
 - **Fix it, don't file it** (user mandate 2026-08-21) — small issues filed by agents slow dev down and burn tokens on triage/re-dispatch.
 - **No author≠merger rule** (user mandate 2026-08-20) — the separate-review-agent requirement was slowing waves down; killed entirely for `dev`, `dev → main` stays the user's.
 - **Integration branch first, measure, then review** (user mandate 2026-08-20) — review effort spent on results that didn't move the number was the waste.
+- **Concurrent work = pre-dev integration, ONE gate** — 2026-09-03: agents dispatched on issues #421/#423 each ran `ci-fast` and self-merged to `dev`; concurrent `ci-fast` jobs filled the queue and slowed every job on the box.
 - **Unpinned `uvx <tool>` in CI** — measured 480 CI findings vs 0 local with ruff (see memory `uvx-unpinned-ci-reproducibility-trap`).
 - **npm lockfile incident** — parot-radar #17; details in `notes/ci-environment.md`.

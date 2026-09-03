@@ -13,6 +13,7 @@ false-positive shape that must keep working.
 """
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -308,6 +309,70 @@ for cmd in [
     "git status",
 ]:
     expect(cmd, guard(cmd), "allow")
+
+print("\n== unqueued_heavy_guard: pre-dev integration (concurrent-work rule) ==")
+# CLAUDE.md: "Concurrent work = pre-dev integration" -- while refs/heads/pre-dev
+# exists, heavy gates are denied off pre-dev EVEN WHEN CORRECTLY QUEUED, since
+# the whole point is that workers never run their own gate, queued or not.
+
+
+def guard_cwd(command, cwd):
+    proc = run_hook(
+        "unqueued_heavy_guard.py",
+        {"tool_name": "Bash", "cwd": cwd, "tool_input": {"command": command}},
+    )
+    if proc.returncode != 0:
+        return f"hook errored: {proc.stderr.strip()[:80]}"
+    if not proc.stdout.strip():
+        return "allow"
+    out = json.loads(proc.stdout)["hookSpecificOutput"]
+    return out["permissionDecision"]
+
+
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td) / "repo"
+    root.mkdir()
+    env = {
+        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t.t",
+        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t.t",
+    }
+    sh = lambda *a, cwd=root: subprocess.run(  # noqa: E731
+        a, cwd=str(cwd), capture_output=True, text=True, check=True, env={**os.environ, **env}
+    )
+    sh("git", "init", "-q", "-b", "issue-1")
+    sh("git", "commit", "-q", "--allow-empty", "-m", "init")
+    sh("git", "branch", "pre-dev")
+
+    expect(
+        "issue-1 branch: queue just ci-fast -> deny (pre-dev active)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: just ci-fast -> deny (pre-dev active)",
+        guard_cwd("just ci-fast", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: cargo check -> allow (never a heavy target)",
+        guard_cwd("cargo check", str(root)),
+        "allow",
+    )
+
+    sh("git", "checkout", "-q", "pre-dev")
+    expect(
+        "pre-dev branch: queue just ci-fast -> allow (the one gate)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+
+    sh("git", "checkout", "-q", "issue-1")
+    sh("git", "branch", "-D", "pre-dev")
+    expect(
+        "issue-1 branch after pre-dev deleted: queue just ci-fast -> allow",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
 
 print("\n== hook <-> queue: the names the guard accepts must really exist ==")
 # The guard treats a command as safe when it starts with `queue`. If the tool

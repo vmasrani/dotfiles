@@ -20,6 +20,16 @@ description: Run fast checks and open the current issue-owned or batch branch as
 5. Report the PR URL with `gh issue comment`: on the issue (strict lane) or on
    the batch's lowest-numbered issue only (fast lane).
 
+## Concurrent lane: merging into `pre-dev` instead of opening a PR
+
+If `refs/heads/pre-dev` exists, this is a wave under concurrent-work rules —
+do NOT open a per-issue PR. Instead: rebase your branch onto current
+`pre-dev`, resolve conflicts on your own branch, `git merge --no-ff` it into
+`pre-dev` (merge commit subject names the issue: `merge #<n>: <title>`), push
+`pre-dev`, and report (SHA, files, anything undone) — never run `just
+ci-fast`/`ci-deep`/`test*` yourself, even queued. The only PR in this wave is
+`pre-dev → dev`, opened by the orchestrator after its single green gate.
+
 ## Chore branches
 
 On a `chore/<slug>` branch there is no issue: skip the issue read in step 1 and
