@@ -1,10 +1,10 @@
 # Beware! This file is rewritten by htop when settings are changed in the interface.
 # The parser is also very primitive, and not human-friendly.
-# Managed by dotfiles (htop/htoprc.macos). See htop/README.md for field-ID provenance.
-# NOTE: no M_SHARE, IO_READ_RATE, IO_WRITE_RATE, DiskIO or NetworkIO here -
-# Darwin has no procfs and htop's darwin backend does not expose these.
-fields=1 49 18 19 39 40 51 3 47 48 50 2
-sort_key=47
+# Managed by dotfiles (htop/htoprc.macos) -- see htop/README.md for field-ID provenance.
+# No M_SHARE, IO_READ_RATE, IO_WRITE_RATE, DiskIO or NetworkIO here: Darwin has
+# no procfs and htop's darwin backend does not expose these.
+fields=0 48 17 18 38 39 50 2 46 47 49 1
+sort_key=46
 sort_direction=-1
 tree_sort_key=0
 tree_sort_direction=1
