@@ -545,6 +545,12 @@ install_btop() {
 	gum_success "btop installed successfully."
 }
 
+install_htop() {
+	# Full OS-switch, build-from-source-on-Linux logic lives in the standalone
+	# script so it stays runnable on its own; see install/install_htop.sh.
+	bash install/install_htop.sh
+}
+
 install_ctop() {
 	sudo mkdir -p /usr/local/bin
 	local arch

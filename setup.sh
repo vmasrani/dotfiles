@@ -63,6 +63,7 @@ install_if_missing lazydocker install_lazydocker # Terminal UI for managing Dock
 install_if_missing lazysql install_lazysql # Terminal UI for database management
 install_if_missing btop install_btop # Resource monitor with CPU, memory, disk, network stats
 install_if_missing ctop install_ctop # Container metrics and monitoring
+install_if_missing htop install_htop # Interactive process viewer (Homebrew on macOS, built from source on Linux)
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
 
