@@ -1,0 +1,218 @@
+#!/usr/bin/env zsh
+# gog-bulk — rate-limit-safe bulk Gmail operations via the `gog` CLI.
+#
+# Bakes in the hard-won gotchas from large inbox cleanups:
+#   * Gmail's burst limit (~250 quota units/user/SECOND) — auto-throttle + retry on 429.
+#     (The DAILY cap is ~1e9 units — effectively unlimited; pacing is the only real lever.)
+#   * Multi-message threads — operate at THREAD level so bundled notifications fully clear.
+#   * zsh doesn't word-split unquoted vars — pass ids via arrays, never `$ids`.
+#   * Gmail's unread/search counters lag minutes after bulk ops — verify per-message, not by badge.
+set -u
+emulate -L zsh
+setopt pipefail
+
+ACCT=""                 # -a ; empty => gog default (or $GOG_BULK_ACCOUNT)
+PAGE_SIZE=500           # search page size
+PAGE_SLEEP=15           # seconds between search pages
+OP_SLEEP=4              # seconds between modify chunks
+CHUNK=100               # thread ids per modify call
+DRY=0
+FORCE=0
+
+# ---------- styling (gum, with plain fallback) ----------
+have_gum() { command -v gum >/dev/null 2>&1 }
+say()  { have_gum && gum style --foreground 212 "$*" || print -P "%F{magenta}$*%f" }
+info() { have_gum && gum style --foreground 75  "$*" || print -P "%F{cyan}$*%f" }
+warn() { have_gum && gum style --foreground 214 "$*" || print -P "%F{yellow}$*%f" }
+err()  { have_gum && gum style --foreground 196 "$*" || print -P "%F{red}$*%f" }
+
+usage() {
+  cat <<'EOF'
+gog-bulk — rate-limit-safe bulk Gmail ops via gog
+
+USAGE
+  gog-bulk <action> '<gmail-query>' [options]
+
+ACTIONS
+  count    '<query>'                     Count matching threads (throttled)
+  pull     '<query>' [out.json]          Pull all matching thread metadata to JSON
+  archive  '<query>'                     Remove from inbox (skip-inbox)
+  read     '<query>'                     Mark read
+  clean    '<query>'                     Archive AND mark read (remove INBOX,UNREAD)
+  unread   '<query>'                     Mark unread
+  star     '<query>'                     Star
+  trash    '<query>'                     Move to Trash
+  label    '<query>' --add NAME          Add label(s)
+  modify   '<query>' --add A --remove B  Arbitrary label add/remove
+
+OPTIONS
+  -a EMAIL        Account (default: gog default, or $GOG_BULK_ACCOUNT)
+  --add LABEL     Label to add (repeatable)
+  --remove LABEL  Label to remove (repeatable)
+  --chunk N       Thread ids per modify call   (default 100)
+  --page-size N   Search page size             (default 500)
+  --sleep S       Seconds between modify chunks (default 4)
+  --page-sleep S  Seconds between search pages  (default 15)
+  -n, --dry-run   Show match count / intended action, change nothing
+  -y, --force     Skip the confirmation prompt
+
+EXAMPLES
+  gog-bulk count   'is:unread in:inbox category:promotions' -a vadmas@gmail.com
+  gog-bulk clean   'is:unread in:inbox -category:personal -is:starred' -a vadmas@gmail.com
+  gog-bulk archive 'older_than:1y label:inbox -is:starred'
+  gog-bulk trash   'from:spammy.com' -y
+  gog-bulk label   'from:substack.com' --add Newsletters
+
+NOTES
+  * Always operates at THREAD level (correct for multi-message threads).
+  * Auto-retries on rate limit; sleeps between pages/chunks to stay under the burst cap.
+  * Counters (inbox unread badge, is:unread search) lag after bulk ops — this is normal,
+    not a failure. Confirm with: gog gmail get <id> --format metadata --headers From
+EOF
+}
+
+(( $# )) || { usage; exit 1 }
+ACTION=$1; shift
+case $ACTION in -h|--help|help) usage; exit 0;; esac
+
+QUERY="" ; OUTFILE=""
+typeset -a ADD_LABELS REMOVE_LABELS
+while (( $# )); do
+  case $1 in
+    -a)            ACCT=$2; shift 2;;
+    --add)         ADD_LABELS+=$2; shift 2;;
+    --remove)      REMOVE_LABELS+=$2; shift 2;;
+    --chunk)       CHUNK=$2; shift 2;;
+    --page-size)   PAGE_SIZE=$2; shift 2;;
+    --sleep)       OP_SLEEP=$2; shift 2;;
+    --page-sleep)  PAGE_SLEEP=$2; shift 2;;
+    -n|--dry-run)  DRY=1; shift;;
+    -y|--force)    FORCE=1; shift;;
+    -h|--help)     usage; exit 0;;
+    -*)            err "unknown option: $1"; exit 2;;
+    *)             if [[ -z $QUERY ]]; then QUERY=$1; elif [[ -z $OUTFILE ]]; then OUTFILE=$1; fi; shift;;
+  esac
+done
+[[ -n $QUERY ]] || { err "missing '<gmail-query>'"; print; usage; exit 2 }
+[[ -z $ACCT && -n ${GOG_BULK_ACCOUNT:-} ]] && ACCT=$GOG_BULK_ACCOUNT
+
+typeset -a AF ; [[ -n $ACCT ]] && AF=(-a $ACCT)
+
+# map friendly actions to label add/remove sets
+case $ACTION in
+  archive) REMOVE_LABELS+=(INBOX);;
+  read)    REMOVE_LABELS+=(UNREAD);;
+  clean)   REMOVE_LABELS+=(INBOX UNREAD);;
+  unread)  ADD_LABELS+=(UNREAD);;
+  star)    ADD_LABELS+=(STARRED);;
+  trash)   ADD_LABELS+=(TRASH); REMOVE_LABELS+=(INBOX UNREAD);;
+  label|modify|count|pull) : ;;
+  *) err "unknown action: $ACTION"; print; usage; exit 2;;
+esac
+
+# ---------- throttled collector: emits thread objects as JSONL ----------
+collect_threads() {  # $1 = query
+  local q=$1 token="" resp next count tmp
+  tmp=$(mktemp)
+  while true; do
+    if [[ -n $token ]]; then
+      resp=$(gog gmail search "$q" --max $PAGE_SIZE "${AF[@]}" -j --page "$token" 2>$tmp)
+    else
+      resp=$(gog gmail search "$q" --max $PAGE_SIZE "${AF[@]}" -j 2>$tmp)
+    fi
+    if grep -qi 'ratelimit\|quota\|429' $tmp; then
+      warn "rate limited while listing — sleeping 70s" >&2; sleep 70; continue
+    fi
+    if ! print -r -- "$resp" | jq -e . >/dev/null 2>&1; then
+      err "search failed: $(tail -1 $tmp)" >&2; rm -f $tmp; return 1
+    fi
+    print -r -- "$resp" | jq -c '.threads[]?'
+    count=$(print -r -- "$resp" | jq '.threads | length')
+    next=$(print -r -- "$resp"  | jq -r '.nextPageToken // empty')
+    (( count == 0 )) && break
+    [[ -z $next ]] && break
+    token=$next
+    sleep $PAGE_SLEEP
+  done
+  rm -f $tmp
+}
+
+# ---------- thread-level apply, chunked + retried ----------
+apply_modify() {  # $1 = idfile
+  local idfile=$1 total done=0 f out cdir
+  total=$(grep -c . $idfile)
+  (( total == 0 )) && { warn "no matching threads — nothing to do"; return 0 }
+  typeset -a margs
+  (( ${#ADD_LABELS} ))    && margs+=(--add ${(j:,:)ADD_LABELS})
+  (( ${#REMOVE_LABELS} )) && margs+=(--remove ${(j:,:)REMOVE_LABELS})
+  cdir=$(mktemp -d)
+  split -l $CHUNK $idfile $cdir/c_
+  for f in $cdir/c_*; do
+    local -a ids; ids=("${(@f)$(<$f)}"); ids=(${ids:#})
+    (( ${#ids} )) || continue
+    while true; do
+      out=$(gog gmail labels modify "${ids[@]}" "${margs[@]}" "${AF[@]}" 2>&1)
+      if print -r -- "$out" | grep -qi 'ratelimit\|quota\|429'; then
+        warn "rate limited — sleeping 70s"; sleep 70; continue
+      fi
+      if print -r -- "$out" | grep -qiE 'error [0-9]|invalid|forbidden|denied'; then
+        err "chunk error: $(print -r -- "$out" | tr '\n' ' ' | head -c 160)"
+      fi
+      break
+    done
+    done=$(( done + ${#ids} ))
+    info "  applied $done/$total"
+    sleep $OP_SLEEP
+  done
+  rm -rf $cdir
+}
+
+# ---------- run ----------
+say "gog-bulk · $ACTION"
+info "query  : $QUERY"
+[[ -n $ACCT ]] && info "account: $ACCT"
+(( ${#ADD_LABELS} ))    && info "add    : ${(j:, :)ADD_LABELS}"
+(( ${#REMOVE_LABELS} )) && info "remove : ${(j:, :)REMOVE_LABELS}"
+
+tf=$(mktemp)
+info "collecting matching threads (throttled)…"
+collect_threads "$QUERY" > $tf || { rm -f $tf; exit 1 }
+N=$(grep -c . $tf)
+say "matched $N threads"
+
+case $ACTION in
+  count) rm -f $tf; exit 0;;
+  pull)
+    out=${OUTFILE:-bulk_pull.json}
+    jq -s '.' $tf > $out
+    rm -f $tf
+    say "wrote $out ($N threads)"
+    exit 0;;
+esac
+
+if (( ${#ADD_LABELS} == 0 && ${#REMOVE_LABELS} == 0 )); then
+  err "nothing to change — supply --add/--remove (or use a friendly action)"; rm -f $tf; exit 2
+fi
+
+idfile=$(mktemp)
+jq -r '.id' $tf > $idfile
+rm -f $tf
+
+if (( DRY )); then
+  warn "DRY RUN — would $ACTION $N threads (no changes made)"
+  rm -f $idfile; exit 0
+fi
+
+if (( ! FORCE && N > 0 )); then
+  if have_gum; then
+    gum confirm "Apply '$ACTION' to $N threads on ${ACCT:-<default>}?" || { warn "aborted"; rm -f $idfile; exit 1 }
+  else
+    read "ans?Apply '$ACTION' to $N threads on ${ACCT:-<default>}? [y/N] "
+    [[ $ans == [yY]* ]] || { warn "aborted"; rm -f $idfile; exit 1 }
+  fi
+fi
+
+apply_modify $idfile
+rm -f $idfile
+say "done · $ACTION applied to ~$N threads"
+warn "note: Gmail's unread/search counters may lag a few minutes — the change is already applied."

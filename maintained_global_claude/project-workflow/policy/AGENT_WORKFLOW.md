@@ -1,4 +1,4 @@
-<!-- policy-version: 9 -->
+<!-- policy-version: 11 -->
 # Agent project workflow policy
 
 This is the canonical, client-neutral policy. The generated `CLAUDE.md` must
@@ -17,35 +17,32 @@ preserve these requirements.
    issues labeled `fast-lane`, which may be batched under the fast-lane rules
    below. Branch from `dev` and target `dev` unless the issue explicitly is a
    release task.
-3. Before opening a PR, run `just ci-fast` in that worktree. Open and inspect
-   PRs with `gh pr`; inspect failed runs with `gh pr checks`, `gh run watch`,
-   and `gh run view --log-failed`.
+3. Before opening a PR whose diff touches anything `ci-fast` exercises —
+   source, tests, lockfiles/manifests, build or `justfile` recipes — run
+   `just ci-fast` in that worktree and get it green. Skip the gate only when
+   the whole diff sits outside `ci-fast`'s dependency graph (CI/workflow YAML,
+   docs, comments): running it there proves nothing about what changed and
+   only burns a queue slot. A diff mixing gated and ungated files still needs
+   the gate; when unsure whether a file is gated, run it. Open and inspect PRs
+   with `gh pr`; inspect failed runs with `gh pr checks`, `gh run watch`, and
+   `gh run view --log-failed`.
 4. Keep the issue and PR as the durable handoff record. State the goal,
    verification, remaining risks, and the next concrete action. Do not create
    scattered progress markdown files.
 5. Do not push directly to `dev` or `main`, force-push shared branches, bypass
    required checks, or change another task's worktree.
-6. Merging into `dev` is scoped by complexity. A pull request whose linked
-   issues all carry the `fast-lane` label, or any `chore/<slug>` pull request
-   opened under the chore lane below (including the kit-generated
-   `chore/policy-sync`), may be merged into `dev` by its author
-   once it is mergeable-green: every REQUIRED check passing, and any failing
-   advisory check verified pre-existing — the same failure on the base
+6. Merging into `dev` does not require a separate review agent. Any pull
+   request — strict, fast-lane, or chore — may be merged into `dev` by its own
+   author once it is mergeable-green: every REQUIRED check passing, and any
+   failing advisory check verified pre-existing — the same failure on the base
    branch's latest run, not introduced by this pull request. A red this PR
    caused always blocks. Merge so per-issue commits survive: `gh pr merge
    --merge`, or `--rebase` where the repository forbids merge commits; never
-   squash. Every other pull request
-   requires a separate *review* agent: the merging agent must not be the
-   author, and where the author and the reviewer would be the same agent, stop
-   and hand off instead of merging. The reviewer records its verdict with `gh
-   pr review --comment`, NEVER `--approve` or `--request-changes`: where every
-   agent authenticates as one GitHub user — the normal case, and always the
-   case when that user is also the author — GitHub refuses both with `Can not
-   approve your own pull request`. The separation this rule demands is between
-   AGENTS; a shared GitHub identity cannot express it, and cannot invalidate
-   it. State this in the review assignment, because a reviewer meets the wall
-   at its final step, after all the work is done, and an agent blocked there
-   tends to exit having recorded nothing. An agent may merge a release pull
+   squash. An agent may still request a second agent's read on a PR it is
+   unsure about — record that verdict with `gh pr review --comment`, NEVER
+   `--approve` or `--request-changes`, since every agent authenticates as one
+   GitHub user and GitHub refuses both on your own pull request — but this is
+   optional judgment, not a merge gate. An agent may merge a release pull
    request into `main` only when it is mergeable-green AND the user confirms
    in the moment, in the live conversation, immediately before the merge. A
    standing instruction does not carry: authorization expires with the turn it
@@ -94,8 +91,10 @@ preserve these requirements.
 
 ## Fast lane: batching pre-triaged mechanical issues
 
-The fast lane loosens per-issue ceremony and the separate-review-agent
-requirement. What it never loosens: a green `just ci-fast` before the PR,
+The fast lane loosens per-issue ceremony: batching, claim-by-assignment, and
+one-commit-per-issue replace the one-issue-one-PR default. Self-merge on green
+is not fast-lane-specific — rule 6 grants it to every lane. What no lane
+loosens: a green `just ci-fast` before the PR when rule 3's scope requires it,
 a mergeable-green PR before merging (see 6), no direct pushes, and no merge to
 `main` without the in-the-moment user confirmation rule 6 requires.
 
@@ -136,18 +135,18 @@ a mergeable-green PR before merging (see 6), no direct pushes, and no merge to
   line per issue plus a short per-issue checklist — what changed, which
   commit, how it was verified. GitHub then closes every batched issue when the
   PR merges into `dev`.
-- **Self-merge on green.** Triage already judged the work mechanical, so a
-  fast-lane PR needs no separate review agent: its author merges it into `dev`
-  with `gh pr merge --merge` (or `--rebase` where the repository forbids
-  merge commits) once the PR is mergeable-green per rule 6 — required checks
+- **Self-merge on green.** Its author merges the fast-lane PR into `dev` with
+  `gh pr merge --merge` (or `--rebase` where the repository forbids merge
+  commits) once the PR is mergeable-green per rule 6 — required checks
   passing, and any advisory red verified pre-existing on the base branch.
   Never squash — squashing destroys the one-commit-per-issue history.
 - **Eject rule.** The moment a batched issue turns out to need a design
   decision or a wider diff than triaged: drop its commit(s) from the branch,
   remove its `fast-lane` label, unassign it, comment on that issue why it was
   ejected, and carry on with the rest of the batch. An ejected issue returns
-  to the strict lane — including its separate-review-agent merge. One
-  misjudged issue never holds the others hostage.
+  to the strict lane's one-issue-one-PR ceremony; it still self-merges on
+  green like any other PR. One misjudged issue never holds the others
+  hostage.
 - **The strict lane remains the default** for anything needing a design
   decision, touching multiple subsystems, or where a standalone revert
   matters. A project disables the fast lane entirely by saying so under its
@@ -167,8 +166,10 @@ So the chore lane drops the ISSUE, never the BRANCH, the GATE, or the PR:
 
 - Branch `chore/<short-slug>` from `dev`. No issue, no worktree required — the
   primary checkout is fine when nothing else is running in it.
-- `just ci-fast` green locally, then a PR into `dev` whose body says in one
-  line what changed and why it needed no issue.
+- `just ci-fast` green locally when rule 3's scope requires it (most chores —
+  formatter runs, lockfile regens, dependency repins — touch gated files; a
+  comment typo or docs-only chore does not), then a PR into `dev` whose body
+  says in one line what changed and why it needed no issue.
 - The author self-merges on mergeable-green, same bar as the fast lane — rule 6
   grants this to every `chore/<slug>` branch, generalizing the
   `chore/policy-sync` exemption it originally carried.

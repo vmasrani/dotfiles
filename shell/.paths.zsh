@@ -33,8 +33,10 @@ PATH_ADDITIONS=(
 )
 
 
-# Add paths to PATH if they exist and aren't already present
-for path_dir in "${PATH_ADDITIONS[@]}"; do
+# Prepend paths in reverse so the declared order above is also their
+# precedence order in PATH.
+for ((path_index = ${#PATH_ADDITIONS[@]}; path_index >= 1; path_index--)); do
+    path_dir="${PATH_ADDITIONS[path_index]}"
     if [[ -n "$path_dir" && -d "$path_dir" ]]; then
         PATH="$path_dir:$PATH"
     fi

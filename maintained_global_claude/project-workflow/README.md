@@ -89,7 +89,7 @@ is only for divergences that are right for one repo.
 ## Three lanes: strict, fast, chore
 
 The default lifecycle is **strict**: one issue, one branch, one worktree, one
-PR, merged by a separate review agent.
+PR, author self-merges once mergeable-green.
 
 The **fast lane** batches 2–4 issues labeled `fast-lane` into one branch/PR:
 claim by assignment plus one comment on the lead issue, one commit per issue so

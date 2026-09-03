@@ -1,0 +1,392 @@
+<!doctype html>
+<!--
+  DECK flavor — a click-through walkthrough: one claim per screen, verbatim tool
+  output, a running scoreboard. Self-contained: inline CSS/JS, data inlined below,
+  no server, no network. Opens from file://.
+
+  THIS FILE IS BOTH THE SOURCE AND THE DELIVERABLE. Edit the design here directly.
+  `gen_<slug>.py` only rewrites the <script id="wt-data"> block in place, so design
+  edits survive every regeneration.
+
+  The payload below is a STUB so the page opens before any capture has run. Run the
+  generator to replace it with real, measured data.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- ▸ EDIT: page title -->
+<title>PROJECT · WHAT THIS DECK SHOWS</title>
+<style>
+  :root{
+    --ground:#0a0e14; --panel:#0d1119; --panel2:#11161f; --line:#1c232e;
+    --fg:#b3c0d1; --dim:#5c6773; --dimmer:#3d4653;
+    --amber:#ffb454; --amber-soft:#e6a34a; --amber-dim:#7a5a2e;
+    --green:#aad94c; --red:#f07178; --blue:#59c2ff;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,"Cascadia Code",Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--ground); color:var(--fg); font-family:var(--mono); font-size:16px;
+       line-height:1.55; font-variant-numeric:tabular-nums; display:flex; flex-direction:column;
+       min-height:100%; -webkit-font-smoothing:antialiased}
+  a{color:var(--amber)}
+
+  /* ── header ── */
+  header{padding:18px 26px 10px; border-bottom:1px solid var(--line)}
+  .brand{color:var(--amber); font-weight:600; letter-spacing:.02em; font-size:15px}
+  .brand .cursor{display:inline-block; width:.6ch; background:var(--amber); margin-left:2px;
+       animation:blink 1.1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .caption{color:var(--dim); font-size:11.5px; margin-top:3px}
+  .caption b{color:var(--amber-soft); font-weight:600}
+
+  /* ── progress dots ── */
+  .dots{display:flex; gap:9px; padding:12px 26px; align-items:center; flex-wrap:wrap}
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--dimmer); cursor:pointer;
+       transition:background .2s, transform .2s; position:relative}
+  .dot:hover{transform:scale(1.35)}
+  .dot.done{background:var(--amber-dim)}
+  .dot.active{background:var(--amber); box-shadow:0 0 0 4px rgba(255,180,84,.14)}
+  .dot .lbl{position:absolute; top:-26px; left:50%; transform:translateX(-50%);
+       background:var(--panel2); border:1px solid var(--line); color:var(--fg); font-size:10px;
+       padding:2px 6px; border-radius:4px; white-space:nowrap; opacity:0; pointer-events:none;
+       transition:opacity .15s}
+  .dot:hover .lbl{opacity:1}
+  .dots .counter{margin-left:auto; color:var(--dim); font-size:12px}
+
+  /* ── stage ── */
+  main{flex:1; display:flex; justify-content:center; padding:22px 26px 8px; overflow-y:auto}
+  .step{width:100%; max-width:900px}
+  .step-head{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:10px}
+  .tag{color:var(--ground); background:var(--amber); font-weight:700; font-size:11px;
+       letter-spacing:.09em; padding:3px 9px; border-radius:3px; white-space:nowrap}
+  .title{font-size:21px; font-weight:600; color:#e8eef6; margin:0; letter-spacing:.01em}
+  .narration{color:var(--fg); font-size:15px; margin:0 0 16px}
+
+  /* ── command / output ── */
+  .cmd{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--amber);
+       border-radius:6px; padding:9px 13px; margin:0 0 2px; overflow-x:auto}
+  .cmd code{white-space:pre-wrap; word-break:break-word; color:#e8eef6; font-size:14px}
+  .cmd .prompt{color:var(--amber); font-weight:700; margin-right:8px; user-select:none}
+  .output{background:var(--panel2); border:1px solid var(--line); border-top:none;
+       border-radius:0 0 6px 6px; padding:8px 13px; margin:0 0 8px; overflow-x:auto; font-size:13.5px}
+  .oline{white-space:pre-wrap; word-break:break-word; color:#9fb0c3}
+  .oline .hl{color:var(--amber); background:rgba(255,180,84,.12); padding:0 2px; border-radius:2px; font-weight:600}
+  .ocol-k{display:inline-block; min-width:6ch; color:var(--dim)}
+  .ocol-v{display:inline-block; color:var(--amber-soft); font-weight:600}
+  .ms-chip{display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--green);
+       border:1px solid rgba(170,217,76,.28); background:rgba(170,217,76,.06); padding:2px 10px;
+       border-radius:20px; margin:2px 0 14px}
+  .ms-chip .note{color:var(--dim); border-left:1px solid var(--dimmer); padding-left:8px}
+
+  .kicker{color:#d4dde8; font-size:14.5px; margin:6px 0 12px}
+  .contrast{color:var(--dim); font-size:13px; font-style:italic; border-left:2px solid var(--dimmer);
+       padding-left:12px; margin:0 0 10px}
+  .contrast::before{content:"↳ "; color:var(--red); font-style:normal}
+
+  /* ── viz ── */
+  .viz{margin:8px 0 14px}
+  .spark-wrap{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px}
+  .spark-cap{display:flex; justify-content:space-between; color:var(--dim); font-size:11.5px; margin-bottom:6px}
+  svg{display:block; width:100%; height:auto; overflow:visible}
+
+  .bar-row{display:grid; grid-template-columns:230px 1fr auto auto; align-items:center; gap:12px; margin:8px 0}
+  .bar-label{color:#d4dde8; font-size:13.5px}
+  .bar-label .sub{color:var(--dim); font-size:11.5px}
+  .bar-track{background:var(--panel2); border-radius:4px; height:22px; overflow:hidden}
+  .bar{height:100%; border-radius:4px; display:flex; align-items:center; justify-content:flex-end;
+       padding-right:8px; color:var(--ground); font-weight:700; font-size:12px;
+       background:linear-gradient(90deg,var(--amber-dim),var(--amber))}
+  .bar.mute{background:var(--dimmer)}
+  .bar-val{color:var(--amber); font-weight:700; min-width:4ch; text-align:right}
+  .badge{font-size:11px; font-weight:700; letter-spacing:.06em; padding:2px 8px; border-radius:3px}
+  .badge.good{color:var(--ground); background:var(--green)}
+  .badge.bad{color:var(--red); border:1px solid rgba(240,113,120,.4)}
+  .concl{margin-top:12px; color:#e8eef6; font-size:14px; text-align:center;
+       border:1px dashed var(--amber-dim); border-radius:6px; padding:8px}
+  .concl b{color:var(--amber)}
+
+  /* ── closing cards ── */
+  .card-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:6px 0 14px}
+  .card{border:1px solid var(--line); border-radius:10px; padding:18px 20px; background:var(--panel)}
+  .card.win{border-color:var(--amber-dim); background:linear-gradient(180deg,rgba(255,180,84,.05),transparent)}
+  .card h3{margin:0 0 6px; font-size:12px; letter-spacing:.08em; color:var(--dim); font-weight:600}
+  .card .big{font-size:30px; font-weight:700; letter-spacing:.01em}
+  .card.win .big{color:var(--amber)}
+  .card.lose .big{color:var(--red)}
+  .card .sub{color:var(--dim); font-size:12.5px; margin-top:4px}
+  .headline{text-align:center; font-size:16px; color:#e8eef6; margin:4px 0 0}
+  .headline b{color:var(--amber); font-size:20px}
+  @media (max-width:680px){ .card-grid{grid-template-columns:1fr} .bar-row{grid-template-columns:1fr} }
+
+  /* ── footer scoreboard ── */
+  footer{border-top:1px solid var(--line); padding:11px 26px; display:flex; align-items:center;
+       gap:18px; background:var(--panel); font-size:13px; flex-wrap:wrap}
+  .score{display:flex; align-items:baseline; gap:8px}
+  .score .k{color:var(--dim); font-size:11.5px; text-transform:uppercase; letter-spacing:.06em}
+  .score.a b{color:var(--green); font-size:17px; font-weight:700}
+  .score.b b{color:var(--red); font-size:17px; font-weight:700}
+  .score .unit{color:var(--dim); font-size:11.5px}
+  .vs{color:var(--dimmer); font-weight:700}
+  .footer-spacer{flex:1}
+  .hint{color:var(--dim); font-size:11.5px}
+  .hint kbd{background:var(--panel2); border:1px solid var(--line); border-radius:3px; padding:1px 6px;
+       color:var(--fg); font-size:11px}
+
+  /* ── reveal ── */
+  .reveal{opacity:0; transform:translateY(8px); animation:rise .5s cubic-bezier(.2,.7,.3,1) forwards;
+       animation-delay:calc(var(--i,0) * 85ms)}
+  @keyframes rise{to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion:reduce){
+    .reveal{animation:none; opacity:1; transform:none}
+    .brand .cursor{animation:none}
+  }
+</style>
+</head>
+<body>
+  <header>
+    <!-- ▸ EDIT: brand line -->
+    <div class="brand">PROJECT · WHAT THIS DECK SHOWS<span class="cursor">&nbsp;</span></div>
+    <div class="caption">captured from a live run · <b id="cap-date">—</b> · <b id="cap-subject">—</b> · every number is verbatim tool output</div>
+  </header>
+
+  <nav class="dots" id="dots" aria-label="steps"></nav>
+
+  <main id="stage" tabindex="0" aria-live="polite"></main>
+
+  <footer>
+    <div class="score a"><span class="k" id="score-a-k">this tool</span> <b id="score-a">0&nbsp;ms</b> <span class="unit" id="score-a-u"></span></div>
+    <div class="vs" id="score-vs">vs</div>
+    <div class="score b"><span class="k" id="score-b-k">baseline</span> <b id="score-b">0</b> <span class="unit" id="score-b-u"></span></div>
+    <div class="footer-spacer"></div>
+    <div class="hint"><kbd>→</kbd>/<kbd>space</kbd> next · <kbd>←</kbd> back · <kbd>click</kbd> advance</div>
+  </footer>
+
+  <!-- ══ GROUND TRUTH ══════════════════════════════════════════════════════════
+       Rewritten IN PLACE by gen_<slug>.py. Do not hand-edit: a number typed here
+       is a number nothing measured. The stub below only exists so the page opens
+       before the first capture.
+  -->
+  <script id="wt-data" type="application/json">{
+    "meta": {
+      "captured_at": null,
+      "subject": null,
+      "regen_cmd": "./gen_<slug>.py",
+      "baseline": null
+    },
+    "steps": []
+  }</script>
+
+  <script>
+  "use strict";
+  const DATA  = JSON.parse(document.getElementById("wt-data").textContent || "{}");
+  const STEPS = DATA.steps || [];
+  const META  = DATA.meta  || {};
+  let cur = 0;
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+  // the capture wraps a match in « » — highlight it without trusting the payload as HTML
+  const hlMatch = (safe) => safe.replace(/«([^«»]*)»/g, '«<span class="hl">$1</span>»');
+  const fmtMs = (ms) => ms < 1000 ? `${ms.toFixed(0)}&nbsp;ms` : `${(ms/1000).toFixed(2)}&nbsp;s`;
+  const fmtS  = (s)  => s  < 90   ? `${s}&nbsp;s`               : `${(s/60).toFixed(1)}&nbsp;min`;
+  const el = (tag, cls, html) => { const e = document.createElement(tag);
+    if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+  const wrapViz = (node) => { const v = el("div", "viz"); v.appendChild(node); return v; };
+
+  const cumMs = (idx) => STEPS.slice(0, idx + 1)
+    .flatMap(s => s.commands || []).reduce((t, c) => t + (c.ms || 0), 0);
+
+  // ── inline-SVG sparkline over {label, value} points ────────────────────────
+  function sparkline(points){
+    const W = 860, H = 150, pad = { t:16, r:18, b:26, l:40 };
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const max = Math.max(...points.map(p => p.value), 1), n = points.length;
+    const x = (i) => pad.l + (n === 1 ? iw/2 : (iw * i) / (n - 1));
+    const y = (v) => pad.t + ih - (ih * v) / max;
+    const peak = points.reduce((b, p, i) => p.value > points[b].value ? i : b, 0);
+    const pts = points.map((p, i) => [x(i), y(p.value)]);
+    const line = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    const area = `M${x(0).toFixed(1)} ${(pad.t+ih).toFixed(1)} `
+      + pts.map(p => `L${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ")
+      + ` L${x(n-1).toFixed(1)} ${(pad.t+ih).toFixed(1)} Z`;
+
+    let dots = "", labels = "";
+    points.forEach((p, i) => {
+      const isPeak = i === peak, isEnd = i === 0 || i === n - 1;
+      dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="${isPeak ? 5 : 3.2}"
+        fill="${isPeak ? "var(--amber)" : "var(--amber-soft)"}" stroke="var(--ground)" stroke-width="1.5"/>`;
+      if (isPeak || isEnd)
+        labels += `<text x="${x(i).toFixed(1)}" y="${(y(p.value)-10).toFixed(1)}" text-anchor="middle"
+          font-size="12" font-weight="700" fill="var(--amber)">${esc(p.value)}</text>`;
+      if (n <= 10 || i % 2 === 0 || isEnd)
+        labels += `<text x="${x(i).toFixed(1)}" y="${(pad.t+ih+16).toFixed(1)}" text-anchor="middle"
+          font-size="10.5" fill="var(--dim)">${esc(p.label)}</text>`;
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="series">
+      <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="var(--amber)" stop-opacity=".28"/>
+        <stop offset="1" stop-color="var(--amber)" stop-opacity="0"/>
+      </linearGradient></defs>
+      <line x1="${pad.l}" y1="${(pad.t+ih).toFixed(1)}" x2="${W-pad.r}" y2="${(pad.t+ih).toFixed(1)}" stroke="var(--line)"/>
+      <path d="${area}" fill="url(#ag)"/>
+      <path d="${line}" fill="none" stroke="var(--amber)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}${labels}</svg>`;
+  }
+
+  // ── viz renderers ──────────────────────────────────────────────────────────
+  function renderChart(chart){
+    const box = el("div", "spark-wrap");
+    const peak = Math.max(...chart.points.map(p => p.value));
+    box.appendChild(el("div", "spark-cap",
+      `<span>${esc(chart.caption || chart.unit || "value")}</span><span>peak ${peak.toLocaleString()}</span>`));
+    box.insertAdjacentHTML("beforeend", sparkline(chart.points));
+    return box;
+  }
+
+  // bars: [{label, sub?, value, max?, display?, badge?{text,kind}}]  — one shape covers
+  // ranked comparisons, conditional probabilities, and pass/fail gates.
+  function renderBars(bars){
+    const wrap = el("div", null);
+    const max = Math.max(...bars.rows.map(r => r.max ?? r.value), 1);
+    bars.rows.forEach(r => {
+      const w = Math.max(2, (100 * r.value) / max);
+      const badge = r.badge ? `<span class="badge ${r.badge.kind === "bad" ? "bad" : "good"}">${esc(r.badge.text)}</span>` : "";
+      wrap.appendChild(el("div", "bar-row",
+        `<div class="bar-label">${esc(r.label)}${r.sub ? `<div class="sub">${esc(r.sub)}</div>` : ""}</div>`
+        + `<div class="bar-track"><div class="bar ${r.badge?.kind === "bad" ? "mute" : ""}" style="width:${w.toFixed(0)}%"></div></div>`
+        + `<div class="bar-val">${esc(r.display ?? r.value)}</div>${badge}`));
+    });
+    if (bars.conclusion) wrap.appendChild(el("div", "concl", esc(bars.conclusion)));
+    return wrap;
+  }
+
+  // cards: [{kind:"win"|"lose", title, big, sub}] + optional headline
+  function renderCards(cards){
+    const box = el("div", null), grid = el("div", "card-grid");
+    cards.items.forEach(c => grid.appendChild(el("div", `card ${c.kind || ""}`,
+      `<h3>${esc(c.title)}</h3><div class="big">${esc(c.big)}</div><div class="sub">${esc(c.sub || "")}</div>`)));
+    box.appendChild(grid);
+    // `headline_html` is the escape hatch for a headline carrying markup (a <b> on the
+    // number that lands the comparison); `headline` is the plain, escaped form.
+    const head = cards.headline_html || (cards.headline ? esc(cards.headline) : null);
+    if (head) box.appendChild(el("p", "headline", head));
+    return box;
+  }
+
+  function renderOutput(lines){
+    const box = el("div", "output");
+    lines.forEach(line => {
+      const row = el("div", "oline");
+      if (line.includes("\t")){
+        const [k, v] = line.split("\t");
+        row.innerHTML = `<span class="ocol-k">${esc(k)}</span><span class="ocol-v">${esc(v)}</span>`;
+      } else {
+        row.innerHTML = hlMatch(esc(line));
+      }
+      box.appendChild(row);
+    });
+    return box;
+  }
+
+  // ── render one step ────────────────────────────────────────────────────────
+  function renderStep(idx){
+    const s = STEPS[idx], stage = $("stage");
+    stage.innerHTML = "";
+    const art = el("article", "step");
+    let i = 0;
+    const rev = (node) => { node.classList.add("reveal"); node.style.setProperty("--i", i++); return node; };
+
+    art.appendChild(rev(el("div", "step-head",
+      `<span class="tag">STEP ${s.n} · ${esc(s.tag)}</span><h1 class="title">${esc(s.title)}</h1>`)));
+    art.appendChild(rev(el("p", "narration", esc(s.narration))));
+
+    (s.commands || []).forEach(c => {
+      art.appendChild(rev(el("div", "cmd", `<code><span class="prompt">$</span>${esc(c.display)}</code>`)));
+      if (c.output && c.output.length) art.appendChild(rev(renderOutput(c.output)));
+      art.appendChild(rev(el("div", "ms-chip",
+        `→ <b>${fmtMs(c.ms)}</b>${c.note ? `<span class="note">${esc(c.note)}</span>` : ""}`)));
+    });
+
+    if (s.chart) art.appendChild(rev(wrapViz(renderChart(s.chart))));
+    if (s.bars)  art.appendChild(rev(wrapViz(renderBars(s.bars))));
+    if (s.cards) art.appendChild(rev(wrapViz(renderCards(s.cards))));
+    if (s.kicker)   art.appendChild(rev(el("p", "kicker", esc(s.kicker))));
+    if (s.contrast) art.appendChild(rev(el("p", "contrast", esc(s.contrast))));
+
+    stage.appendChild(art);
+    stage.scrollTop = 0;
+    updateChrome(idx);
+  }
+
+  // ── chrome ─────────────────────────────────────────────────────────────────
+  function buildDots(){
+    const box = $("dots");
+    box.innerHTML = "";
+    STEPS.forEach((s, i) => {
+      const d = el("span", "dot", `<span class="lbl">${s.n}. ${esc(s.tag)}</span>`);
+      d.setAttribute("role", "button");
+      d.setAttribute("aria-label", `step ${s.n}: ${s.tag}`);
+      d.addEventListener("click", (e) => { e.stopPropagation(); go(i); });
+      box.appendChild(d);
+    });
+    box.appendChild(el("span", "counter", `<span id="counter">1 / ${STEPS.length}</span>`));
+  }
+
+  function updateChrome(idx){
+    document.querySelectorAll(".dot").forEach((d, i) => {
+      d.classList.toggle("active", i === idx);
+      d.classList.toggle("done", i < idx);
+    });
+    const c = $("counter"); if (c) c.textContent = `${idx+1} / ${STEPS.length}`;
+
+    $("score-a").innerHTML = fmtMs(cumMs(idx));
+    $("score-a-u").innerHTML = META.score_a_unit || "";
+    // The baseline half is OPTIONAL — a deck with nothing to compare against hides it
+    // rather than inventing a rival number.
+    const B = META.baseline;
+    if (!B){ ["score-vs","score-b","score-b-k","score-b-u"].forEach(id => $(id).style.display = "none"); return; }
+    $("score-a-k").textContent = META.score_a_label || "this tool";
+    $("score-b-k").textContent = B.label;
+    const units = STEPS[idx].cum_baseline || 0;
+    $("score-b").textContent = units;
+    $("score-b-u").innerHTML = units ? `× ${esc(B.unit)} = ${fmtS(units * B.per_unit_s)}` : `× ${esc(B.unit)}`;
+  }
+
+  // ── navigation ─────────────────────────────────────────────────────────────
+  function go(idx){ cur = Math.max(0, Math.min(STEPS.length - 1, idx)); renderStep(cur); }
+  const next = () => go(cur + 1), prev = () => go(cur - 1);
+
+  document.addEventListener("keydown", (e) => {
+    if (["ArrowRight"," ","Enter","PageDown"].includes(e.key)){ e.preventDefault(); next(); }
+    else if (["ArrowLeft","PageUp"].includes(e.key)){ e.preventDefault(); prev(); }
+    else if (e.key === "Home"){ e.preventDefault(); go(0); }
+    else if (e.key === "End"){ e.preventDefault(); go(STEPS.length - 1); }
+  });
+  document.addEventListener("click", (e) => {
+    if (e.target.closest(".dots") || e.target.closest("a") || e.target.closest("footer")) return;
+    next();
+  });
+
+  // ── boot ───────────────────────────────────────────────────────────────────
+  (function boot(){
+    // HONEST EMPTY: no capture yet is a visibly different state from a real run,
+    // and it names the command that fixes it.
+    if (!STEPS.length){
+      $("stage").innerHTML = '<div class="step"><h1 class="title">No capture data yet.</h1>'
+        + `<p class="narration">Run <code>${esc(META.regen_cmd || "./gen_&lt;slug&gt;.py")}</code>`
+        + ' to record a live run, then reopen this page.</p></div>';
+      return;
+    }
+    $("cap-date").textContent = META.captured_at || "—";
+    $("cap-subject").textContent = META.subject || "—";
+    buildDots();
+    renderStep(0);
+    $("stage").focus();
+  })();
+  </script>
+</body>
+</html>
