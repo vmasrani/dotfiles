@@ -248,6 +248,7 @@ def guard(command):
 
 for cmd in [
     "cargo nextest run --workspace",
+    "cargo nextest r --workspace",
     "cargo test",
     "cargo +nightly test -p parot-daemon",
     "cargo bench --bench index",
@@ -285,6 +286,12 @@ for cmd in [
     "cargo install --path .",
     "just lint",
     "cargo fmt",
+    # `cargo nextest`/`cargo test` read-only subcommands never run tests, so
+    # they never saturate the box -- must stay unqueued and instant.
+    "cargo nextest --version",
+    "cargo nextest list",
+    "cargo nextest show-config",
+    "cargo test --list",
     # already queued -- must never be double-flagged
     "queue cargo nextest run --workspace",
     "queue --solo cargo bench",

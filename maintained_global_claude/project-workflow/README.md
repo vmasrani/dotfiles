@@ -30,7 +30,9 @@ subcommand fails loudly instead of falling back to a prompt.
 **New project**: creates the private `sophiaconsulting` repository, installs the
 workflow, a per-language starter `justfile` and the `.githooks/pre-push` gate,
 pushes `main` and `dev`, and opts the repo into the strict `main` ruleset. A
-fresh repo with real starter recipes is green by construction.
+fresh repo with real starter recipes is green by construction. Rust projects
+also get a starter `.config/nextest.toml` (fail-fast off, a `ci` profile with
+retries) seeded the same greenfield-only way as the justfile.
 
 Branch rules are **not** applied per repository any more. They live once as org
 rulesets (see `rulesets/`), already cover every repo including ones that do not

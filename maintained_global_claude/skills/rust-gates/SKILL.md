@@ -16,6 +16,7 @@ Binding for any Rust repo or queued build/test/bench gate. Kept out of the alway
 - `| tail` destroys the exit code — read `queue --exit-code --last` before claiming a pass.
 - Agents write, the lead builds — ONE process compiles and runs the suite.
 - Everything else — cancel/`--triage` semantics, SJF jumping, `--solo`, slots, coalescing, the settled don't-re-investigate list: `~/dotfiles/maintained_global_claude/queue-reference.md`.
+- **Prefer `queue cargo nextest run --workspace` over `cargo test`.** Fail-fast is off via the seeded `.config/nextest.toml` (sweep-then-assert); per-job parallelism is capped by `NEXTEST_TEST_THREADS` (cpus/`QUEUE_SLOTS` from `.zshenv`) — never pass `-j`/`--test-threads` ad hoc. Reconcile counts from nextest's `Summary [ … ] N tests run: N passed` line. `cargo nextest list|--version|show-config` and `cargo test --list` are read-only and run unqueued.
 
 ## Cargo — never compile the same dependency twice
 

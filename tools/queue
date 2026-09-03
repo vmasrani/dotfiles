@@ -3,15 +3,21 @@
 #
 # WHY THIS EXISTS
 #   Several agents working in parallel each want to run a full test suite.
-#   On a 10-core / 16 GB box those runs do not overlap usefully -- they
-#   thrash. CPU oversubscription makes every suite slower than if it had run
-#   alone, and memory is the real cliff: a single 1 GB bench here peaks near
-#   7.5 GB RSS, so two heavy jobs at once means swap, and swap means suites
-#   that never finish.
+#   Those runs do not overlap usefully on one machine -- they thrash. CPU
+#   oversubscription makes every suite slower than if it had run alone, and
+#   memory is the real cliff: a heavy job at full parallelism can peak high
+#   enough RSS that a second concurrent one means swap, and swap means
+#   suites that never finish. QUEUE_SLOTS (see below) is a per-machine value
+#   exported from .zshenv, default 1; raise it only after measuring peak
+#   suite RSS on THAT machine, never by assumption from another box's numbers.
 #
-#   MEASURED 2026-07-20 on parot-core (2,269 tests): one `cargo nextest run`
-#   consumed 2,930s of CPU against 323s of wall clock -- ~9x parallelism on
-#   10 cores. A single suite ALREADY saturates the machine.
+#   MEASURED 2026-07-20 on parot-core (2,269 tests), on the box that measurement
+#   was taken on: one `cargo nextest run` consumed 2,930s of CPU against 323s of
+#   wall clock -- ~9x parallelism. A single suite ALREADY saturates a box at
+#   nextest's default per-job thread count (one test process per logical CPU);
+#   nextest's per-job threads are additionally capped by NEXTEST_TEST_THREADS
+#   (cpus / QUEUE_SLOTS, set in .zshenv) so concurrent queued suites can't
+#   oversubscribe whatever machine is running them.
 #
 #   This is a thin wrapper over task-spooler (`ts`), which is a real job queue
 #   daemon -- FIFO ordering, slot-limited admission, job listing, output
@@ -115,13 +121,18 @@
 #     that is no longer asked.
 #
 #   WHY THE DEFAULT IS 1 AND NOT 2
-#     A single suite already runs at ~9x parallelism on 10 cores (MEASURED
-#     2026-07-20: 2,930s CPU / 323s wall). Memory is the real cliff -- a 1 GB
-#     bench peaks near 7.5 GB RSS against ~13 GB usable, so two heavy jobs mean
-#     swap, and swap means suites that never finish. Since nothing classifies
-#     commands any more, a slot count of 2 means "two SUITES may overlap", which
-#     is precisely the collision this tool exists to prevent. Raise it only
-#     after measuring peak RSS, and prefer `--solo` to lowering it again.
+#     A single suite already runs at ~9x parallelism on 10 cores on the box
+#     that was MEASURED 2026-07-20 (2,930s CPU / 323s wall). Memory is the
+#     real cliff on any machine -- a heavy job at full parallelism can peak
+#     close to that machine's usable RAM, so two heavy jobs at once mean swap,
+#     and swap means suites that never finish. QUEUE_SLOTS is a per-machine
+#     value exported from .zshenv (default 1) -- raise it only after measuring
+#     peak suite RSS on THAT machine, and size NEXTEST_TEST_THREADS (also set
+#     in .zshenv, as cpus / QUEUE_SLOTS) accordingly so a raised slot count
+#     doesn't also raise per-job thread oversubscription. Since nothing
+#     classifies commands any more, a slot count of 2 means "two SUITES may
+#     overlap", which is precisely the collision this tool exists to prevent.
+#     Prefer `--solo` to lowering it again.
 #
 # WHY NOT FAST-PATH AN EMPTY QUEUE
 #   "Nothing is running, so just exec directly" is a check-then-act race: two

@@ -13,6 +13,8 @@ You type the prefix yourself; nothing rewrites your command. `unqueued_heavy_gua
 
 A queued job runs with `QUEUE_ACTIVE=1`; `queue` seeing that set runs the command directly instead of enqueuing, so a queued `just test` whose recipe itself calls `queue` can't deadlock waiting on capacity its own parent holds.
 
+The heavy-guard hook denies only `cargo nextest run|r` and `cargo test` (without `--list`); `cargo nextest list|--version|show-config` and `cargo test --list` are read-only and stay unqueued. `.zshenv` exports `NEXTEST_TEST_THREADS = cpus / QUEUE_SLOTS` so slots × threads never exceeds the box.
+
 ## The `&&` trap
 
     queue cd /repo && cargo nextest run     # WRONG

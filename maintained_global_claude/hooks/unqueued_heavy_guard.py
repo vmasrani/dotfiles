@@ -102,7 +102,21 @@ def _heavy_at(tokens, i):
         if j < len(tokens) and tokens[j].startswith("+"):  # +nightly toolchain selector
             j += 1
         if j < len(tokens) and tokens[j] in HEAVY_CARGO_VERBS:
-            return f"cargo {tokens[j]}"
+            verb = tokens[j]
+            rest = tokens[j + 1 :]
+            # `cargo nextest` is only heavy when it actually RUNS tests. Every
+            # other subcommand (--version, list, show-config, archive, self,
+            # ...) is a read-only enumeration/introspection call and must stay
+            # unqueued -- denying those trains agents to stop trusting the hook.
+            if verb == "nextest":
+                if rest and rest[0] in ("run", "r"):
+                    return "cargo nextest run"
+                return None
+            # `cargo test --list` enumerates tests without running them --
+            # the same no-run case as `cargo nextest list`.
+            if verb == "test" and "--list" in rest:
+                return None
+            return f"cargo {verb}"
         # `cargo build`/`install` are cheap in debug but a full optimized
         # `--release` workspace build is exactly as heavy as a test suite.
         if j < len(tokens) and tokens[j] in ("build", "install") and "--release" in tokens[j + 1 :]:
