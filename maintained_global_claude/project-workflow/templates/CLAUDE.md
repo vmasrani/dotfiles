@@ -7,8 +7,7 @@ is in `.agent-workflow/AGENT_WORKFLOW.md` and is binding.
 
 1. Confirm access with `gh auth status`; create or claim one issue using `gh issue`.
 2. Create an isolated, issue-named worktree and branch from `dev`.
-3. Make focused changes; run `just ci-fast` from the project root (solo-work
-   step — see Concurrent lane below for 2+ agents on 2+ issues at once).
+3. Make focused changes; run `just ci-fast` from the project root (solo work only).
 4. Commit focused work, push the branch, and use `gh pr create --base dev`.
 5. Use `gh pr checks`, `gh run watch`, and `gh run view --log-failed` to repair
    failed CI on this PR only. Comment the handoff or result on the PR/issue.
@@ -45,21 +44,7 @@ merge commits are forbidden; never squash) once it is mergeable-green:
 required checks passing, any advisory red verified pre-existing on the base
 branch. All other gates apply unchanged. Full rules:
 `.agent-workflow/AGENT_WORKFLOW.md`.
-
-## Concurrent lane
-
-2+ agents on 2+ issues at once funnel through one `pre-dev` branch and ONE
-gate, not per-issue gates. The orchestrator branches `pre-dev` from `dev`
-before dispatch; workers branch from `dev` as usual, run only instant static
-checks, never `ci-fast`/`ci-deep`/`test*`/`cargo test`/`nextest` (queued or
-not), skip per-issue PRs, and on done `git merge --no-ff` their rebased branch
-into `pre-dev`, push, and report. The orchestrator runs ONE `queue just
-ci-fast` on `pre-dev`; red routes to the owning worker by its merge commit,
-fix, re-merge, re-gate. Green opens the only PR, `pre-dev → dev`, listing every
-`Closes #n`. Cleanup after merge is mandatory: delete `pre-dev` and merged
-worker branches locally and on the remote, remove all worktrees. A hook denies
-gates off `pre-dev` while it exists. Full rules:
-`.agent-workflow/AGENT_WORKFLOW.md`.
+Concurrent lane (2+ agents on 2+ issues at once): workers never run `just ci-fast`; see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`.
 
 ## Chore lane
 

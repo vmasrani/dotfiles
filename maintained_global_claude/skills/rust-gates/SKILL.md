@@ -53,14 +53,7 @@ Every solo-queue benchmark/profile run must be justified by a question ONLY that
 
 ## Multi-worker waves — pre-dev integration FIRST, measure, THEN review
 
-Standard workflow for every multi-worker wave (user mandate 2026-08-20; this
-is the Rust instance of the global "Concurrent work = pre-dev integration"
-rule in CLAUDE.md — same branch name, same single-gate discipline, plus the
-perf-specific measurement step below):
-
-- Workers push branches that compile + pass the exact clippy line + their narrow tests, and NEVER run their own full gates (ci-fast / test-sql / yardstick), queued or not.
-- An integrator builds ONE `pre-dev` branch = dev + every worker branch (stacked ones in order, `git merge --no-ff` per worker so per-issue commits survive), flips whatever fixture/feature switches the wave needs, and runs the wave's HEADLINE measurement first (perf wave → the release benchmark/yardstick on re-pressed fixtures; other waves → the acceptance harness that motivated them).
-- Only if that result is worth shipping: ONE full gate on that SHA (`queue just ci-fast` in the pre-dev worktree), then the integrator (or each author) merges `pre-dev` into `dev` via a single PR — no separate review agent. Not good → fix on the worker branches, re-merge into `pre-dev`, re-measure.
+- This is the Rust instance of the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md` (branch `pre-dev`, one gate; user mandate 2026-08-20).
+- On `pre-dev`, run the wave's HEADLINE measurement (release benchmark/yardstick on re-pressed fixtures) BEFORE the single gate.
 - Review effort is never spent on a result that doesn't move the number; the `pre-dev` branch IS the batch.
 - **No author≠merger rule.** The agent that wrote a PR may review and merge it into `dev` itself once the pre-dev gate is green. The ONLY merge that needs someone else is `dev → main`, which remains the user's alone. Repos still carrying the old "separate review agent" clause in `.agent-workflow/AGENT_WORKFLOW.md` are stale — sync the kit policy rather than obeying them.
-- Cleanup after the merge is mandatory, not optional: delete `pre-dev` and every merged worker branch locally and on the remote, remove their worktrees, `git worktree prune`.
