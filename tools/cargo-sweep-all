@@ -1,0 +1,233 @@
+#!/usr/bin/env zsh
+#
+# cargo-sweep-all — prune stale Rust build artifacts across every cargo
+# project under /Volumes/external/dev, plus the ad-hoc bare target dirs
+# used by parallel agent slots under /Volumes/external/.cargo-targets
+# (see cargo-slot). Nothing else prunes these — target/ dirs balloon
+# fast and every worktree/slot gets its own (no global CARGO_TARGET_DIR).
+#
+# Meant to be driven daily by the com.vmasrani.cargo-sweep LaunchAgent.
+#
+# TOOLCHAIN-MODE CAVEAT
+#   cargo-sweep's --installed flag auto-probes EVERY rustup toolchain
+#   (`rustc --version`) to fingerprint it — including cross toolchains
+#   that aren't natively executable on this host (e.g. an
+#   x86_64-unknown-linux-gnu toolchain kept around for CI parity).
+#   Probing one of those hard-fails the whole run. So instead of
+#   --installed this script passes --toolchains with the list of
+#   toolchains it verified are executable on THIS host, computed fresh
+#   every run (never hardcoded) — same "drop artifacts from toolchains
+#   that are no longer usable" semantics, without tripping over a
+#   toolchain this Mac literally cannot run.
+#
+# BARE TARGET DIRS
+#   Dirs under /Volumes/external/.cargo-targets/<project>/<slot> are
+#   raw CARGO_TARGET_DIR outputs with no Cargo.toml beside them, so
+#   cargo-sweep (which locates the target dir via `cargo metadata`)
+#   can't address them directly. We point CARGO_TARGET_DIR at one and
+#   run cargo-sweep against a tiny throwaway shim project instead;
+#   `cargo metadata` resolves target_directory from the env var, and
+#   cargo-sweep cleans whatever that resolves to.
+#
+# USAGE
+#   cargo-sweep-all [--dry-run]
+#
+# ENV
+#   CARGO_SWEEP_DAYS   artifact age threshold in days (default 15)
+#
+# Log: ~/.cache/cargo-sweep/last-run.log (overwritten each run)
+
+export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+
+SCRIPT_NAME=${0:t}
+
+die() { print -u2 -- "$SCRIPT_NAME: ERROR: $*"; exit 1 }
+
+usage() {
+  cat <<EOF
+Usage: $SCRIPT_NAME [--dry-run] [--help]
+
+Prunes stale Rust build artifacts (cargo-sweep --time \${CARGO_SWEEP_DAYS:-15}
+days, plus toolchain-based pruning) across every cargo project under
+/Volumes/external/dev and every bare agent-slot target dir under
+/Volumes/external/.cargo-targets.
+
+  --dry-run   pass through to cargo-sweep; report what WOULD be removed,
+              delete nothing
+  --help      show this help
+
+Env:
+  CARGO_SWEEP_DAYS   artifact age threshold in days (default: 15)
+
+Log: ~/.cache/cargo-sweep/last-run.log (overwritten each run)
+EOF
+}
+
+typeset -a DRY
+DRY=()
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY=(--dry-run) ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown argument: '$arg' (see --help)" ;;
+  esac
+done
+
+DAYS=${CARGO_SWEEP_DAYS:-15}
+DEV_ROOT=/Volumes/external/dev
+BARE_ROOT=/Volumes/external/.cargo-targets
+LOG_DIR="$HOME/.cache/cargo-sweep"
+LOG_FILE="$LOG_DIR/last-run.log"
+SHIM_DIR="$LOG_DIR/shim"
+
+format_bytes() {
+  awk -v b="$1" 'BEGIN{
+    split("B KiB MiB GiB TiB", units, " ");
+    u = 1; val = b + 0;
+    while (val >= 1024 && u < 5) { val /= 1024; u++; }
+    printf "%.2f %s", val, units[u];
+  }'
+}
+
+# Extract a "<number> <unit>" size (e.g. "76.07 MiB") from a cargo-sweep
+# "Cleaned:"/"Would clean:" line and convert to bytes. Prints 0 if the
+# line says "nothing" or carries no parseable size.
+parse_bytes() {
+  print -r -- "$1" | awk '{
+    for (i = 1; i <= NF; i++) {
+      if ($i ~ /^[0-9]+(\.[0-9]+)?$/ && (i + 1) <= NF && $(i + 1) ~ /^(B|KiB|MiB|GiB|TiB)$/) {
+        val = $i; unit = $(i + 1);
+        mult = 1;
+        if (unit == "KiB") mult = 1024;
+        else if (unit == "MiB") mult = 1024 ^ 2;
+        else if (unit == "GiB") mult = 1024 ^ 3;
+        else if (unit == "TiB") mult = 1024 ^ 4;
+        printf "%d", val * mult;
+        exit;
+      }
+    }
+    printf "0";
+  }'
+}
+
+main() {
+  [[ -d /Volumes/external ]] || die "/Volumes/external is not mounted — refusing to run (would silently sweep nothing)"
+  command -v cargo-sweep >/dev/null 2>&1 || die "cargo-sweep not found on PATH"
+  command -v cargo       >/dev/null 2>&1 || die "cargo not found on PATH"
+  command -v fd          >/dev/null 2>&1 || die "fd not found on PATH"
+  command -v rg          >/dev/null 2>&1 || die "rg not found on PATH"
+
+  local dry_run_label=no
+  (( ${#DRY} > 0 )) && dry_run_label=yes
+
+  echo "== cargo-sweep-all $(date '+%Y-%m-%d %H:%M:%S %Z') =="
+  echo "days=$DAYS dry_run=$dry_run_label"
+  echo
+
+  # ---- discover normal cargo projects (workspace roots with a target/) ----
+  typeset -a PROJECTS
+  PROJECTS=()
+  while IFS= read -r manifest; do
+    local proj_dir=${manifest:h}
+    [[ -d "$proj_dir/target" ]] || continue
+    PROJECTS+=("$proj_dir")
+  done < <(fd -H --max-depth 5 -t f '^Cargo\.toml$' "$DEV_ROOT" 2>/dev/null \
+             | rg -v '/target/|/vendor/|/node_modules/|/\.cargo-targets/')
+  PROJECTS=(${(u)PROJECTS})
+
+  # ---- discover bare agent-slot target dirs (no Cargo.toml alongside) ----
+  typeset -a BARE_TARGETS
+  BARE_TARGETS=()
+  if [[ -d "$BARE_ROOT" ]]; then
+    while IFS= read -r d; do
+      BARE_TARGETS+=("$d")
+    done < <(find "$BARE_ROOT" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | sort)
+  fi
+
+  echo "found ${#PROJECTS} project(s) with target/, ${#BARE_TARGETS} bare agent-slot target dir(s)"
+  echo
+
+  mkdir -p "$SHIM_DIR/src"
+  [[ -f "$SHIM_DIR/Cargo.toml" ]] || cat > "$SHIM_DIR/Cargo.toml" <<'EOF'
+[package]
+name = "cargo-sweep-all-shim"
+version = "0.0.0"
+edition = "2021"
+EOF
+  [[ -f "$SHIM_DIR/src/main.rs" ]] || echo 'fn main() {}' > "$SHIM_DIR/src/main.rs"
+
+  # ---- toolchains actually executable on this host, computed fresh ----
+  typeset -a TOOLCHAINS
+  TOOLCHAINS=()
+  for tc_dir in "$HOME"/.rustup/toolchains/*/; do
+    [[ -x "$tc_dir/bin/rustc" ]] || continue
+    "$tc_dir/bin/rustc" --version >/dev/null 2>&1 || continue
+    TOOLCHAINS+=(${tc_dir:t})
+  done
+  [[ ${#TOOLCHAINS} -gt 0 ]] || die "no natively-executable rustup toolchain found"
+  local tc_arg="${(j:,:)TOOLCHAINS}"
+  echo "natively-executable toolchains: ${(j:, :)TOOLCHAINS}"
+  echo
+
+  typeset -F total_bytes=0
+  typeset -i had_error=0
+
+  # Runs both time-mode and toolchain-mode cargo-sweep against one target,
+  # sums reclaimed bytes, prints one summary line for it.
+  # $1 = label, remaining args = extra env assignments (VAR=val ...) applied
+  # before each cargo-sweep call, then the path argument to pass.
+  sweep_one() {
+    # NB: the local var holding the sweep target is named "target_path",
+    # NOT "path" — zsh links the lowercase "path" array param to $PATH,
+    # so a local scalar named "path" silently clobbers $PATH.
+    local label="$1" target_path="$2"; shift 2
+    local -a envs=("$@")
+    local -i bytes=0 rc=0
+    local out
+
+    out=$(env "${envs[@]}" cargo sweep "${DRY[@]}" --time "$DAYS" "$target_path" 2>&1)
+    rc=$?
+    print -r -- "$out"
+    if (( rc != 0 )); then
+      echo "ERROR: time-mode sweep failed for $label (exit $rc)"
+      had_error=1
+    else
+      while IFS= read -r line; do
+        [[ "$line" == *'Cleaned:'* || "$line" == *'Would clean:'* ]] || continue
+        bytes=$(( bytes + $(parse_bytes "$line") ))
+      done <<< "$out"
+    fi
+
+    out=$(env "${envs[@]}" cargo sweep "${DRY[@]}" --toolchains "$tc_arg" "$target_path" 2>&1)
+    rc=$?
+    print -r -- "$out"
+    if (( rc != 0 )); then
+      echo "ERROR: toolchain-mode sweep failed for $label (exit $rc)"
+      had_error=1
+    else
+      while IFS= read -r line; do
+        [[ "$line" == *'Cleaned:'* || "$line" == *'Would clean:'* ]] || continue
+        bytes=$(( bytes + $(parse_bytes "$line") ))
+      done <<< "$out"
+    fi
+
+    total_bytes=$(( total_bytes + bytes ))
+    echo "SUMMARY $label: reclaimed $(format_bytes $bytes)"
+    echo
+  }
+
+  for proj in "${PROJECTS[@]}"; do
+    sweep_one "$proj" "$proj"
+  done
+
+  for bt in "${BARE_TARGETS[@]}"; do
+    sweep_one "$bt (bare target dir)" "$SHIM_DIR" "CARGO_TARGET_DIR=$bt"
+  done
+
+  echo "== TOTAL reclaimed: $(format_bytes $total_bytes) =="
+  return $had_error
+}
+
+mkdir -p "$LOG_DIR"
+main "$@" 2>&1 | tee "$LOG_FILE"
+exit ${pipestatus[1]}

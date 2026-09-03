@@ -19,7 +19,7 @@ Binding for any Rust repo or queued build/test/bench gate. Kept out of the alway
 
 ## Cargo — never compile the same dependency twice
 
-sccache is wired machine-wide (`~/.cargo/config.toml` → `rustc-wrapper`): dependency crates compile once per (crate, rustc, flags) across ALL repos and worktrees; workspace crates stay incremental per target dir. On a machine where `command -v sccache` fails, install it and add the wrapper line before any Rust work.
+sccache is wired machine-wide (`~/.cargo/config.toml` → `rustc-wrapper`): it de-dupes rebuilds WITHIN one worktree+target dir (branch switch, `cargo clean -p`, profile flip), NOT across worktrees or agents: measured 2026-09-02 on fast-delta, 62 Rust units — same worktree+same target dir 62/62 hits (24 s → 8.5 s), different worktree 0 hits, same worktree but a different explicit `CARGO_TARGET_DIR` 0 hits. sccache 0.15–0.17 hashes rustc’s cwd and every `CARGO_*` env var into the key; the upstream fix (mozilla/sccache PR #2794) is unmerged. Each worktree pays its own dependency build once. Workspace crates stay incremental per target dir (`CARGO_INCREMENTAL=0` only inside `cargo-slot`; do not export it globally — it buys no cross-agent reuse and slows the edit loop). On a machine where `command -v sccache` fails, install it and add the wrapper line before any Rust work.
 
 - **One worktree per batch** — N worktrees × cold `target/` is where the remaining rebuild time goes.
 - **Never `cargo clean` to "fix" a problem** — it discards hours of workspace compilation on a hunch. The sanctioned forced rebuild (test count went DOWN → binary lacks your code) is `cargo clean -p <crate>` scoped to the suspect crate, never a full wipe.
