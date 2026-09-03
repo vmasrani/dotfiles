@@ -26,3 +26,12 @@ description: Leave a durable GitHub handoff or completion record for the current
      remove its `fast-lane` label, and comment what remains.
 4. Do not delete worktrees or branches with uncommitted work. Cleanup is local
    and only after the branch is safely merged.
+
+Concurrent-lane cleanup is mandatory immediately after `pre-dev` → `dev` merges — see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`:
+```
+git push origin --delete pre-dev; git branch -D pre-dev
+for b in <merged-worker-branch-1> <merged-worker-branch-2> ...; do git push origin --delete "$b"; git branch -D "$b"; done
+git worktree remove <pre-dev-worktree>; git worktree remove <worker-worktree-1>; git worktree remove <worker-worktree-2> ...
+git worktree prune
+git worktree list; git branch -a   # verify nothing from the wave lingers
+```

@@ -39,6 +39,8 @@ batch), optionally followed by a short branch suffix.
      worktree. No per-issue claim comments.
    No other session may work on a claimed issue without an explicit handoff.
 
+If `git show-ref --verify --quiet refs/heads/pre-dev`, workers still branch from `dev` per steps 1–6 above — this is the Concurrent lane.
+Full rules: `.agent-workflow/AGENT_WORKFLOW.md`.
 ## Chore mode: `/start-task chore <slug>`
 
 Work too small for an issue — a formatter run, a lockfile regen, a comment

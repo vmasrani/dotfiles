@@ -7,7 +7,7 @@ is in `.agent-workflow/AGENT_WORKFLOW.md` and is binding.
 
 1. Confirm access with `gh auth status`; create or claim one issue using `gh issue`.
 2. Create an isolated, issue-named worktree and branch from `dev`.
-3. Make focused changes; run `just ci-fast` from the project root.
+3. Make focused changes; run `just ci-fast` from the project root (solo work only).
 4. Commit focused work, push the branch, and use `gh pr create --base dev`.
 5. Use `gh pr checks`, `gh run watch`, and `gh run view --log-failed` to repair
    failed CI on this PR only. Comment the handoff or result on the PR/issue.
@@ -44,6 +44,7 @@ merge commits are forbidden; never squash) once it is mergeable-green:
 required checks passing, any advisory red verified pre-existing on the base
 branch. All other gates apply unchanged. Full rules:
 `.agent-workflow/AGENT_WORKFLOW.md`.
+Concurrent lane (2+ agents on 2+ issues at once): workers never run `just ci-fast`; see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`.
 
 ## Chore lane
 

@@ -1,4 +1,4 @@
-<!-- policy-version: 11 -->
+<!-- policy-version: 12 -->
 # Agent project workflow policy
 
 This is the canonical, client-neutral policy. The generated `CLAUDE.md` must
@@ -19,7 +19,9 @@ preserve these requirements.
    release task.
 3. Before opening a PR whose diff touches anything `ci-fast` exercises —
    source, tests, lockfiles/manifests, build or `justfile` recipes — run
-   `just ci-fast` in that worktree and get it green. Skip the gate only when
+   `just ci-fast` in that worktree and get it green. In the concurrent lane
+   below, this rule binds only the single gate run on `pre-dev`; workers in
+   that lane never run it themselves. Skip the gate only when
    the whole diff sits outside `ci-fast`'s dependency graph (CI/workflow YAML,
    docs, comments): running it there proves nothing about what changed and
    only burns a queue slot. A diff mixing gated and ungated files still needs
@@ -88,6 +90,52 @@ preserve these requirements.
     `gh api repos/<o>/<r>/git/ref/heads/<b> --jq .object.sha`. When a force-push
     is genuinely unavoidable, pin that value:
     `git push --force-with-lease=<branch>:<sha>`, never a bare `--force`.
+
+## Concurrent lane — pre-dev integration
+
+Whenever 2+ agents work 2+ issues in the same repo at the same time, nobody
+runs gates on their own branch; all work funnels through one `pre-dev` branch
+and ONE gate.
+
+1. **Before dispatching**, the orchestrator creates `pre-dev` from `dev`
+   (`git branch pre-dev dev`, its own worktree `<repo>-pre-dev`) and pushes it
+   (`git push -u origin pre-dev`). At most one `pre-dev` exists per repo at a
+   time; its existence is the machine-visible signal that concurrent
+   integration is active.
+2. **Workers** take their issue in their own worktree/branch as usual (branch
+   from `dev`), keep instant static checks (`cargo check`/clippy/`just
+   lint*`/format), and NEVER run `just ci-fast`, `just ci-deep`, `just test*`,
+   `cargo test`, `cargo nextest run`, or any `queue`d command. They do not open
+   per-issue PRs and do not merge into `dev`. When done: rebase their branch
+   onto current `pre-dev`, resolve conflicts on their branch, merge into
+   `pre-dev` with `git merge --no-ff` so per-issue commits survive (merge
+   commit subject names the issue: `merge #421: <title>`), push `pre-dev`, and
+   report (SHA, files, anything undone).
+3. **The orchestrator runs ONE `queue just ci-fast`** in the pre-dev worktree
+   after all workers have merged. Red → attribute mechanically per issue
+   (per-issue merge commits: `git log --merges pre-dev`, `git bisect`, or
+   revert one merge), send the failure to the owning worker, who fixes on its
+   branch, re-merges into `pre-dev`, and reports; then ONE ci-fast again.
+   Never run a second ci-fast while one is in flight.
+4. **Green → ONE PR `pre-dev` → `dev`** whose body lists every issue
+   (`Closes #a`, `Closes #b`, …) and the green gate's SHA. Merge it with
+   `gh pr merge --merge` (or `--rebase` where the repo forbids merge commits)
+   so the per-issue commits land on `dev`. Same author-may-merge bar as rule
+   6; `dev` → `main` stays the user's alone.
+5. **Cleanup is mandatory, immediately after the merge into `dev`:** delete
+   `pre-dev` locally and on the remote, delete every merged worker branch
+   locally and on the remote, `git worktree remove` every worker worktree and
+   the pre-dev worktree, `git worktree prune`, and verify with
+   `git worktree list` + `git branch -a` that nothing from the wave lingers.
+   Only branches whose commits are now on `dev` are deleted — an unmerged
+   branch is never deleted, it is reported.
+6. **Solo work is unchanged**: rule 2's one-issue-one-PR default still applies,
+   with `just ci-fast` green before its PR when rule 3's scope requires it.
+
+A mechanical guard enforces this: while `refs/heads/pre-dev` exists, the
+heavy-guard hook denies `just ci-fast`/`ci-deep`/`test*`, `cargo test`, and
+`cargo nextest run` — even correctly `queue`d — from any branch other than
+`pre-dev`.
 
 ## Fast lane: batching pre-triaged mechanical issues
 

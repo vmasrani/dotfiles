@@ -20,6 +20,7 @@ description: Run fast checks and open the current issue-owned or batch branch as
 5. Report the PR URL with `gh issue comment`: on the issue (strict lane) or on
    the batch's lowest-numbered issue only (fast lane).
 
+If `git show-ref --verify --quiet refs/heads/pre-dev`, no per-issue PR — `git merge --no-ff` your rebased branch into `pre-dev` and push it instead; see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`.
 ## Chore branches
 
 On a `chore/<slug>` branch there is no issue: skip the issue read in step 1 and

@@ -51,12 +51,9 @@ Every solo-queue benchmark/profile run must be justified by a question ONLY that
 - **Persist every expensive result durably at birth** — CSV/log named with commit SHA + corpus + flags, in the shared experiment dir, never only /tmp or a session transcript. A number that isn't stored WILL be re-bought at full price.
 - **Plans and handoffs must carry the reuse map:** which numbers already exist, where, and at what SHA — so the next session extends the dataset instead of regenerating it.
 
-## Multi-worker waves — integration branch FIRST, measure, THEN review
+## Multi-worker waves — pre-dev integration FIRST, measure, THEN review
 
-Standard workflow for every multi-worker wave (user mandate 2026-08-20):
-
-- Workers push branches that compile + pass the exact clippy line + their narrow tests, and NEVER run their own full gates (ci-fast / test-sql / yardstick).
-- An integrator builds ONE pre-dev `<wave>-integration` branch = dev + every worker branch (stacked ones in order), flips whatever fixture/feature switches the wave needs, and runs the wave's HEADLINE measurement first (perf wave → the release benchmark/yardstick on re-pressed fixtures; other waves → the acceptance harness that motivated them).
-- Only if that result is worth shipping: ONE full gate on that SHA, then the integrator (or each author) merges the PRs into `dev` in dependency order — no separate review agent. Not good → fix on the worker branches, re-integrate, re-measure.
-- Review effort is never spent on a result that doesn't move the number; the integration branch IS the batch.
-- **No author≠merger rule.** The agent that wrote a PR may review and merge it into `dev` itself once the integration gate is green. The ONLY merge that needs someone else is `dev → main`, which remains the user's alone. Repos still carrying the old "separate review agent" clause in `.agent-workflow/AGENT_WORKFLOW.md` are stale — sync the kit policy rather than obeying them.
+- This is the Rust instance of the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md` (branch `pre-dev`, one gate; user mandate 2026-08-20).
+- On `pre-dev`, run the wave's HEADLINE measurement (release benchmark/yardstick on re-pressed fixtures) BEFORE the single gate.
+- Review effort is never spent on a result that doesn't move the number; the `pre-dev` branch IS the batch.
+- **No author≠merger rule.** The agent that wrote a PR may review and merge it into `dev` itself once the pre-dev gate is green. The ONLY merge that needs someone else is `dev → main`, which remains the user's alone. Repos still carrying the old "separate review agent" clause in `.agent-workflow/AGENT_WORKFLOW.md` are stale — sync the kit policy rather than obeying them.
