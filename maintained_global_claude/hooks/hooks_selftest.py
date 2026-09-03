@@ -268,6 +268,11 @@ for cmd in [
     # the shell consumes the operator before `queue` is exec'd -- the hook sees
     # the raw string, so it is the only component that can catch it at all.
     "queue cd /repo && cargo nextest run",
+    # Full optimized builds/installs cost as much as a suite -- see the guard's
+    # own comment and commit f99394d (2026-08-14): an unqueued release compile
+    # was caught running loose.
+    "cargo build --release",
+    "cargo install --release --path .",
 ]:
     expect(cmd, guard(cmd), "deny")
 
@@ -282,7 +287,8 @@ print("\n== unqueued_heavy_guard: what must NEVER be denied ==")
 for cmd in [
     "cargo check --workspace",
     "cargo clippy --all-targets -- -D warnings",
-    "cargo build --release",
+    "cargo build",
+    "cargo build --workspace",
     "cargo install --path .",
     "just lint",
     "cargo fmt",
