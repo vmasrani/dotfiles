@@ -85,3 +85,10 @@ args = ["--ignore", "E501"]
 # duplicating build artifacts" — and on APFS that duplication is nearly free.
 [language-server.rust-analyzer.config.cargo]
 targetDir = true
+
+# Helix's built-in languages.toml points gotmpl at
+# https://github.com/dannylongeuay/tree-sitter-go-template, which now 404s.
+# Override with the maintained fork upstream Helix moved to (2026-09-04).
+[[grammar]]
+name = "gotmpl"
+source = { git = "https://github.com/ngalaiko/tree-sitter-go-template", rev = "aa71f63de226c5592dfbfc1f29949522d7c95fac" }

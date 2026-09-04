@@ -31,3 +31,19 @@ Rules for the fix, not the workaround:
   configuration prompts are auto-answered too; `hetzner-vm create` records the
   `setup.sh` exit status on the box and fails loudly with the log tail when it
   is non-zero.
+
+### 2. Helix grammar fetch dies on a dead upstream repo (2026-09-04)
+
+- **Symptom:** after every other grammar reports `now on <sha>`, the log ends
+  with `Failure 1/1: gotmpl Git command failed.` and
+  `fatal: could not read Username for 'https://github.com'`. Everything after
+  `install_helix` in `setup.sh` is skipped.
+- **Cause:** Helix's built-in grammar list sources `gotmpl` from a GitHub repo
+  that now returns 404. Git treats the 404 as "maybe private" and tries to
+  prompt for a username; with no terminal that fails, and `install_helix` ran
+  `hx --grammar fetch` unguarded under `set -e`.
+- **Fix:** `editors/hx_languages.toml` overrides the gotmpl grammar source (or
+  excludes it if the fork is unreachable); both grammar steps run with
+  `GIT_TERMINAL_PROMPT=0` so a dead repo fails fast; and a grammar failure is a
+  visible warning rather than a fatal stop, matching `update_helix_grammars`.
+  An editor grammar is not something a worker box needs to boot.

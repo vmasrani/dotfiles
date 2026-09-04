@@ -491,8 +491,8 @@ install_helix() {
 		brew install helix
 	fi
 
-	hx --grammar fetch
-	hx --grammar build
+	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch: some grammars failed to fetch (dead/unreachable upstream repos); the box still works without them"
+	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build: some grammars failed to build; the box still works without them"
 	gum_success "Helix grammars updated successfully."
 }
 
@@ -503,8 +503,8 @@ update_helix_grammars() {
 		return 0
 	fi
 	gum_info "Fetching and building Helix grammars..."
-	hx --grammar fetch || gum_warning "Some grammars failed to fetch (this is usually ok)"
-	hx --grammar build || gum_warning "Some grammars failed to build (this is usually ok)"
+	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch: some grammars failed to fetch (dead/unreachable upstream repos); the box still works without them"
+	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build: some grammars failed to build; the box still works without them"
 	gum_success "Helix grammars updated."
 }
 
