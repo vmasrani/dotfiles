@@ -106,6 +106,44 @@ Rules for the fix, not the workaround:
   `~/.mutt_secrets`, so the mail sync daemon it now starts will fail on every
   tick until one is added. Harmless, but noisy in `pm2 logs`.
 
+### 7. Re-runs reinstall and recompile tools that are already there (2026-09-04)
+
+- **Symptom:** not a crash, but the dominant cost. Across three re-runs of
+  `setup.sh` on one box, fzf was wiped and re-cloned every time, opencode was
+  reinstalled twice, and Rust `Compiling` lines went 78, 145, 792 as tools like
+  just, taplo, tealdeer, and markdown-oxide were rebuilt from source although
+  they were already installed.
+- **Cause:** `install_if_missing` skips a step when the command is on PATH, and
+  nothing put `~/.cargo/bin`, `~/.local/bin`, `~/go/bin`, `~/.fzf/bin`,
+  `~/bin`, or nvm's bin on PATH before those checks. Installers that only
+  export PATH for the rest of their own run, or append it to `.zshrc`, are
+  invisible to the next invocation. `~/.fzf/bin` was also missing from the
+  shell PATH list entirely.
+- **Fix:** `bootstrap_path` at the top of `setup.sh` prepends every user bin
+  directory before any check; `~/.fzf/bin` added to the shell PATH list; fzf
+  no longer deletes and re-clones itself. In the same pass: `cargo-binstall`
+  and one `install_github_release` helper replace every compile-from-source
+  step that has a prebuilt binary (only simple-completion-language-server
+  still builds from git, it publishes no binaries); all apt repositories are
+  registered once followed by a single `apt-get update`; helix comes from its
+  PPA instead of snap; neomutt was dropped from the installer.
+- **Regression check:** a second `setup.sh` run on a finished box must print
+  zero lines matching `Installing|Compiling|Downloading|Cloning into`. The CI
+  workflow in `.github/workflows/install.yml` asserts exactly that.
+
+### 8. Latent: install_zsh asked a yes/no question (2026-09-04)
+
+- **Symptom:** never fired on Hetzner, because `hetzner-vm` preinstalls zsh
+  through cloud-init. Found while writing the CI workflow. On any fresh box
+  without zsh, `setup.sh` would have stopped at a `read -p` prompt with no
+  terminal, before installing anything.
+- **Cause:** `install_zsh` prompted before installing, although it is only ever
+  reached through `install_if_missing zsh`, so the answer was always yes. It
+  also ran a full `apt-get upgrade` as a side effect.
+- **Fix:** no prompt, no upgrade; install the packages through `apt_install`
+  and set the login shell. There are no other interactive reads left in the
+  installer (`rg 'read -p' install/ setup.sh` is empty).
+
 ## Verified unattended run
 
 Re-verify after any change to `setup.sh` or `install/install_functions.sh`

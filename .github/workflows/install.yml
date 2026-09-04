@@ -1,0 +1,237 @@
+name: Install smoke test
+
+# Proves ./setup.sh bootstraps a fresh machine unattended and is idempotent:
+# run it twice and assert the second run installs/compiles/downloads nothing.
+on:
+  push:
+    paths:
+      - setup.sh
+      - install/**
+      - shell/**
+      - .github/workflows/install.yml
+  pull_request:
+    paths:
+      - setup.sh
+      - install/**
+      - shell/**
+      - .github/workflows/install.yml
+  workflow_dispatch: {}
+
+concurrency:
+  group: install-${{ github.ref }}
+  cancel-in-progress: true
+
+# Tools setup.sh is expected to leave on PATH after a successful run.
+env:
+  EXPECTED_TOOLS: "zsh gum uv rg fd eza fzf tmux hx just gh ruff bats cargo go node bun"
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout into ~/dotfiles
+        uses: actions/checkout@v4
+        with:
+          path: dotfiles-checkout
+
+      - name: Symlink checkout to ~/dotfiles
+        shell: bash
+        run: ln -sfn "$GITHUB_WORKSPACE/dotfiles-checkout" "$HOME/dotfiles"
+
+      - name: First run
+        shell: bash
+        run: |
+          cd ~/dotfiles
+          ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run1.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Second run must be a no-op
+        shell: bash
+        run: |
+          cd ~/dotfiles
+          ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run2.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Assert second run installed nothing
+        shell: bash
+        run: |
+          pattern='Installing|Compiling|Downloading|Cloning into|Updating crates.io'
+          count1=$(grep -cE "$pattern" "$RUNNER_TEMP/run1.log" || true)
+          count2=$(grep -cE "$pattern" "$RUNNER_TEMP/run2.log" || true)
+          : "${count1:=0}"
+          : "${count2:=0}"
+          echo "run1 install-like lines: $count1, run2 install-like lines: $count2"
+          if [[ "$count2" -gt 0 ]]; then
+            echo "::error::second run was not a no-op, offending lines:"
+            grep -nE "$pattern" "$RUNNER_TEMP/run2.log" || true
+            exit 1
+          fi
+
+      - name: Tools present
+        shell: bash
+        run: |
+          zsh -lc '
+            missing=()
+            for tool in $EXPECTED_TOOLS; do
+              command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+            done
+            if (( ${#missing[@]} > 0 )); then
+              echo "::error::missing tools after setup.sh: ${missing[*]}"
+              exit 1
+            fi
+            echo "all expected tools present"
+          '
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-logs-macos
+          path: |
+            ${{ runner.temp }}/run1.log
+            ${{ runner.temp }}/run2.log
+
+  ubuntu-runner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout into ~/dotfiles
+        uses: actions/checkout@v4
+        with:
+          path: dotfiles-checkout
+
+      - name: Symlink checkout to ~/dotfiles
+        shell: bash
+        run: ln -sfn "$GITHUB_WORKSPACE/dotfiles-checkout" "$HOME/dotfiles"
+
+      - name: First run
+        shell: bash
+        run: |
+          cd ~/dotfiles
+          ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run1.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Second run must be a no-op
+        shell: bash
+        run: |
+          cd ~/dotfiles
+          ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run2.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Assert second run installed nothing
+        shell: bash
+        run: |
+          pattern='Installing|Compiling|Downloading|Cloning into|Updating crates.io'
+          count1=$(grep -cE "$pattern" "$RUNNER_TEMP/run1.log" || true)
+          count2=$(grep -cE "$pattern" "$RUNNER_TEMP/run2.log" || true)
+          : "${count1:=0}"
+          : "${count2:=0}"
+          echo "run1 install-like lines: $count1, run2 install-like lines: $count2"
+          if [[ "$count2" -gt 0 ]]; then
+            echo "::error::second run was not a no-op, offending lines:"
+            grep -nE "$pattern" "$RUNNER_TEMP/run2.log" || true
+            exit 1
+          fi
+
+      - name: Tools present
+        shell: bash
+        run: |
+          zsh -lc '
+            missing=()
+            for tool in $EXPECTED_TOOLS; do
+              command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+            done
+            if (( ${#missing[@]} > 0 )); then
+              echo "::error::missing tools after setup.sh: ${missing[*]}"
+              exit 1
+            fi
+            echo "all expected tools present"
+          '
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-logs-ubuntu-runner
+          path: |
+            ${{ runner.temp }}/run1.log
+            ${{ runner.temp }}/run2.log
+
+  # Matches a fresh cloud VM (Hetzner/Azure) closest: bare ubuntu:24.04
+  # container as root, nothing preinstalled beyond what a cloud image assumes.
+  ubuntu-fresh:
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    timeout-minutes: 90
+    env:
+      HOME: /root
+    steps:
+      - name: Bootstrap bare-minimum packages
+        shell: bash
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y sudo git curl ca-certificates zsh
+
+      - name: Checkout into ~/dotfiles
+        uses: actions/checkout@v4
+        with:
+          path: dotfiles-checkout
+
+      - name: Symlink checkout to ~/dotfiles
+        shell: bash
+        run: ln -sfn "$GITHUB_WORKSPACE/dotfiles-checkout" "$HOME/dotfiles"
+
+      - name: First run
+        shell: bash
+        run: |
+          cd ~/dotfiles
+          ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run1.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Second run must be a no-op
+        shell: bash
+        run: |
+          cd ~/dotfiles
+          ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run2.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Assert second run installed nothing
+        shell: bash
+        run: |
+          pattern='Installing|Compiling|Downloading|Cloning into|Updating crates.io'
+          count1=$(grep -cE "$pattern" "$RUNNER_TEMP/run1.log" || true)
+          count2=$(grep -cE "$pattern" "$RUNNER_TEMP/run2.log" || true)
+          : "${count1:=0}"
+          : "${count2:=0}"
+          echo "run1 install-like lines: $count1, run2 install-like lines: $count2"
+          if [[ "$count2" -gt 0 ]]; then
+            echo "::error::second run was not a no-op, offending lines:"
+            grep -nE "$pattern" "$RUNNER_TEMP/run2.log" || true
+            exit 1
+          fi
+
+      - name: Tools present
+        shell: bash
+        run: |
+          zsh -lc '
+            missing=()
+            for tool in $EXPECTED_TOOLS; do
+              command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+            done
+            if (( ${#missing[@]} > 0 )); then
+              echo "::error::missing tools after setup.sh: ${missing[*]}"
+              exit 1
+            fi
+            echo "all expected tools present"
+          '
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-logs-ubuntu-fresh
+          path: |
+            ${{ runner.temp }}/run1.log
+            ${{ runner.temp }}/run2.log

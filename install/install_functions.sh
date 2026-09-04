@@ -595,33 +595,15 @@ install_homebrew() {
 }
 
 install_zsh() {
-	read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
-	case "$choice" in
-	y | Y)
-		if [[ "$OS_TYPE" == "linux" ]]; then
-			# ensure_apt_repos already ran the single apt-get update; only the
-			# one-time system upgrade lives here now.
-			if [ "$(id -u)" -eq 0 ]; then
-				apt-get upgrade -y
-				apt-get install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-				chsh -s "$(which zsh)"
-			else
-				sudo env DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
-				apt_install zsh build-essential vim libjpeg-dev zlib1g-dev
-				sudo chsh -s "$(which zsh)" "$USER"
-			fi
-		elif [[ "$OS_TYPE" == "mac" ]]; then
-			brew update
-			brew install zsh vim
-			chsh -s "$(which zsh)"
-		fi
-		gum_success "Installation complete. Please restart your shell to use zsh."
-		;;
-	*)
-		gum_info "Skipping installation."
-		return 1
-		;;
-	esac
+	gum_info "Installing zsh, build-essential, and vim..."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		apt_install zsh build-essential vim libjpeg-dev zlib1g-dev
+		sudo chsh -s "$(command -v zsh)" "$USER"
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install zsh vim
+		chsh -s "$(command -v zsh)"
+	fi
+	gum_success "zsh installed. Restart your shell to use it."
 }
 
 install_cargo() {
