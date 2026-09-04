@@ -47,3 +47,16 @@ Rules for the fix, not the workaround:
   `GIT_TERMINAL_PROMPT=0` so a dead repo fails fast; and a grammar failure is a
   visible warning rather than a fatal stop, matching `update_helix_grammars`.
   An editor grammar is not something a worker box needs to boot.
+
+### 3. apt package name differs from Homebrew (2026-09-04)
+
+- **Symptom:** `E: Unable to locate package bats-core`, setup exits 100 right
+  after the Rust and Go tool installs. Everything from `install_bats` onward in
+  `setup.sh` is skipped (ruff, biome, shfmt, the language servers, and more).
+- **Cause:** `install_bats` passed the Homebrew name `bats-core` to
+  `install_on_brew_or_mac`, which uses its first argument as the apt name. On
+  Ubuntu the package is `bats`.
+- **Fix:** `install_on_brew_or_mac "bats" "bats-core"`. Every other package that
+  goes through that helper (bfs, csvkit, isync, msmtp, neomutt, notmuch,
+  sccache, shellcheck, urlscan, unzip) was checked against apt on Ubuntu 24.04
+  and resolves under the same name.
