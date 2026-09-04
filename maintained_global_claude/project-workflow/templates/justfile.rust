@@ -62,7 +62,11 @@ install-hooks:
     git config core.hooksPath .githooks
     @echo "git hooks active (core.hooksPath=.githooks); pre-push now runs the lint gate"
 
-ci-fast: (_require-cmd "cargo") fmt-check lint test build
+# `build` is deliberately not in this chain: clippy-driver produces artifacts
+# with a different fingerprint than rustc, so a trailing `cargo build
+# --workspace` here recompiles the whole graph a second time for nothing that
+# lint or test consumes. Run `just build` by hand when you need dev binaries.
+ci-fast: (_require-cmd "cargo") fmt-check lint test
 
 # Grow this as real integration/e2e suites appear.
 ci-deep: ci-fast
