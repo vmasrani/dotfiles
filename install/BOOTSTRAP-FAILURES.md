@@ -88,6 +88,24 @@ Rules for the fix, not the workaround:
   in `install/install_functions.sh` goes through one `apt_install` helper that
   passes `DEBIAN_FRONTEND=noninteractive` through `sudo env` explicitly.
 
+### 6. pm2 cannot find the mail sync script (2026-09-04)
+
+- **Symptom:** the very last step, `install_neomutt`, ends with
+  `[PM2][ERROR] Script not found: /root/dotfiles/mailsync-daemon` and setup
+  exits 1. Found by the first from-scratch `hetzner-vm create` after entries
+  1 to 5 were fixed; the tool's new exit-status check caught it and printed the
+  log tail, which is exactly what it is for.
+- **Cause:** `pm2 start mailsync-daemon` uses a bare name, which pm2 resolves
+  against the current directory rather than PATH. The script lives at
+  `mutt/scripts/mailsync-daemon`. The step passed on worker1 only because that
+  run went over a non-login ssh shell where nvm, and therefore pm2, was not on
+  PATH, so the branch was skipped with an info line.
+- **Fix:** start pm2 with the absolute path
+  `$HOME/dotfiles/mutt/scripts/mailsync-daemon`.
+- **Open question, not a bootstrap bug:** a worker box has no
+  `~/.mutt_secrets`, so the mail sync daemon it now starts will fail on every
+  tick until one is added. Harmless, but noisy in `pm2 logs`.
+
 ## Verified unattended run
 
 Re-verify after any change to `setup.sh` or `install/install_functions.sh`

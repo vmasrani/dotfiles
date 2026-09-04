@@ -998,12 +998,12 @@ install_neomutt() {
 		# Stop existing mailsync process if running
 		pm2 delete mailsync 2>/dev/null || true
 		# Start mailsync daemon (must specify zsh interpreter)
-		pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh
+		pm2 start "$HOME/dotfiles/mutt/scripts/mailsync-daemon" --name mailsync --interpreter /bin/zsh
 		pm2 save
 		gum_success "Background mail sync enabled (syncs every 5 minutes)"
 	else
 		gum_info "pm2 not found - skipping background sync setup"
-		gum_info "Install pm2 and run: pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh"
+		gum_info "Install pm2 and run: pm2 start ~/dotfiles/mutt/scripts/mailsync-daemon --name mailsync --interpreter /bin/zsh"
 	fi
 
 	gum_success "NeoMutt and email tools installed successfully."
