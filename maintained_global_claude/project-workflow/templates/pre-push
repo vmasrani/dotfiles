@@ -14,6 +14,15 @@
 # Bypass in a pinch:       git push --no-verify
 set -e
 
+# Incident 2026-09-03: pushing from a linked worktree exports GIT_DIR (pointing
+# at <main>/.git/worktrees/<name>) into this hook's environment. `just pre-push`
+# can run tools (uv fetching a git dependency, cargo, pip) that shell out to
+# `git init`/`git fetch` in their OWN cache dirs -- with GIT_DIR still set, that
+# nested git re-targets THIS repo's gitdir instead, which can flip core.bare and
+# break the checkout. Clear it before invoking the recipe; cwd is already the
+# worktree root, so git commands the recipe itself runs still resolve correctly.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+
 if ! command -v just >/dev/null 2>&1; then
     echo "pre-push: 'just' is not installed, so the lint gate cannot run." >&2
     echo "pre-push: install just, or push with --no-verify to skip deliberately." >&2

@@ -15,15 +15,301 @@ else
 	exit 1
 fi
 
+# apt under sudo loses DEBIAN_FRONTEND (env_reset); pass it explicitly so no
+# package can open a debconf dialog during an unattended bootstrap.
+apt_install() {
+	sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
+}
+
+# Vendor "curl | bash" installers fetch release metadata over the network and
+# fail transiently on shared CI runner IPs; retry a bounded number of times,
+# then fail loudly naming the URL.
+run_remote_installer() {
+	local url="$1"
+	shift
+	local attempt
+	for attempt in 1 2 3; do
+		if curl -fsSL "$url" | bash -s -- "$@"; then
+			return 0
+		fi
+		gum_warning "Installer from $url failed (attempt $attempt of 3); retrying in 10 seconds..."
+		sleep 10
+	done
+	gum_error "Installer from $url failed 3 times. Check network access and the URL."
+	return 1
+}
+
 install_on_brew_or_mac() {
 	local linux_package=$1
 	local mac_package=${2:-$1} # Use first arg if second not provided
 
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt -y install "$linux_package"
+		apt_install "$linux_package"
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install "$mac_package"
 	fi
+}
+
+# Prepend the common user bin dirs to PATH whether or not they exist yet, so a
+# re-run of setup.sh finds tools installed on a previous run (~/.cargo/bin etc.)
+# instead of reinstalling them. Deduplicated; safe to call more than once.
+bootstrap_path() {
+	local -a dirs=(
+		"$HOME/bin"
+		"$HOME/.local/bin"
+		"$HOME/.cargo/bin"
+		"$HOME/go/bin"
+		"$HOME/.fzf/bin"
+		"$HOME/.opencode/bin" # opencode installer target
+		"$HOME/.bun/bin"
+	)
+	# newest installed nvm node bin, if any
+	local node_bin
+	node_bin="$(find "$HOME/.nvm/versions/node" -maxdepth 2 -type d -name bin 2>/dev/null | sort -V | tail -n1)"
+	[[ -n "$node_bin" ]] && dirs+=("$node_bin")
+
+	local dir
+	for dir in "${dirs[@]}"; do
+		case ":$PATH:" in
+		*":$dir:"*) ;;              # already present
+		*) PATH="$dir:$PATH" ;;
+		esac
+	done
+	export PATH
+}
+
+# On Linux, register every third-party apt repo the installer needs ONCE and run
+# a single `apt-get update`, instead of each install function adding its own repo
+# and updating (which cost 8-9 updates per run). Idempotent: a repo whose source
+# list already exists is skipped. No-op on macOS.
+ensure_apt_repos() {
+	[[ "$OS_TYPE" != "linux" ]] && return 0
+	gum_info "Configuring apt repositories..."
+	sudo mkdir -p /etc/apt/keyrings
+
+	# add-apt-repository (from software-properties-common) is needed for the PPAs
+	if ! command_exists add-apt-repository; then
+		sudo env DEBIAN_FRONTEND=noninteractive apt-get update
+		apt_install software-properties-common
+	fi
+
+	# Go backports PPA (newer golang than the Ubuntu archive ships)
+	if ! grep -rqsE 'golang-backports' /etc/apt/sources.list.d /etc/apt/sources.list 2>/dev/null; then
+		sudo env DEBIAN_FRONTEND=noninteractive add-apt-repository -y --no-update ppa:longsleep/golang-backports
+	fi
+
+	# Helix editor PPA (preferred over snap; avoids snapd-restart stalls)
+	if ! grep -rqsE 'maveonair|helix-editor' /etc/apt/sources.list.d /etc/apt/sources.list 2>/dev/null; then
+		sudo env DEBIAN_FRONTEND=noninteractive add-apt-repository -y --no-update ppa:maveonair/helix-editor
+	fi
+
+	# Charm apt repo (gum)
+	if [[ ! -f /etc/apt/sources.list.d/charm.list ]]; then
+		curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+		echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list >/dev/null
+	fi
+
+	# GitHub CLI apt repo
+	if [[ ! -f /etc/apt/sources.list.d/github-cli.list ]]; then
+		curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+		sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+		echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+	fi
+
+	# the single authoritative update, now that every repo is registered
+	sudo env DEBIAN_FRONTEND=noninteractive apt-get update
+	gum_success "apt repositories configured."
+}
+
+# Install cargo-binstall (fetches prebuilt Rust binaries from GitHub releases
+# instead of compiling from source). Official installer script.
+install_cargo_binstall() {
+	source "$HOME/.cargo/env" 2>/dev/null || true
+	export PATH="$HOME/.cargo/bin:$PATH"
+	curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+}
+
+# Download a prebuilt binary from a GitHub release, pick the asset for the
+# current OS/arch, extract it (tar.gz/tar.xz/tar.bz2/zip/bare .gz/bare binary)
+# and install <binary-name> to ~/.local/bin. Prefers `gh`, falls back to the
+# GitHub API + curl. Fails loud naming the repo and assets seen when nothing
+# matches. Usage: install_github_release <owner/repo> <binary-name> <asset-regex>
+install_github_release() {
+	local repo="$1" binary="$2" caller_re="${3:-.}"
+	local os_re arch_re
+	case "$(uname -s)" in
+	Linux) os_re='linux' ;;
+	Darwin) os_re='darwin|apple-darwin|macos|osx' ;;
+	*)
+		gum_error "install_github_release: unsupported OS $(uname -s)"
+		return 1
+		;;
+	esac
+	case "$(uname -m)" in
+	x86_64 | amd64) arch_re='x86_64|amd64|x64' ;;
+	aarch64 | arm64) arch_re='aarch64|arm64' ;;
+	*)
+		gum_error "install_github_release: unsupported arch $(uname -m)"
+		return 1
+		;;
+	esac
+
+	# only trust `gh` when it is actually authenticated; otherwise go straight
+	# to the unauthenticated GitHub API so a bare command-substitution failure
+	# can never abort the script under `set -e`
+	local gh_ok=0
+	if command_exists gh && gh auth status >/dev/null 2>&1; then
+		gh_ok=1
+	fi
+
+	# pass a token if one is available so CI runners don't hit the 60 req/hr
+	# unauthenticated rate limit (no extra requests are added either way)
+	local -a curl_auth=()
+	local gh_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+	if [[ -n "$gh_token" ]]; then
+		curl_auth=(-H "Authorization: Bearer $gh_token")
+	fi
+
+	# list every asset name in the latest release
+	local assets="" api_body=""
+	if [[ "$gh_ok" == 1 ]]; then
+		assets="$(gh release view --repo "$repo" --json assets -q '.assets[].name' 2>/dev/null || true)"
+	fi
+	if [[ -z "$assets" ]]; then
+		api_body="$(curl -fsSL "${curl_auth[@]}" "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null || true)"
+		# strip everything before the "assets" array so the release's own
+		# top-level "name" field (the release title) can never be picked up
+		# alongside the per-asset "name" fields
+		assets="$(printf '%s' "${api_body#*\"assets\":}" | grep -oE '"name":[[:space:]]*"[^"]+"' | sed -E 's/.*"([^"]+)"$/\1/' || true)"
+	fi
+	if [[ -z "$assets" ]]; then
+		gum_error "install_github_release: could not list release assets for $repo (gh unavailable/unauthenticated and the GitHub API returned nothing)"
+		return 1
+	fi
+
+	# keep only assets for this OS+arch, drop checksums/signatures/packages/docs
+	local candidates
+	candidates="$(printf '%s\n' "$assets" | grep -Ei "($os_re)" | grep -Ei "($arch_re)" | grep -Ei "$caller_re" | grep -viE 'sha256|sha512|checksum|\.sbom|\.sig|sigstore|\.rpm|\.deb|\.apk|\.txt|no_libgit' || true)"
+	if [[ -z "$candidates" ]]; then
+		gum_error "install_github_release: no asset for $(uname -s)/$(uname -m) in $repo. Assets seen: $(printf '%s' "$assets" | tr '\n' ' ')"
+		return 1
+	fi
+
+	# score candidates: prefer tarballs > zip > bare .gz > bare binary; nudge musl
+	local best="" best_score=-1 name score
+	while IFS= read -r name; do
+		[[ -z "$name" ]] && continue
+		case "$name" in
+		*.tar.gz | *.tgz) score=40 ;;
+		*.tar.xz) score=35 ;;
+		*.tar.bz2) score=30 ;;
+		*.zip) score=20 ;;
+		*.gz) score=15 ;;
+		*) score=10 ;;
+		esac
+		[[ "$name" == *musl* ]] && score=$((score + 5))
+		if ((score > best_score)); then
+			best_score=$score
+			best="$name"
+		fi
+	done <<<"$candidates"
+
+	gum_info "Installing $binary from $repo release asset $best..."
+	local tmp
+	tmp="$(mktemp -d)"
+	if [[ "$gh_ok" == 1 ]]; then
+		gh release download --repo "$repo" --pattern "$best" --dir "$tmp" --clobber || {
+			gum_error "install_github_release: gh download failed for $repo ($best)"
+			rm -rf "$tmp"
+			return 1
+		}
+	else
+		# reuse the release JSON already fetched above when possible, so the
+		# curl fallback never costs more than the single API call used to
+		# list assets (stays well under the 60 req/hr unauthenticated cap)
+		if [[ -z "$api_body" ]]; then
+			api_body="$(curl -fsSL "${curl_auth[@]}" "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null || true)"
+		fi
+		# escape regex metacharacters in $best so the match can only resolve
+		# the url for the exact asset name chosen above
+		local best_re
+		best_re="$(printf '%s' "$best" | sed -E 's/[.[\*^$()+?{|]/\\&/g')"
+		local url
+		url="$(printf '%s' "${api_body#*\"assets\":}" | grep -oE '"browser_download_url":[[:space:]]*"[^"]+/'"$best_re"'"' | sed -E 's/.*"([^"]+)"$/\1/' | head -1 || true)"
+		if [[ -z "$url" ]]; then
+			gum_error "install_github_release: no download url for $best in $repo"
+			rm -rf "$tmp"
+			return 1
+		fi
+		curl -fsSL "$url" -o "$tmp/$best" || {
+			gum_error "install_github_release: curl failed for $url"
+			rm -rf "$tmp"
+			return 1
+		}
+	fi
+
+	# extract into $tmp; drop the archive afterward so it is not picked as "largest"
+	local file="$tmp/$best"
+	case "$best" in
+	*.tar.gz | *.tgz)
+		tar -xzf "$file" -C "$tmp" || {
+			gum_error "install_github_release: failed to extract $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		rm -f "$file"
+		;;
+	*.tar.xz)
+		tar -xJf "$file" -C "$tmp" || {
+			gum_error "install_github_release: failed to extract $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		rm -f "$file"
+		;;
+	*.tar.bz2)
+		tar -xjf "$file" -C "$tmp" || {
+			gum_error "install_github_release: failed to extract $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		rm -f "$file"
+		;;
+	*.zip)
+		unzip -qo "$file" -d "$tmp" || {
+			gum_error "install_github_release: failed to unzip $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		rm -f "$file"
+		;;
+	*.gz)
+		gunzip -f "$file" || { # leaves the decompressed binary in $tmp
+			gum_error "install_github_release: failed to gunzip $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		;;
+	*) : ;; # bare binary already at $file
+	esac
+
+	# locate the binary: exact name first, else the largest regular file
+	local found
+	found="$(find "$tmp" -type f -name "$binary" 2>/dev/null | head -1)"
+	[[ -z "$found" ]] && found="$(find "$tmp" -type f -exec ls -S {} + 2>/dev/null | head -1)"
+	if [[ -z "$found" ]]; then
+		gum_error "install_github_release: no binary found after extracting $best from $repo"
+		rm -rf "$tmp"
+		return 1
+	fi
+
+	mkdir -p "$HOME/.local/bin"
+	install -m 0755 "$found" "$HOME/.local/bin/$binary" 2>/dev/null || {
+		chmod +x "$found"
+		mv -f "$found" "$HOME/.local/bin/$binary"
+	}
+	rm -rf "$tmp"
+	gum_success "$binary installed to ~/.local/bin."
 }
 
 install_if_missing() {
@@ -384,31 +670,15 @@ install_homebrew() {
 }
 
 install_zsh() {
-	read -p "zsh is not installed. Do you want to install zsh, build-essential, and vim? (y/n) " choice
-	case "$choice" in
-	y | Y)
-		if [[ "$OS_TYPE" == "linux" ]]; then
-			if [ "$(id -u)" -eq 0 ]; then
-				apt update && apt upgrade -y
-				apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-				chsh -s "$(which zsh)"
-			else
-				sudo apt update && sudo apt upgrade -y
-				sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
-				sudo chsh -s "$(which zsh)" "$USER"
-			fi
-		elif [[ "$OS_TYPE" == "mac" ]]; then
-			brew update
-			brew install zsh vim
-			chsh -s "$(which zsh)"
-		fi
-		gum_success "Installation complete. Please restart your shell to use zsh."
-		;;
-	*)
-		gum_info "Skipping installation."
-		return 1
-		;;
-	esac
+	gum_info "Installing zsh, build-essential, and vim..."
+	if [[ "$OS_TYPE" == "linux" ]]; then
+		apt_install zsh build-essential vim libjpeg-dev zlib1g-dev
+		sudo chsh -s "$(command -v zsh)" "$USER"
+	elif [[ "$OS_TYPE" == "mac" ]]; then
+		brew install zsh vim
+		chsh -s "$(command -v zsh)"
+	fi
+	gum_success "zsh installed. Restart your shell to use it."
 }
 
 install_cargo() {
@@ -440,14 +710,14 @@ install_sccache() {
 }
 
 install_uv() {
-	curl -LsSf https://astral.sh/uv/install.sh | sh
+	run_remote_installer https://astral.sh/uv/install.sh
 	export PATH="$HOME/.local/bin:$PATH"
 }
 
 install_tealdeer() {
-	source "$HOME/.cargo/env"
+	source "$HOME/.cargo/env" 2>/dev/null || true
 	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo install tealdeer
+	cargo binstall -y tealdeer # prebuilt (dbrgn/tealdeer releases)
 	tldr --update
 }
 
@@ -463,36 +733,42 @@ install_npm() {
 
 install_go() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y software-properties-common
-		sudo add-apt-repository -y ppa:longsleep/golang-backports
-		sudo apt update
-		sudo apt install golang-go -y
+		# golang-backports PPA is registered by ensure_apt_repos
+		apt_install golang-go
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install go
 	fi
 }
 
 install_fzf() {
-	rm -rf "$HOME/.fzf"
-	git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
+	# Update in place if already cloned; never blow the dir away (it holds the
+	# built ~/.fzf/bin binary the PATH bootstrap relies on).
+	if [[ -d "$HOME/.fzf/.git" ]]; then
+		git -C "$HOME/.fzf" pull -q || gum_warning "fzf: git pull failed; using existing checkout"
+	else
+		git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
+	fi
 	"$HOME/.fzf/install" --all --no-update-rc
 }
 
 install_helix() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		if command_exists snap; then
-			snap install --classic helix
+		# Prefer the PPA (registered by ensure_apt_repos); snap only as fallback
+		# because snapd restarts stall unattended bootstraps.
+		if command_exists apt-get; then
+			apt_install helix
+		elif command_exists snap; then
+			sudo snap install --classic helix
 		else
-			sudo add-apt-repository -y ppa:maveonair/helix-editor
-			sudo apt update
-			sudo apt install -y helix
+			gum_error "install_helix: neither apt-get nor snap is available"
+			return 1
 		fi
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install helix
 	fi
 
-	hx --grammar fetch
-	hx --grammar build
+	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch: some grammars failed to fetch (dead/unreachable upstream repos); the box still works without them"
+	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build: some grammars failed to build; the box still works without them"
 	gum_success "Helix grammars updated successfully."
 }
 
@@ -503,33 +779,31 @@ update_helix_grammars() {
 		return 0
 	fi
 	gum_info "Fetching and building Helix grammars..."
-	hx --grammar fetch || gum_warning "Some grammars failed to fetch (this is usually ok)"
-	hx --grammar build || gum_warning "Some grammars failed to build (this is usually ok)"
+	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch: some grammars failed to fetch (dead/unreachable upstream repos); the box still works without them"
+	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build: some grammars failed to build; the box still works without them"
 	gum_success "Helix grammars updated."
 }
 
 install_glow() {
-	export PATH="$HOME/go/bin:$PATH"
-	go install github.com/charmbracelet/glow@latest
+	install_github_release charmbracelet/glow glow '.'
 }
 
 install_mdterm() {
-	cargo install mdterm
+	source "$HOME/.cargo/env" 2>/dev/null || true
+	export PATH="$HOME/.cargo/bin:$PATH"
+	cargo binstall -y mdterm # prebuilt (bahdotsh/mdterm releases)
 }
 
 install_lazygit() {
-	export PATH="$HOME/go/bin:$PATH"
-	go install github.com/jesseduffield/lazygit@latest
+	install_github_release jesseduffield/lazygit lazygit '.'
 }
 
 install_lazydocker() {
-	export PATH="$HOME/go/bin:$PATH"
-	go install github.com/jesseduffield/lazydocker@latest
+	install_github_release jesseduffield/lazydocker lazydocker '.'
 }
 
 install_lazysql() {
-	export PATH="$HOME/go/bin:$PATH"
-	go install github.com/jorgerojas26/lazysql@latest
+	install_github_release jorgerojas26/lazysql lazysql '.'
 }
 
 install_btop() {
@@ -537,7 +811,7 @@ install_btop() {
 		if command_exists snap; then
 			sudo snap install btop
 		else
-			sudo apt install -y btop
+			apt_install btop
 		fi
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install btop
@@ -578,32 +852,26 @@ install_shellcheck() {
 
 # Test framework for the shell tools in tools/ (see tools/tests/*.bats).
 install_bats() {
-	install_on_brew_or_mac "bats-core"
+	install_on_brew_or_mac "bats" "bats-core"
 }
 
 install_claude_code_cli() {
 	# Install via npm
-	curl -fsSL https://claude.ai/install.sh | bash
+	run_remote_installer https://claude.ai/install.sh
 }
 
 install_chafa() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install chafa -y
+		apt_install chafa
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install chafa
 	fi
 }
 
-_install_gum_charm_repo() {
-	sudo mkdir -p /etc/apt/keyrings
-	curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
-	echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
-	sudo apt update && sudo apt install -y gum
-}
-
 install_gum() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		_install_gum_charm_repo
+		# charm apt repo is registered by ensure_apt_repos
+		apt_install gum
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install gum
 	fi
@@ -633,14 +901,14 @@ install_csvcut() {
 
 install_xclip() {
 	[[ "$OS_TYPE" == "mac" ]] && return 0
-	sudo apt install -y xclip
+	apt_install xclip
 	gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
 	gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
 }
 
 install_xsel() {
 	[[ "$OS_TYPE" == "mac" ]] && return 0
-	sudo apt install -y xsel
+	apt_install xsel
 }
 
 install_nbpreview() {
@@ -649,7 +917,7 @@ install_nbpreview() {
 
 install_tmux() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y tmux
+		apt_install tmux
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install tmux
 	fi
@@ -658,7 +926,7 @@ install_tmux() {
 
 install_rg() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y ripgrep
+		apt_install ripgrep
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install ripgrep
 	fi
@@ -667,7 +935,7 @@ install_rg() {
 
 install_fd() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y fd-find
+		apt_install fd-find
 		# fd-find installs as fdfind on Debian/Ubuntu; symlink to fd
 		ln -sf "$(command -v fdfind)" "$HOME/bin/fd"
 	elif [[ "$OS_TYPE" == "mac" ]]; then
@@ -678,7 +946,7 @@ install_fd() {
 
 install_jq() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y jq
+		apt_install jq
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install jq
 	fi
@@ -686,11 +954,12 @@ install_jq() {
 }
 
 install_pq() {
-	if [[ "$OS_TYPE" == "linux" ]]; then
-		wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
-	elif [[ "$OS_TYPE" == "mac" ]]; then
-		wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
-	fi
+	local url="https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq"
+	local dest="$HOME/bin/pq"
+	curl -fsSL "$url" -o "$dest" && chmod +x "$dest" || {
+		gum_error "pq download failed from $url"
+		return 1
+	}
 	gum_success "pq installed successfully."
 }
 
@@ -704,17 +973,17 @@ install_bat() {
 }
 
 install_eza() {
-	if [[ "$OS_TYPE" == "linux" ]]; then
-		bash install/install_tar.sh "https://github.com/eza-community/eza/releases/download/v0.18.2/eza_x86_64-unknown-linux-musl.tar.gz"
-	elif [[ "$OS_TYPE" == "mac" ]]; then
+	if [[ "$OS_TYPE" == "mac" ]]; then
 		brew install eza
+	else
+		# unpinned latest release; prefers the musl tarball for portability
+		install_github_release eza-community/eza eza 'unknown-linux'
 	fi
 	gum_success "eza installed successfully."
 }
 
 install_parquet_tools() {
-	export PATH="$HOME/go/bin:$PATH"
-	go install github.com/hangxie/parquet-tools@latest
+	install_github_release hangxie/parquet-tools parquet-tools '.'
 	gum_success "parquet-tools installed successfully."
 }
 
@@ -768,8 +1037,8 @@ install_zprezto() {
 install_meslo_font() {
 	local font_installed=false
 	if [[ "$OS_TYPE" == "mac" ]]; then
-		(ls ~/Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
-		(ls /Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
+		(brew list --cask font-meslo-lg-nerd-font) &>/dev/null && font_installed=true
+		(ls ~/Library/Fonts/MesloLG*NerdFont*.ttf ~/Library/Fonts/MesloLGS\ NF* /Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
 	elif command_exists fc-list; then
 		fc-list -q "MesloLGS NF" && font_installed=true
 	fi
@@ -779,7 +1048,7 @@ install_meslo_font() {
 		if [[ "$OS_TYPE" == "mac" ]]; then
 			brew install --cask font-meslo-lg-nerd-font
 		else
-			sudo apt install fontconfig
+			apt_install fontconfig
 			# Direct download method for Linux
 			mkdir -p "$HOME/.local/share/fonts"
 			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
@@ -840,7 +1109,7 @@ install_bun() {
 		brew tap oven-sh/bun
 		brew install bun
 	else
-		curl -fsSL https://bun.sh/install | bash
+		run_remote_installer https://bun.sh/install
 		export PATH="$HOME/.bun/bin:$PATH"
 	fi
 	gum_success "Bun installed successfully."
@@ -892,27 +1161,22 @@ install_ty() {
 	uv tool install ty@latest
 }
 
-install_cargo_tools() {
-	cargo install --locked watchexec-cli
-	gum_success "watchexec-cli installed successfully."
-}
-
 install_markdown_oxide() {
-	source "$HOME/.cargo/env"
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo install --locked --git https://github.com/Feel-ix-343/markdown-oxide.git markdown-oxide
+	install_github_release Feel-ix-343/markdown-oxide markdown-oxide '.'
 }
 
 install_simple_completion_language_server() {
-	source "$HOME/.cargo/env"
+	# No prebuilt binaries published (estin/simple-completion-language-server has
+	# no GitHub releases and no crates.io publish), so build from git source.
+	source "$HOME/.cargo/env" 2>/dev/null || true
 	export PATH="$HOME/.cargo/bin:$PATH"
 	cargo install --git https://github.com/estin/simple-completion-language-server.git
 }
 
 install_taplo_cli() {
-	source "$HOME/.cargo/env"
+	source "$HOME/.cargo/env" 2>/dev/null || true
 	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo install taplo-cli --locked --features lsp
+	cargo binstall -y taplo-cli # prebuilt (tamasfe/taplo releases)
 }
 
 install_uwu() {
@@ -953,64 +1217,8 @@ install_codex() {
 
 install_opencode() {
 	gum_info "Installing OpenCode AI coding TUI..."
-	curl -fsSL https://opencode.ai/install | bash
+	run_remote_installer https://opencode.ai/install
 	gum_success "OpenCode installed successfully."
-}
-
-install_neomutt() {
-	gum_info "Installing NeoMutt and email tools..."
-
-	# Install core packages
-	install_on_brew_or_mac "neomutt"
-	install_on_brew_or_mac "isync"
-	install_on_brew_or_mac "msmtp"
-	install_on_brew_or_mac "notmuch"
-	install_on_brew_or_mac "urlscan"
-
-	# Ensure glow is installed (used for rendering markdown in emails)
-	install_if_missing glow install_glow
-
-	# Install html-to-markdown (Rust CLI for fast HTML->Markdown conversion)
-	if ! command -v html-to-markdown &>/dev/null; then
-		gum_info "Installing html-to-markdown-cli via cargo..."
-		source "$HOME/.cargo/env" 2>/dev/null || true
-		cargo install html-to-markdown-cli
-	fi
-
-	# Create mail directories
-	mkdir -p "$HOME/.local/share/mail/gmail/INBOX/cur"
-	mkdir -p "$HOME/.local/share/mail/gmail/INBOX/new"
-	mkdir -p "$HOME/.local/share/mail/gmail/INBOX/tmp"
-	mkdir -p "$HOME/.cache/mutt/tmp"
-	mkdir -p "$HOME/.cache/mutt/gmail/headers"
-	mkdir -p "$HOME/.cache/mutt/gmail/bodies"
-	mkdir -p "$HOME/.config/mutt"
-	mkdir -p "$HOME/.config/isync"
-	mkdir -p "$HOME/.config/msmtp"
-	mkdir -p "$HOME/.config/notmuch"
-
-	# Create mailsync timestamp file
-	touch "$HOME/.config/mutt/.mailsynclastrun"
-
-	# Set up background mail sync with pm2 (if pm2 is available)
-	if command -v pm2 &>/dev/null; then
-		gum_info "Setting up background mail sync with pm2..."
-		# Stop existing mailsync process if running
-		pm2 delete mailsync 2>/dev/null || true
-		# Start mailsync daemon (must specify zsh interpreter)
-		pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh
-		pm2 save
-		gum_success "Background mail sync enabled (syncs every 5 minutes)"
-	else
-		gum_info "pm2 not found - skipping background sync setup"
-		gum_info "Install pm2 and run: pm2 start mailsync-daemon --name mailsync --interpreter /bin/zsh"
-	fi
-
-	gum_success "NeoMutt and email tools installed successfully."
-	gum_info "Next steps:"
-	gum_info "  1. Ensure ~/.mutt_secrets has your Gmail app password"
-	gum_info "  2. Run: mailsync  (to sync and index mail)"
-	gum_info "  3. Launch: neomutt"
 }
 
 # ===================================================================
@@ -1046,9 +1254,9 @@ install_shfmt() {
 }
 
 install_just() {
-	# cargo is installed earlier in setup.sh, so it's available here
 	source "$HOME/.cargo/env" 2>/dev/null || true
-	cargo install just
+	export PATH="$HOME/.cargo/bin:$PATH"
+	cargo binstall -y just # prebuilt (casey/just releases)
 	gum_success "just installed successfully."
 }
 
@@ -1056,15 +1264,8 @@ install_gh() {
 	if [[ "$OS_TYPE" == "mac" ]]; then
 		brew install gh
 	else
-		# Official GitHub CLI install for Debian/Ubuntu
-		sudo mkdir -p -m 755 /etc/apt/keyrings
-		curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-			| sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
-		sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-		echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-			| sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
-		sudo apt update
-		sudo apt install -y gh
+		# GitHub CLI apt repo is registered by ensure_apt_repos
+		apt_install gh
 	fi
 	gum_success "gh installed successfully."
 }
@@ -1088,6 +1289,7 @@ install_golangci_lint() {
 	if [[ "$OS_TYPE" == "mac" ]]; then
 		brew install golangci-lint
 	else
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+		# Official install script fetches a prebuilt binary (no go-build from source)
+		run_remote_installer https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh -b "$HOME/.local/bin"
 	fi
 }

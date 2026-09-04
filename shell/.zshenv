@@ -29,7 +29,7 @@ fi
 if [[ ( "$SHLVL" -eq 1 && ! -o LOGIN ) && -s "${ZDOTDIR:-$HOME}/.zprofile" ]]; then
   source "${ZDOTDIR:-$HOME}/.zprofile"
 fi
-. "$HOME/.cargo/env"
+[[ -f "$HOME/.cargo/env" ]] && . "$HOME/.cargo/env"
 
 # gog CLI: pull keyring passphrase from macOS keychain so file backend can decrypt non-interactively.
 # Stash with: security add-generic-password -s gog-keyring -a "$USER" -w
