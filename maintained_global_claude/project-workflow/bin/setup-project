@@ -5,11 +5,11 @@ resolve_script_dir() {
     local source="${BASH_SOURCE[0]}"
     local dir
     while [[ -L "$source" ]]; do
-        dir="$(cd -- "$(dirname -- "$source")" && pwd)"
+        dir="$(cd -- "$(dirname -- "$source")" && pwd -P)"
         source="$(readlink -- "$source")"
         [[ "$source" == /* ]] || source="$dir/$source"
     done
-    cd -- "$(dirname -- "$source")" && pwd
+    cd -- "$(dirname -- "$source")" && pwd -P
 }
 
 SCRIPT_DIR="$(resolve_script_dir)"
