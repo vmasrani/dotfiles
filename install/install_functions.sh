@@ -135,22 +135,42 @@ install_github_release() {
 		;;
 	esac
 
+	# only trust `gh` when it is actually authenticated; otherwise go straight
+	# to the unauthenticated GitHub API so a bare command-substitution failure
+	# can never abort the script under `set -e`
+	local gh_ok=0
+	if command_exists gh && gh auth status >/dev/null 2>&1; then
+		gh_ok=1
+	fi
+
+	# pass a token if one is available so CI runners don't hit the 60 req/hr
+	# unauthenticated rate limit (no extra requests are added either way)
+	local -a curl_auth=()
+	local gh_token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+	if [[ -n "$gh_token" ]]; then
+		curl_auth=(-H "Authorization: Bearer $gh_token")
+	fi
+
 	# list every asset name in the latest release
-	local assets=""
-	if command_exists gh; then
-		assets="$(gh release view --repo "$repo" --json assets -q '.assets[].name' 2>/dev/null)"
+	local assets="" api_body=""
+	if [[ "$gh_ok" == 1 ]]; then
+		assets="$(gh release view --repo "$repo" --json assets -q '.assets[].name' 2>/dev/null || true)"
 	fi
 	if [[ -z "$assets" ]]; then
-		assets="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | grep -oE '"name":[[:space:]]*"[^"]+"' | sed -E 's/.*"([^"]+)"$/\1/')"
+		api_body="$(curl -fsSL "${curl_auth[@]}" "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null || true)"
+		# strip everything before the "assets" array so the release's own
+		# top-level "name" field (the release title) can never be picked up
+		# alongside the per-asset "name" fields
+		assets="$(printf '%s' "${api_body#*\"assets\":}" | grep -oE '"name":[[:space:]]*"[^"]+"' | sed -E 's/.*"([^"]+)"$/\1/' || true)"
 	fi
 	if [[ -z "$assets" ]]; then
-		gum_error "install_github_release: could not list release assets for $repo"
+		gum_error "install_github_release: could not list release assets for $repo (gh unavailable/unauthenticated and the GitHub API returned nothing)"
 		return 1
 	fi
 
 	# keep only assets for this OS+arch, drop checksums/signatures/packages/docs
 	local candidates
-	candidates="$(printf '%s\n' "$assets" | grep -Ei "($os_re)" | grep -Ei "($arch_re)" | grep -Ei "$caller_re" | grep -viE 'sha256|sha512|checksum|\.sbom|\.sig|sigstore|\.rpm|\.deb|\.apk|\.txt|no_libgit')"
+	candidates="$(printf '%s\n' "$assets" | grep -Ei "($os_re)" | grep -Ei "($arch_re)" | grep -Ei "$caller_re" | grep -viE 'sha256|sha512|checksum|\.sbom|\.sig|sigstore|\.rpm|\.deb|\.apk|\.txt|no_libgit' || true)"
 	if [[ -z "$candidates" ]]; then
 		gum_error "install_github_release: no asset for $(uname -s)/$(uname -m) in $repo. Assets seen: $(printf '%s' "$assets" | tr '\n' ' ')"
 		return 1
@@ -178,20 +198,30 @@ install_github_release() {
 	gum_info "Installing $binary from $repo release asset $best..."
 	local tmp
 	tmp="$(mktemp -d)"
-	if command_exists gh; then
+	if [[ "$gh_ok" == 1 ]]; then
 		gh release download --repo "$repo" --pattern "$best" --dir "$tmp" --clobber || {
 			gum_error "install_github_release: gh download failed for $repo ($best)"
 			rm -rf "$tmp"
 			return 1
 		}
 	else
+		# reuse the release JSON already fetched above when possible, so the
+		# curl fallback never costs more than the single API call used to
+		# list assets (stays well under the 60 req/hr unauthenticated cap)
+		if [[ -z "$api_body" ]]; then
+			api_body="$(curl -fsSL "${curl_auth[@]}" "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null || true)"
+		fi
+		# escape regex metacharacters in $best so the match can only resolve
+		# the url for the exact asset name chosen above
+		local best_re
+		best_re="$(printf '%s' "$best" | sed -E 's/[.[\*^$()+?{|]/\\&/g')"
 		local url
-		url="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | grep -oE '"browser_download_url":[[:space:]]*"[^"]+'"$best"'"' | sed -E 's/.*"([^"]+)"$/\1/' | head -1)"
-		[[ -z "$url" ]] && {
+		url="$(printf '%s' "${api_body#*\"assets\":}" | grep -oE '"browser_download_url":[[:space:]]*"[^"]+/'"$best_re"'"' | sed -E 's/.*"([^"]+)"$/\1/' | head -1 || true)"
+		if [[ -z "$url" ]]; then
 			gum_error "install_github_release: no download url for $best in $repo"
 			rm -rf "$tmp"
 			return 1
-		}
+		fi
 		curl -fsSL "$url" -o "$tmp/$best" || {
 			gum_error "install_github_release: curl failed for $url"
 			rm -rf "$tmp"
@@ -203,19 +233,45 @@ install_github_release() {
 	local file="$tmp/$best"
 	case "$best" in
 	*.tar.gz | *.tgz)
-		tar -xzf "$file" -C "$tmp" && rm -f "$file"
+		tar -xzf "$file" -C "$tmp" || {
+			gum_error "install_github_release: failed to extract $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		rm -f "$file"
 		;;
 	*.tar.xz)
-		tar -xJf "$file" -C "$tmp" && rm -f "$file"
+		tar -xJf "$file" -C "$tmp" || {
+			gum_error "install_github_release: failed to extract $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		rm -f "$file"
 		;;
 	*.tar.bz2)
-		tar -xjf "$file" -C "$tmp" && rm -f "$file"
+		tar -xjf "$file" -C "$tmp" || {
+			gum_error "install_github_release: failed to extract $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		rm -f "$file"
 		;;
 	*.zip)
-		unzip -qo "$file" -d "$tmp" && rm -f "$file"
+		unzip -qo "$file" -d "$tmp" || {
+			gum_error "install_github_release: failed to unzip $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		rm -f "$file"
 		;;
-	*.gz) gunzip -f "$file" ;; # leaves the decompressed binary in $tmp
-	*) : ;;                    # bare binary already at $file
+	*.gz)
+		gunzip -f "$file" || { # leaves the decompressed binary in $tmp
+			gum_error "install_github_release: failed to gunzip $best"
+			rm -rf "$tmp"
+			return 1
+		}
+		;;
+	*) : ;; # bare binary already at $file
 	esac
 
 	# locate the binary: exact name first, else the largest regular file

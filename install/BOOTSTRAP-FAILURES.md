@@ -144,6 +144,27 @@ Rules for the fix, not the workaround:
   and set the login shell. There are no other interactive reads left in the
   installer (`rg 'read -p' install/ setup.sh` is empty).
 
+### 9. Release helper died silently: gh not logged in plus set -e (2026-09-04)
+
+- **Symptom:** the first acceptance run of the tightened installer stopped
+  after "Installing markdown-oxide..." with exit code 4 and no error line.
+  Everything before it, through the language servers, took 5 minutes instead of
+  the previous 20-plus.
+- **Cause:** `install_github_release` asked `gh` for the release assets first.
+  `gh` was installed by an earlier step but not logged in, and it exits 4 in
+  that state. The result was captured with a bare assignment, and under `set -e`
+  a failing command substitution in a bare assignment aborts the whole script
+  before the curl fallback or any error message runs. Exit code 4 was gh's.
+- **Fix:** use `gh` only when `gh auth status` succeeds, otherwise the public
+  GitHub API through curl; every command substitution in the helper that can
+  fail carries `|| true` followed by an explicit empty check that prints what
+  was not found and returns 1; the API calls send `GH_TOKEN` or
+  `GITHUB_TOKEN` when present so CI runners stay under the unauthenticated
+  rate limit.
+- **Rule going forward:** in this codebase `set -e` is on, so
+  `x="$(cmd)"` is a hidden exit point. Any substitution whose failure should
+  be reported, not fatal, must be written `x="$(cmd || true)"` and checked.
+
 ## Verified unattended run
 
 Re-verify after any change to `setup.sh` or `install/install_functions.sh`
