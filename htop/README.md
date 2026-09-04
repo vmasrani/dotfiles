@@ -97,11 +97,20 @@ convention is specific to `fields=`/`sort_key=`) and mode IDs (`Meter.h`
 `MeterModeId`: `BAR=1`, `TEXT=2`, `GRAPH=3`, `LED=4`) were verified the same
 way against the `3.0.5` source, then confirmed on-screen (see Validation).
 
-- Left: `CPU` (single averaged bar — the plain `CPU` meter class, distinct
-  from the per-core `AllCPUs`/`LeftCPUs`/`RightCPUs` classes), `Memory`,
-  `Swap`, and on Linux only, `DiskIO`, `NetworkIO`. All bar mode (`1`).
-- Right: `Tasks`, `LoadAverage`, `Uptime` — all text mode (`2`), same as
-  htop's own defaults for these.
+Per-core meters are deliberate: seeing every core separately is how you tell
+whether a parallel job is actually saturating the box. The plain `CPU` class
+(one averaged bar) was tried and rejected — it hides exactly that.
+
+- Linux: `LeftCPUs4` heads the left column (the lower half of the cores, four
+  bars per row) and `RightCPUs4` heads the right (the upper half, four per
+  row), so the header shows 8 columns of per-core bars — 8 rows on the
+  64-thread VM. Below them: `Memory`, `Swap`, `DiskIO`, `NetworkIO` on the
+  left, `Tasks`, `LoadAverage`, `Uptime` on the right.
+- macOS: `LeftCPUs`/`RightCPUs` (one bar per row, half the cores each side),
+  then `Memory`, `Swap` on the left and `Tasks`, `LoadAverage`, `Uptime` on
+  the right.
+- Modes: every CPU/memory/IO meter is bar mode (`1`); `Tasks`, `LoadAverage`,
+  `Uptime` are text mode (`2`), same as htop's own defaults for these.
 
 ## Validation performed
 
@@ -119,10 +128,10 @@ way against the `3.0.5` source, then confirmed on-screen (see Validation).
    save — nothing dropped. A screen capture of the running session (stripped
    of ANSI codes) confirmed the on-screen header reads exactly:
    `PID USER PRI NI VIRT RES SHR NLWP S CPU% MEM% DISK READ DISK WRITE TIME+ Command`,
-   with tree view active and all five meters (`CPU`/`Memory`/`Swap`/`DiskIO`/
-   `NetworkIO` on the left, `Tasks`/`LoadAverage`/`Uptime` on the right)
-   rendering correctly (`Avg[...%]`, `Mem[...]`, `Swp[...]`, `Dis[...]`,
-   `Net[rx:.../tx:...]`).
+   with tree view active and every meter (`LeftCPUs4`/`Memory`/`Swap`/`DiskIO`/
+   `NetworkIO` on the left, `RightCPUs4`/`Tasks`/`LoadAverage`/`Uptime` on the
+   right) rendering correctly: per-core bars labelled `0[...]` through
+   `63[...]`, plus `Mem[...]`, `Swp[...]`, `Dis[...]`, `Net[rx:.../tx:...]`.
 3. htop's own rewrite trims the file's leading comment down to its standard
    two lines on every interactive save (cosmetic normalization, not a
    dropped setting) — expected per htop's `Settings_write`, harmless.
