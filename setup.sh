@@ -15,6 +15,9 @@ cd "$(dirname "$0")"
 source "./install/install_functions.sh"
 source "./shell/gum_utils.sh"
 
+# auto-answer dpkg/apt prompts during unattended Linux bootstraps
+[[ "$OS_TYPE" != "mac" ]] && export DEBIAN_FRONTEND=noninteractive
+
 # install zsh (homebrew is macOS-only)
 if [[ "$OS_TYPE" == "mac" ]]; then
     install_if_missing brew install_homebrew

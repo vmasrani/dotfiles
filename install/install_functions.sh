@@ -773,7 +773,7 @@ install_meslo_font() {
 		if [[ "$OS_TYPE" == "mac" ]]; then
 			brew install --cask font-meslo-lg-nerd-font
 		else
-			sudo apt install fontconfig
+			sudo apt install -y fontconfig
 			# Direct download method for Linux
 			mkdir -p "$HOME/.local/share/fonts"
 			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \

@@ -191,7 +191,7 @@ disable_root: false
 ssh_pwauth: false
 runcmd:
   - git clone ${DOTFILES_REPO} /root/dotfiles
-  - [ bash, -lc, "cd /root/dotfiles && ./setup.sh > /root/dotfiles-setup.log 2>&1" ]
+  - [ bash, -lc, "cd /root/dotfiles && ./setup.sh > /root/dotfiles-setup.log 2>&1; echo \$? > /root/dotfiles-setup.exit" ]
   - chsh -s /usr/bin/zsh root
 CLOUDCFG
 }
@@ -274,6 +274,19 @@ create_vm() {
         '{name:$name, type:$type, location:$location, image:$image,
           sshKey:$sshKey, firewall:$firewall, ipv4:$ipv4, created:$created,
           volumes: []}' > "$manifest_file"
+
+    local setup_exit
+    setup_exit="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+        "root@${ip}" "cat /root/dotfiles-setup.exit" 2>/dev/null)"
+    if [[ -z "$setup_exit" || "$setup_exit" != "0" ]]; then
+        gum_error "dotfiles setup did not finish successfully on $vm_name (exit code: ${setup_exit:-unknown}). Last lines of /root/dotfiles-setup.log:"
+        ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "root@${ip}" "tail -n 15 /root/dotfiles-setup.log" 2>/dev/null || \
+            gum_warning "Could not read /root/dotfiles-setup.log over SSH."
+        gum_dim "The server IS running at $ip and is managed (manifest written)."
+        gum_dim "Finish setup by hand: hetzner-vm ssh $vm_name, then: cd ~/dotfiles && ./setup.sh"
+        exit 1
+    fi
 
     gum_box_success "Created $vm_name at $ip"
     echo "Connect with:  hetzner-vm ssh $vm_name"
