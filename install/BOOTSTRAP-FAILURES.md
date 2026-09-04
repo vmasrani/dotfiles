@@ -238,3 +238,8 @@ success box, which only happens when it reads exit 0 from
   PATH. The only compilation left was simple-completion-language-server
   (317 `Compiling` lines). A second `setup.sh` run on the finished box took
   28 seconds and printed zero install, compile, download, or clone lines.
+- **2026-09-04, CI run 33925296895 (`.github/workflows/install.yml`):** all
+  three jobs green after entries 10 to 12. macos-15 in 12 minutes, hosted
+  ubuntu-24.04 in 9, bare `ubuntu:24.04` container in 8. Each job ran
+  `setup.sh` twice, asserted the second run installed nothing, and checked the
+  expected tools were on the PATH that `~/.paths.zsh` builds.
