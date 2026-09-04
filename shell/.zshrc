@@ -110,4 +110,4 @@ test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell
 export PATH="$HOME/.opencode/bin:$PATH"
 trap 'pkill -P $$ gitstatusd 2>/dev/null' EXIT
 
-. "$HOME/.local/bin/env"
+[[ -f "$HOME/.local/bin/env" ]] && . "$HOME/.local/bin/env"
