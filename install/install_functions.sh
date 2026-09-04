@@ -43,6 +43,7 @@ bootstrap_path() {
 		"$HOME/go/bin"
 		"$HOME/.fzf/bin"
 		"$HOME/.opencode/bin" # opencode installer target
+		"$HOME/.bun/bin"
 	)
 	# newest installed nvm node bin, if any
 	local node_bin
@@ -929,11 +930,12 @@ install_jq() {
 }
 
 install_pq() {
-	if [[ "$OS_TYPE" == "linux" ]]; then
-		wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
-	elif [[ "$OS_TYPE" == "mac" ]]; then
-		wget -O "$HOME/bin/pq" "https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq" && chmod +x "$HOME/bin/pq"
-	fi
+	local url="https://raw.githubusercontent.com/kouta-kun/pq/main/bin/pq"
+	local dest="$HOME/bin/pq"
+	curl -fsSL "$url" -o "$dest" && chmod +x "$dest" || {
+		gum_error "pq download failed from $url"
+		return 1
+	}
 	gum_success "pq installed successfully."
 }
 

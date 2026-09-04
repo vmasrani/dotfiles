@@ -165,6 +165,25 @@ Rules for the fix, not the workaround:
   `x="$(cmd)"` is a hidden exit point. Any substitution whose failure should
   be reported, not fatal, must be written `x="$(cmd || true)"` and checked.
 
+### 10. Found by CI: bun reinstalled every run, pq never installed (2026-09-04)
+
+- **Symptom:** the first CI run's bare `ubuntu:24.04` job failed the
+  second-run assertion with `bun is not installed. Installing bun...` and
+  `pq is not installed. Installing pq...`. Its raw log also showed
+  `install_pq: command not found: wget` immediately followed by
+  `✓ pq installed successfully.`
+- **Cause:** `bootstrap_path` did not include `~/.bun/bin`, so bun looked
+  missing on every re-run. `install_pq` downloaded with wget, which a bare
+  image does not have, and printed success regardless of the download's
+  exit status, so pq was never installed and reinstalled every time. The
+  Hetzner boxes hid both: their image ships wget, and bun was found through a
+  PATH line its installer appended to `.zshrc`.
+- **Fix:** `~/.bun/bin` added to the PATH bootstrap; `install_pq` uses curl,
+  which the installer already relies on everywhere, and fails loudly when the
+  download fails. The other two CI failures were workflow bugs: the hosted
+  Ubuntu runner has no zsh, and anonymous GitHub API calls from runner IPs
+  are rate-limited, so the workflow installs zsh and passes `GH_TOKEN`.
+
 ## Verified unattended run
 
 Re-verify after any change to `setup.sh` or `install/install_functions.sh`
@@ -177,3 +196,9 @@ success box, which only happens when it reads exit 0 from
   after fix 6 landed. All expected tools were on PATH afterwards. The run still
   spent most of its time compiling Rust crates (1015 `Compiling` lines), which
   the installer tightening that followed removes.
+- **2026-09-04, after entries 7 to 9 (tightened installer):**
+  `hetzner-vm create worker2` from scratch took 359 seconds end to end,
+  server creation included, with setup exit 0 and every expected tool on
+  PATH. The only compilation left was simple-completion-language-server
+  (317 `Compiling` lines). A second `setup.sh` run on the finished box took
+  28 seconds and printed zero install, compile, download, or clone lines.

@@ -29,6 +29,8 @@ jobs:
   macos:
     runs-on: macos-15
     timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout into ~/dotfiles
         uses: actions/checkout@v4
@@ -95,6 +97,8 @@ jobs:
   ubuntu-runner:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout into ~/dotfiles
         uses: actions/checkout@v4
@@ -104,6 +108,12 @@ jobs:
       - name: Symlink checkout to ~/dotfiles
         shell: bash
         run: ln -sfn "$GITHUB_WORKSPACE/dotfiles-checkout" "$HOME/dotfiles"
+
+      - name: Install zsh
+        shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: sudo apt-get update && sudo apt-get install -y zsh
 
       - name: First run
         shell: bash
@@ -166,6 +176,7 @@ jobs:
     timeout-minutes: 90
     env:
       HOME: /root
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Bootstrap bare-minimum packages
         shell: bash
