@@ -184,6 +184,25 @@ Rules for the fix, not the workaround:
   Ubuntu runner has no zsh, and anonymous GitHub API calls from runner IPs
   are rate-limited, so the workflow installs zsh and passes `GH_TOKEN`.
 
+### 11. Found by CI: Meslo font reinstalled on every macOS run (2026-09-04)
+
+- **Symptom:** the macOS CI job's second run printed
+  `→ Installing MesloLGS NF font...`, the only line that failed the
+  second-run assertion there.
+- **Cause:** the "already installed" check globbed `~/Library/Fonts/MesloLGS NF*`
+  with a space, but the Homebrew cask installs files named like
+  `MesloLGSNerdFont-Regular.ttf`, so the glob never matched.
+- **Fix:** installed means either `brew list --cask font-meslo-lg-nerd-font`
+  succeeds or a `MesloLG*NerdFont*.ttf` file exists; the old glob is kept for
+  fonts installed by hand.
+- **Also in this round, a workflow bug:** the CI tool-presence probe reported
+  every tool missing, zsh included. The real cause was zsh itself: it does not
+  word-split an unquoted variable, so `for tool in $EXPECTED_TOOLS` looped once
+  over the whole list as a single name. The probe now iterates with
+  `${=EXPECTED_TOOLS}` and sources only `~/.paths.zsh` in a plain `zsh -c`,
+  rather than a login shell that loads prezto's completion init, which also
+  aborts without a terminal.
+
 ## Verified unattended run
 
 Re-verify after any change to `setup.sh` or `install/install_functions.sh`
