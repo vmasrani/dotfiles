@@ -111,5 +111,10 @@ Rules for the fix, not the workaround:
 Re-verify after any change to `setup.sh` or `install/install_functions.sh`
 that touches Linux: `hetzner-vm create <name>` on a fresh box must print its
 success box, which only happens when it reads exit 0 from
-`/root/dotfiles-setup.exit`. The proof run for the entries above is recorded
-at the bottom of this file.
+`/root/dotfiles-setup.exit`.
+
+- **2026-09-04, entries 1 to 6:** `hetzner-vm create worker2` on a fresh
+  Ubuntu 24.04 ccx53 in nbg1 finished with setup exit 0 on the first attempt
+  after fix 6 landed. All expected tools were on PATH afterwards. The run still
+  spent most of its time compiling Rust crates (1015 `Compiling` lines), which
+  the installer tightening that followed removes.
