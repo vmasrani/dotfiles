@@ -1,0 +1,572 @@
+#!/usr/bin/env bash
+# hetzner-vm - On-demand Hetzner Cloud worker box lifecycle tool.
+#
+# Mirrors the ergonomics of ~/dotfiles/tools/azure-vm: create / archive /
+# restore / status / verify / ssh a single throwaway compute box, snapshotting
+# it to cheap storage between uses. Hetzner bills a server that exists even when
+# powered off, so "archive" SNAPSHOTS then DELETES the server; "restore" builds
+# a fresh server from that snapshot.
+#
+# Every server and snapshot this tool creates carries the labels
+#   managed-by=hetzner-vm  and  hetzner-vm=<name>
+# and every lookup filters on them, so this tool can never see or touch a server
+# it did not create (e.g. the pre-existing `parot` boxes).
+
+# SC2016: jq filter strings are deliberately single-quoted (jq vars, not shell).
+# SC1091: gum_utils.sh is sourced at runtime, not available to the linter.
+# shellcheck disable=SC2016,SC1091
+set -eo pipefail
+
+source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
+
+# ── Loud failure handler (mirrors azure-vm) ───────────────────────────────
+error_handler() {
+    local exit_code=$?
+    local line_num=$1
+    local command="${BASH_COMMAND}"
+    echo "" >&2
+    gum_error "FATAL ERROR (exit code: $exit_code) on line $line_num: '$command' failed."
+    exit "$exit_code"
+}
+trap 'error_handler $LINENO' ERR
+
+# ── Config (env with defaults) ────────────────────────────────────────────
+VM_TYPE="${HETZNER_VM_TYPE:-ccx53}"
+VM_LOCATION="${HETZNER_VM_LOCATION:-nbg1}"
+VM_IMAGE="${HETZNER_VM_IMAGE:-ubuntu-24.04}"
+VM_SSH_KEY="${HETZNER_VM_SSH_KEY:-vmasrani (macmini)}"
+FIREWALL="hetzner-vm-fw"
+DOTFILES_REPO="https://github.com/vmasrani/dotfiles.git"
+
+# Snapshot storage price is not exposed by the Hetzner API. Documented constant:
+# https://docs.hetzner.com/cloud/servers/backups-snapshots/overview  (EUR/GB/month)
+SNAPSHOT_EUR_PER_GB_MONTH="0.0119"
+
+# Manifest directory (overridable only for hermetic tests; the contract default
+# is ~/.hetzner-vm/manifests).
+MANIFEST_DIR="${HETZNER_VM_MANIFEST_DIR:-${HOME}/.hetzner-vm/manifests}"
+mkdir -p "$MANIFEST_DIR"
+
+command="$1"
+vm_name="$2"
+
+usage() {
+    echo "Usage: hetzner-vm <create|archive|restore|status|verify|ssh> <name> [ssh args...]"
+}
+
+if [[ -z "$command" || -z "$vm_name" ]]; then
+    usage
+    exit 1
+fi
+
+manifest_file="${MANIFEST_DIR}/${vm_name}.json"
+
+# ── Preconditions ─────────────────────────────────────────────────────────
+ensure_hcloud() {
+    if ! command -v hcloud >/dev/null 2>&1; then
+        gum_error "The 'hcloud' CLI is not installed. Install it with: brew install hcloud"
+        exit 1
+    fi
+    if [[ -z "${HCLOUD_TOKEN:-}" ]]; then
+        gum_error "HCLOUD_TOKEN is not set. Add it to ~/dotfiles/local/.local_env.sh and reload your shell (refresh)."
+        exit 1
+    fi
+}
+
+# ── Label helpers ─────────────────────────────────────────────────────────
+label_selector() {
+    echo "managed-by=hetzner-vm,hetzner-vm=${vm_name}"
+}
+
+# JSON object for the managed server named $vm_name, or empty string if none.
+managed_server_json() {
+    hcloud server list -o json -l "$(label_selector)" 2>/dev/null \
+        | jq -c --arg n "$vm_name" 'map(select(.name==$n)) | .[0] // empty' 2>/dev/null || true
+}
+
+# Read one jq path from the managed server json; empty if server absent.
+managed_server_field() {
+    local jqpath="$1"
+    local json
+    json="$(managed_server_json)"
+    [[ -z "$json" ]] && return 0
+    printf '%s' "$json" | jq -r "${jqpath} // empty" 2>/dev/null || true
+}
+
+# True if ANY server (managed or not) already uses this name.
+name_taken() {
+    local hit
+    hit=$(hcloud server list -o json 2>/dev/null \
+        | jq -r --arg n "$vm_name" '.[] | select(.name==$n) | .name' 2>/dev/null || true)
+    [[ -n "$hit" ]]
+}
+
+server_ip() {
+    managed_server_field '.public_net.ipv4.ip'
+}
+
+# ── Manifest helpers ──────────────────────────────────────────────────────
+manifest_set() {
+    # manifest_set <jq-filter> [--arg k v ...]  -- edits manifest in place.
+    local filter="$1"; shift
+    local tmp="${manifest_file}.tmp"
+    jq "$@" "$filter" "$manifest_file" > "$tmp"
+    mv "$tmp" "$manifest_file"
+}
+
+manifest_get() {
+    jq -r "$1 // empty" "$manifest_file" 2>/dev/null || true
+}
+
+# ── Bounded polling ───────────────────────────────────────────────────────
+wait_for_server_status() {
+    local target="$1" timeout="$2"
+    local waited=0 st
+    while (( waited < timeout )); do
+        st="$(managed_server_field '.status')"
+        [[ "$st" == "$target" ]] && return 0
+        sleep 5
+        waited=$((waited + 5))
+    done
+    return 1
+}
+
+wait_for_image_available() {
+    local image_id="$1" timeout="$2"
+    local waited=0 st
+    while (( waited < timeout )); do
+        st=$(hcloud image describe "$image_id" -o json 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
+        [[ "$st" == "available" ]] && return 0
+        sleep 10
+        waited=$((waited + 10))
+    done
+    return 1
+}
+
+wait_for_ssh() {
+    local ip="$1" timeout="$2"
+    local waited=0
+    while (( waited < timeout )); do
+        if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+               -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" \
+               "root@${ip}" true >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 5
+        waited=$((waited + 5))
+    done
+    return 1
+}
+
+# ── Firewall ──────────────────────────────────────────────────────────────
+ensure_firewall() {
+    local exists
+    exists=$(hcloud firewall list -o json 2>/dev/null \
+        | jq -r --arg f "$FIREWALL" '.[] | select(.name==$f) | .name' 2>/dev/null || true)
+    if [[ -n "$exists" ]]; then
+        gum_dim "Firewall $FIREWALL already exists."
+        return 0
+    fi
+    gum_spin_quick "Creating firewall $FIREWALL (allow inbound tcp/22)..." \
+        hcloud firewall create --name "$FIREWALL" \
+            --label managed-by=hetzner-vm
+    gum_spin_quick "Adding SSH inbound rule..." \
+        hcloud firewall add-rule "$FIREWALL" \
+            --direction in --protocol tcp --port 22 \
+            --source-ips 0.0.0.0/0 --source-ips ::/0
+    gum_success "Firewall $FIREWALL created."
+}
+
+# ── cloud-init user-data ──────────────────────────────────────────────────
+write_user_data() {
+    local out="$1"
+    cat > "$out" <<CLOUDCFG
+#cloud-config
+package_update: true
+packages:
+  - git
+  - zsh
+  - curl
+disable_root: false
+ssh_pwauth: false
+runcmd:
+  - git clone ${DOTFILES_REPO} /root/dotfiles
+  - [ bash, -lc, "cd /root/dotfiles && ./setup.sh > /root/dotfiles-setup.log 2>&1" ]
+  - chsh -s /usr/bin/zsh root
+CLOUDCFG
+}
+
+# ── create ────────────────────────────────────────────────────────────────
+create_vm() {
+    if [[ -f "$manifest_file" ]]; then
+        gum_error "A manifest already exists for '$vm_name' ($manifest_file). Use 'hetzner-vm restore $vm_name' instead, or delete the manifest to start over."
+        exit 1
+    fi
+    if name_taken; then
+        gum_error "A server named '$vm_name' already exists in this Hetzner project. Choose a different name."
+        exit 1
+    fi
+
+    gum_info "Creating Hetzner box: $vm_name ($VM_TYPE @ $VM_LOCATION)"
+    ensure_firewall
+
+    local tmpdir user_data
+    tmpdir="$(mktemp -d)"
+    user_data="${tmpdir}/user-data.yaml"
+    write_user_data "$user_data"
+
+    gum_spin_wait "Creating server (this takes ~30s)..." \
+        hcloud server create \
+            --name "$vm_name" \
+            --type "$VM_TYPE" \
+            --location "$VM_LOCATION" \
+            --image "$VM_IMAGE" \
+            --ssh-key "$VM_SSH_KEY" \
+            --firewall "$FIREWALL" \
+            --label managed-by=hetzner-vm \
+            --label "hetzner-vm=${vm_name}" \
+            --user-data-from-file "$user_data"
+    rm -rf "$tmpdir"
+
+    if ! wait_for_server_status "running" 180; then
+        gum_error "Server '$vm_name' did not reach status 'running' within 3 minutes. Check the Hetzner console."
+        exit 1
+    fi
+    gum_success "Server is running."
+
+    local ip
+    ip="$(server_ip)"
+    if [[ -z "$ip" ]]; then
+        gum_error "Server '$vm_name' is running but has no public IPv4 address."
+        exit 1
+    fi
+    ssh-keygen -R "$ip" >/dev/null 2>&1 || true
+    gum_dim "Removed any stale SSH host key for $ip."
+
+    gum_info "Waiting for SSH on $ip ..."
+    if ! wait_for_ssh "$ip" 180; then
+        gum_error "SSH on $ip did not accept connections within 3 minutes. The server may still be booting; try 'hetzner-vm ssh $vm_name' shortly."
+        exit 1
+    fi
+    gum_success "SSH is up."
+
+    gum_info "Running dotfiles setup via cloud-init (this takes several minutes)..."
+    if ! gum_spin_wait "Waiting for cloud-init to finish..." \
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+                "root@${ip}" "cloud-init status --wait"; then
+        gum_error "cloud-init did not finish cleanly on $vm_name. Last lines of /root/dotfiles-setup.log:"
+        ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "root@${ip}" "tail -n 40 /root/dotfiles-setup.log" 2>/dev/null || \
+            gum_warning "Could not read /root/dotfiles-setup.log over SSH."
+        exit 1
+    fi
+    gum_success "cloud-init finished."
+
+    jq -n \
+        --arg name "$vm_name" \
+        --arg type "$VM_TYPE" \
+        --arg location "$VM_LOCATION" \
+        --arg image "$VM_IMAGE" \
+        --arg sshKey "$VM_SSH_KEY" \
+        --arg firewall "$FIREWALL" \
+        --arg ipv4 "$ip" \
+        --arg created "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{name:$name, type:$type, location:$location, image:$image,
+          sshKey:$sshKey, firewall:$firewall, ipv4:$ipv4, created:$created,
+          volumes: []}' > "$manifest_file"
+
+    gum_box_success "Created $vm_name at $ip"
+    echo "Connect with:  hetzner-vm ssh $vm_name"
+}
+
+# ── verify ────────────────────────────────────────────────────────────────
+verify_vm() {
+    gum_info "Verifying archive for: $vm_name"
+    if [[ ! -f "$manifest_file" ]]; then
+        gum_error "No manifest found for '$vm_name' ($manifest_file). Nothing to verify."
+        exit 1
+    fi
+    gum_success "Manifest exists."
+
+    local snap_id
+    snap_id="$(manifest_get '.archive.snapshotId')"
+    if [[ -z "$snap_id" ]]; then
+        gum_error "Manifest for '$vm_name' has no archive.snapshotId. Run 'hetzner-vm archive $vm_name' first."
+        exit 1
+    fi
+
+    local status
+    status=$(hcloud image describe "$snap_id" -o json 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true)
+    if [[ -z "$status" ]]; then
+        gum_error "Snapshot $snap_id (recorded in the manifest) does not exist in Hetzner. The archive is broken."
+        exit 1
+    fi
+    if [[ "$status" != "available" ]]; then
+        gum_error "Snapshot $snap_id exists but its status is '$status', not 'available'. Wait for it to finish or re-archive."
+        exit 1
+    fi
+    gum_success "Snapshot $snap_id verified (available)."
+    gum_success "Archive verification PASSED."
+}
+
+# ── archive ───────────────────────────────────────────────────────────────
+prune_previous_snapshots() {
+    local keep_id="$1"
+    local id
+    while IFS= read -r id; do
+        [[ -z "$id" || "$id" == "$keep_id" ]] && continue
+        gum_spin_wait "Deleting previous snapshot $id..." hcloud image delete "$id"
+        gum_success "Previous snapshot $id deleted."
+    done < <(
+        hcloud image list -o json --type snapshot -l "hetzner-vm=${vm_name}" 2>/dev/null \
+            | jq -r '.[].id' 2>/dev/null || true
+    )
+}
+
+archive_vm() {
+    local json
+    json="$(managed_server_json)"
+    if [[ -z "$json" ]]; then
+        gum_error "No managed server named '$vm_name' found. Nothing to archive."
+        exit 1
+    fi
+
+    if ! gum_confirm "Archive $vm_name? This SNAPSHOTS and then DELETES the server (compute billing stops)."; then
+        gum_dim "Archive cancelled."
+        exit 0
+    fi
+
+    # Manifest must exist so a re-run can recover; create a skeleton if needed.
+    if [[ ! -f "$manifest_file" ]]; then
+        jq -n --arg name "$vm_name" '{name:$name, volumes: []}' > "$manifest_file"
+    fi
+
+    # 1. Graceful shutdown, then poll for 'off'; hard poweroff as a fallback.
+    gum_spin_wait "Shutting down $vm_name gracefully..." hcloud server shutdown "$vm_name"
+    if ! wait_for_server_status "off" 90; then
+        gum_warning "$vm_name did not power off within 90s; forcing a hard poweroff."
+        gum_spin_wait "Hard poweroff..." hcloud server poweroff "$vm_name"
+        if ! wait_for_server_status "off" 60; then
+            gum_error "$vm_name is still not 'off' after a hard poweroff. Refusing to snapshot an inconsistent disk. Investigate in the Hetzner console."
+            exit 1
+        fi
+    fi
+    gum_success "$vm_name is powered off."
+
+    # 2. Record attached volumes before deletion.
+    local volumes_json
+    volumes_json=$(printf '%s' "$json" | jq -c '.volumes // []')
+    manifest_set '.volumes = $v' --argjson v "$volumes_json"
+
+    # 3. Snapshot.
+    local snap_desc
+    snap_desc="${vm_name}-snap-$(date +%Y%m%d%H%M%S)"
+    gum_spin_wait "Creating snapshot $snap_desc..." \
+        hcloud server create-image "$vm_name" \
+            --type snapshot \
+            --description "$snap_desc" \
+            --label managed-by=hetzner-vm \
+            --label "hetzner-vm=${vm_name}"
+
+    local snap_id
+    snap_id=$(hcloud image list -o json --type snapshot -l "hetzner-vm=${vm_name}" 2>/dev/null \
+        | jq -r --arg d "$snap_desc" '[.[] | select(.description==$d)] | sort_by(.created) | last | .id // empty' 2>/dev/null || true)
+    if [[ -z "$snap_id" ]]; then
+        gum_error "Snapshot was requested but could not be found by description '$snap_desc'. Check 'hcloud image list --type snapshot' and re-run archive."
+        exit 1
+    fi
+    manifest_set '.archive.snapshotId = ($id|tonumber) | .archive.snapshotDescription = $d' \
+        --arg id "$snap_id" --arg d "$snap_desc"
+
+    gum_info "Waiting for snapshot $snap_id to become available..."
+    if ! wait_for_image_available "$snap_id" 1800; then
+        gum_error "Snapshot $snap_id did not become 'available' within 30 minutes. The manifest records it; re-run 'hetzner-vm archive $vm_name' once it finishes."
+        exit 1
+    fi
+
+    local image_size
+    image_size=$(hcloud image describe "$snap_id" -o json 2>/dev/null | jq -r '.image_size // empty' 2>/dev/null || true)
+    manifest_set '.archive.imageSizeGb = ($s|tonumber)' --arg s "${image_size:-0}"
+    gum_success "Snapshot $snap_id available (${image_size:-?} GB)."
+
+    # 4. Verify before any destructive step.
+    verify_vm
+
+    # 5. Prune older snapshots for this name (keep the one we just verified).
+    prune_previous_snapshots "$snap_id"
+
+    # 6. Detach recorded volumes.
+    local vol_id
+    while IFS= read -r vol_id; do
+        [[ -z "$vol_id" ]] && continue
+        gum_spin_wait "Detaching volume $vol_id..." hcloud volume detach "$vol_id"
+        gum_success "Volume $vol_id detached."
+    done < <(printf '%s' "$volumes_json" | jq -r '.[]' 2>/dev/null || true)
+
+    # 7. Delete the server (compute billing stops here).
+    if gum_confirm "Archive verified. Delete server $vm_name now? (The snapshot is kept as the restore point.)"; then
+        gum_spin_wait "Deleting server $vm_name..." hcloud server delete "$vm_name"
+        gum_success "Server $vm_name deleted."
+    else
+        gum_dim "Server deletion skipped. The server still exists and is still billing compute."
+    fi
+
+    gum_box_success "Archive complete for $vm_name."
+}
+
+# ── restore ───────────────────────────────────────────────────────────────
+restore_vm() {
+    if [[ ! -f "$manifest_file" ]]; then
+        gum_error "No manifest found for '$vm_name' ($manifest_file). Use 'hetzner-vm create $vm_name' for a brand-new box."
+        exit 1
+    fi
+    local snap_id
+    snap_id="$(manifest_get '.archive.snapshotId')"
+    if [[ -z "$snap_id" ]]; then
+        gum_error "Manifest for '$vm_name' has no snapshot to restore from. Run 'hetzner-vm archive $vm_name' first."
+        exit 1
+    fi
+    if name_taken; then
+        gum_error "A server named '$vm_name' already exists. Delete or rename it before restoring."
+        exit 1
+    fi
+
+    local type location sshKey firewall
+    type="$(manifest_get '.type')";       type="${type:-$VM_TYPE}"
+    location="$(manifest_get '.location')"; location="${location:-$VM_LOCATION}"
+    sshKey="$(manifest_get '.sshKey')";   sshKey="${sshKey:-$VM_SSH_KEY}"
+    firewall="$(manifest_get '.firewall')"; firewall="${firewall:-$FIREWALL}"
+
+    gum_info "Restoring $vm_name from snapshot $snap_id ($type @ $location)"
+
+    gum_spin_wait "Creating server from snapshot..." \
+        hcloud server create \
+            --name "$vm_name" \
+            --type "$type" \
+            --location "$location" \
+            --image "$snap_id" \
+            --ssh-key "$sshKey" \
+            --firewall "$firewall" \
+            --label managed-by=hetzner-vm \
+            --label "hetzner-vm=${vm_name}"
+
+    # Reattach recorded volumes.
+    local vol_id
+    while IFS= read -r vol_id; do
+        [[ -z "$vol_id" ]] && continue
+        gum_spin_wait "Reattaching volume $vol_id..." \
+            hcloud volume attach --volume "$vol_id" --server "$vm_name" --automount
+        gum_success "Volume $vol_id reattached."
+    done < <(manifest_get '.volumes[]')
+
+    if ! wait_for_server_status "running" 180; then
+        gum_error "Restored server '$vm_name' did not reach status 'running' within 3 minutes. Check the Hetzner console."
+        exit 1
+    fi
+
+    local ip
+    ip="$(server_ip)"
+    if [[ -z "$ip" ]]; then
+        gum_error "Restored server '$vm_name' has no public IPv4 address."
+        exit 1
+    fi
+    ssh-keygen -R "$ip" >/dev/null 2>&1 || true
+    gum_dim "Removed any stale SSH host key for $ip."
+
+    gum_info "Waiting for SSH on $ip ..."
+    if ! wait_for_ssh "$ip" 180; then
+        gum_error "SSH on $ip did not accept connections within 3 minutes. Try 'hetzner-vm ssh $vm_name' shortly."
+        exit 1
+    fi
+
+    manifest_set '.ipv4 = $ip' --arg ip "$ip"
+    gum_box_success "Restored $vm_name at $ip"
+    echo "Connect with:  hetzner-vm ssh $vm_name"
+}
+
+# ── status ────────────────────────────────────────────────────────────────
+status_vm() {
+    gum_info "Checking status for: $vm_name"
+    local json
+    json="$(managed_server_json)"
+
+    if [[ -n "$json" ]]; then
+        local st type location ip
+        st=$(printf '%s' "$json" | jq -r '.status // "unknown"')
+        type=$(printf '%s' "$json" | jq -r '.server_type.name // "unknown"')
+        location=$(printf '%s' "$json" | jq -r '.datacenter.location.name // "unknown"')
+        ip=$(printf '%s' "$json" | jq -r '.public_net.ipv4.ip // "none"')
+
+        local prices hourly monthly
+        prices=$(hcloud server-type describe "$type" -o json 2>/dev/null \
+            | jq -r --arg loc "$location" '.prices[] | select(.location==$loc) | "\(.price_hourly.net) \(.price_monthly.net)"' 2>/dev/null || true)
+        hourly="${prices%% *}"
+        monthly="${prices##* }"
+
+        gum_box_success "Running"
+        echo "Name:      $vm_name"
+        echo "Status:    $st"
+        echo "Type:      $type"
+        echo "Location:  $location"
+        echo "IP:        $ip"
+        if [[ -n "$prices" ]]; then
+            printf 'Price:     EUR %s/hour  (EUR %s/month)\n' \
+                "$(printf '%.4f' "$hourly")" "$(printf '%.2f' "$monthly")"
+        else
+            gum_warning "Could not read the live price for $type @ $location from the Hetzner API."
+        fi
+        return 0
+    fi
+
+    if [[ -f "$manifest_file" ]]; then
+        local snap_id
+        snap_id="$(manifest_get '.archive.snapshotId')"
+        if [[ -n "$snap_id" ]]; then
+            local size est
+            size="$(manifest_get '.archive.imageSizeGb')"
+            size="${size:-0}"
+            est=$(awk -v s="$size" -v r="$SNAPSHOT_EUR_PER_GB_MONTH" 'BEGIN{printf "%.2f", s*r}')
+            gum_box "Archived"
+            echo "Name:           $vm_name"
+            echo "Snapshot id:    $snap_id"
+            printf 'Snapshot size:  %s GB\n' "$size"
+            printf 'Storage cost:   EUR %s/month  (%s GB x EUR %s/GB/month)\n' \
+                "$est" "$size" "$SNAPSHOT_EUR_PER_GB_MONTH"
+            echo "Restore with:   hetzner-vm restore $vm_name"
+            return 0
+        fi
+        gum_error "A manifest exists for '$vm_name' but it records no snapshot. The box is neither running nor archived. Run 'hetzner-vm archive $vm_name' or delete the manifest."
+        exit 1
+    fi
+
+    gum_error "No running server and no archive manifest for '$vm_name'. Nothing exists under this name."
+    exit 1
+}
+
+# ── ssh ───────────────────────────────────────────────────────────────────
+ssh_vm() {
+    local ip
+    ip="$(server_ip)"
+    if [[ -z "$ip" ]]; then
+        gum_error "No running server named '$vm_name' found (or it has no public IP). Run 'hetzner-vm status $vm_name' to check, or 'hetzner-vm restore $vm_name'."
+        exit 1
+    fi
+    exec ssh -o StrictHostKeyChecking=accept-new "root@${ip}" "$@"
+}
+
+# ── Dispatch ──────────────────────────────────────────────────────────────
+ensure_hcloud
+
+case "$command" in
+    create)  create_vm ;;
+    archive) archive_vm ;;
+    restore) restore_vm ;;
+    status)  status_vm ;;
+    verify)  verify_vm ;;
+    ssh)     shift 2; ssh_vm "$@" ;;
+    *)
+        gum_error "Unknown command: $command"
+        usage
+        exit 1
+        ;;
+esac
