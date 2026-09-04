@@ -15,11 +15,19 @@ cd "$(dirname "$0")"
 source "./install/install_functions.sh"
 source "./shell/gum_utils.sh"
 
+# Prepend user bin dirs (whether or not they exist yet) so a re-run finds tools
+# installed on a previous pass instead of rebuilding them.
+bootstrap_path
+
 # auto-answer dpkg/apt prompts during unattended Linux bootstraps
 [[ "$OS_TYPE" != "mac" ]] && export DEBIAN_FRONTEND=noninteractive
 # sudo's env_reset strips DEBIAN_FRONTEND from every later apt call, so persist
 # the choice in debconf itself, which survives the reset
 [[ "$OS_TYPE" != "mac" ]] && echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
+
+# Register every third-party apt repo once and run a single apt-get update
+# (no-op on macOS).
+ensure_apt_repos
 
 # install zsh (homebrew is macOS-only)
 if [[ "$OS_TYPE" == "mac" ]]; then
@@ -58,11 +66,12 @@ install_if_missing bfs install_bfs # Breadth-first search for filesystem travers
 install_if_missing eza install_eza # Modern replacement for ls with color and git integration
 install_if_missing fzf install_fzf # Command-line fuzzy finder for files, history, and more
 install_if_missing cargo install_cargo # Rust package manager and build system
+install_if_missing cargo-binstall install_cargo_binstall # Prebuilt Rust binary installer (avoids compiling from source)
 install_if_missing sccache install_sccache # Shared compilation cache wired into ~/.cargo/config.toml
 install_if_missing uv install_uv # Python package manager (must be before uvx_tools)
 install_if_missing tldr install_tealdeer # Simplified and community-driven man pages
 install_if_missing hx install_helix # Modern terminal-based text editor
-install_if_missing glow install_glow # Markdown terminal viewer (used by mutt email rendering)
+install_if_missing glow install_glow # Markdown terminal viewer
 install_if_missing mdterm install_mdterm # Markdown terminal viewer with style (fzf-preview, g alias)
 install_if_missing lazygit install_lazygit # Terminal UI for git commands
 install_if_missing lazydocker install_lazydocker # Terminal UI for managing Docker containers
@@ -91,7 +100,6 @@ install_if_missing "${OS_CLIPBOARD:-xsel}" install_xsel   # Clipboard for tmux (
 install_if_missing uwu-cli install_uwu # uwu-cli for terminal UI
 install_if_missing codex install_codex # OpenAI Codex CLI
 install_if_missing opencode install_opencode # OpenCode AI coding TUI
-# install_if_missing watchexec install_cargo_tools # Watchexec CLI for file watching
 
 # install tools that depend on uv (must be after uv installation)
 install_if_missing rich install_rich_cli # Rich CLI for terminal output
@@ -120,9 +128,6 @@ install_if_missing taplo install_taplo_cli # TOML LSP and formatter
 
 # update helix grammars
 update_helix_grammars
-
-# install email client
-install_if_missing neomutt install_neomutt # NeoMutt email client with isync, msmtp, notmuch
 
 if [[ "$OS_TYPE" == "mac" ]]; then
     gum_info "Setup agent toggle window (TMUX REQUIRED):"
