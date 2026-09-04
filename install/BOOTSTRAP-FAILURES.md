@@ -203,6 +203,23 @@ Rules for the fix, not the workaround:
   rather than a login shell that loads prezto's completion init, which also
   aborts without a terminal.
 
+### 12. Found by CI: vendor install scripts fail on anonymous GitHub API (2026-09-04)
+
+- **Symptom:** macOS CI first run died in `install_opencode` with the vendor
+  script's own message `Failed to fetch version information`, seconds after
+  the neighbouring installers succeeded. The previous run on the same image
+  had passed that step.
+- **Cause:** `curl | bash` vendor installers look up their latest release
+  through the GitHub API. From a shared runner IP the anonymous limit is hit
+  quickly. The workflow exported `GH_TOKEN`, but vendor scripts look for
+  `GITHUB_TOKEN`.
+- **Fix:** the workflow exports both names; every plain `curl <url> | bash`
+  in the installer goes through `run_remote_installer`, which retries three
+  times with a pause and then fails loudly naming the URL. A retry on a
+  network fetch is the one place a bounded retry is the correct behaviour,
+  because the failure is transient by nature and the final state is still a
+  loud error, never a silent skip.
+
 ## Verified unattended run
 
 Re-verify after any change to `setup.sh` or `install/install_functions.sh`

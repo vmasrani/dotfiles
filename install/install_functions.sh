@@ -21,6 +21,24 @@ apt_install() {
 	sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
 }
 
+# Vendor "curl | bash" installers fetch release metadata over the network and
+# fail transiently on shared CI runner IPs; retry a bounded number of times,
+# then fail loudly naming the URL.
+run_remote_installer() {
+	local url="$1"
+	shift
+	local attempt
+	for attempt in 1 2 3; do
+		if curl -fsSL "$url" | bash -s -- "$@"; then
+			return 0
+		fi
+		gum_warning "Installer from $url failed (attempt $attempt of 3); retrying in 10 seconds..."
+		sleep 10
+	done
+	gum_error "Installer from $url failed 3 times. Check network access and the URL."
+	return 1
+}
+
 install_on_brew_or_mac() {
 	local linux_package=$1
 	local mac_package=${2:-$1} # Use first arg if second not provided
@@ -692,7 +710,7 @@ install_sccache() {
 }
 
 install_uv() {
-	curl -LsSf https://astral.sh/uv/install.sh | sh
+	run_remote_installer https://astral.sh/uv/install.sh
 	export PATH="$HOME/.local/bin:$PATH"
 }
 
@@ -833,7 +851,7 @@ install_bats() {
 
 install_claude_code_cli() {
 	# Install via npm
-	curl -fsSL https://claude.ai/install.sh | bash
+	run_remote_installer https://claude.ai/install.sh
 }
 
 install_chafa() {
@@ -1085,7 +1103,7 @@ install_bun() {
 		brew tap oven-sh/bun
 		brew install bun
 	else
-		curl -fsSL https://bun.sh/install | bash
+		run_remote_installer https://bun.sh/install
 		export PATH="$HOME/.bun/bin:$PATH"
 	fi
 	gum_success "Bun installed successfully."
@@ -1193,7 +1211,7 @@ install_codex() {
 
 install_opencode() {
 	gum_info "Installing OpenCode AI coding TUI..."
-	curl -fsSL https://opencode.ai/install | bash
+	run_remote_installer https://opencode.ai/install
 	gum_success "OpenCode installed successfully."
 }
 
@@ -1266,6 +1284,6 @@ install_golangci_lint() {
 		brew install golangci-lint
 	else
 		# Official install script fetches a prebuilt binary (no go-build from source)
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$HOME/.local/bin"
+		run_remote_installer https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh -b "$HOME/.local/bin"
 	fi
 }
