@@ -17,6 +17,9 @@ source "./shell/gum_utils.sh"
 
 # auto-answer dpkg/apt prompts during unattended Linux bootstraps
 [[ "$OS_TYPE" != "mac" ]] && export DEBIAN_FRONTEND=noninteractive
+# sudo's env_reset strips DEBIAN_FRONTEND from every later apt call, so persist
+# the choice in debconf itself, which survives the reset
+[[ "$OS_TYPE" != "mac" ]] && echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
 
 # install zsh (homebrew is macOS-only)
 if [[ "$OS_TYPE" == "mac" ]]; then

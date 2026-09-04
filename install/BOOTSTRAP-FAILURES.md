@@ -60,3 +60,38 @@ Rules for the fix, not the workaround:
   goes through that helper (bfs, csvkit, isync, msmtp, neomutt, notmuch,
   sccache, shellcheck, urlscan, unzip) was checked against apt on Ubuntu 24.04
   and resolves under the same name.
+
+### 4. Shell startup errors on env files that may not exist (2026-09-04)
+
+- **Symptom:** not fatal, but every zsh start on the fresh box printed
+  `.zshenv:32: no such file or directory: /root/.cargo/env` before Rust was
+  installed and `.zshrc:113: no such file or directory: /root/.local/bin/env`
+  afterwards. The second one persists because uv on this box was not installed
+  by the standalone installer that writes that file.
+- **Cause:** both files were sourced unconditionally.
+- **Fix:** guard each with `[[ -f ... ]] &&`, the pattern `.zshrc` already used
+  for cargo on line 89.
+
+### 5. debconf dialog hangs the run because sudo drops the env (2026-09-04)
+
+- **Symptom:** a from-scratch `hetzner-vm create` never finished. On the box,
+  `sudo apt -y install msmtp` had been sitting for 17 minutes on a whiptail
+  dialog asking about AppArmor support, with `cloud-init status` still
+  "running". Entry 1's export of `DEBIAN_FRONTEND=noninteractive` was in place
+  and did nothing.
+- **Cause:** every apt call runs under `sudo`, and Ubuntu's default sudoers has
+  `env_reset`, which strips `DEBIAN_FRONTEND` before apt sees it. Verified with
+  `sudo env | grep -c DEBIAN_FRONTEND` printing 0. Entry 1 only covered
+  prompts from apt itself, not from package configuration scripts.
+- **Fix:** two layers. `setup.sh` persists the choice inside debconf with
+  `debconf-set-selections` so it survives any env reset, and every apt install
+  in `install/install_functions.sh` goes through one `apt_install` helper that
+  passes `DEBIAN_FRONTEND=noninteractive` through `sudo env` explicitly.
+
+## Verified unattended run
+
+Re-verify after any change to `setup.sh` or `install/install_functions.sh`
+that touches Linux: `hetzner-vm create <name>` on a fresh box must print its
+success box, which only happens when it reads exit 0 from
+`/root/dotfiles-setup.exit`. The proof run for the entries above is recorded
+at the bottom of this file.

@@ -15,12 +15,18 @@ else
 	exit 1
 fi
 
+# apt under sudo loses DEBIAN_FRONTEND (env_reset); pass it explicitly so no
+# package can open a debconf dialog during an unattended bootstrap.
+apt_install() {
+	sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
+}
+
 install_on_brew_or_mac() {
 	local linux_package=$1
 	local mac_package=${2:-$1} # Use first arg if second not provided
 
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt -y install "$linux_package"
+		apt_install "$linux_package"
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install "$mac_package"
 	fi
@@ -393,8 +399,8 @@ install_zsh() {
 				apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
 				chsh -s "$(which zsh)"
 			else
-				sudo apt update && sudo apt upgrade -y
-				sudo apt install -y zsh build-essential vim libjpeg-dev zlib1g-dev
+				sudo env DEBIAN_FRONTEND=noninteractive apt update && sudo env DEBIAN_FRONTEND=noninteractive apt upgrade -y
+				apt_install zsh build-essential vim libjpeg-dev zlib1g-dev
 				sudo chsh -s "$(which zsh)" "$USER"
 			fi
 		elif [[ "$OS_TYPE" == "mac" ]]; then
@@ -463,10 +469,10 @@ install_npm() {
 
 install_go() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y software-properties-common
-		sudo add-apt-repository -y ppa:longsleep/golang-backports
-		sudo apt update
-		sudo apt install golang-go -y
+		apt_install software-properties-common
+		sudo env DEBIAN_FRONTEND=noninteractive add-apt-repository -y ppa:longsleep/golang-backports
+		sudo env DEBIAN_FRONTEND=noninteractive apt update
+		apt_install golang-go
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install go
 	fi
@@ -483,9 +489,9 @@ install_helix() {
 		if command_exists snap; then
 			snap install --classic helix
 		else
-			sudo add-apt-repository -y ppa:maveonair/helix-editor
-			sudo apt update
-			sudo apt install -y helix
+			sudo env DEBIAN_FRONTEND=noninteractive add-apt-repository -y ppa:maveonair/helix-editor
+			sudo env DEBIAN_FRONTEND=noninteractive apt update
+			apt_install helix
 		fi
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install helix
@@ -537,7 +543,7 @@ install_btop() {
 		if command_exists snap; then
 			sudo snap install btop
 		else
-			sudo apt install -y btop
+			apt_install btop
 		fi
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install btop
@@ -582,7 +588,7 @@ install_claude_code_cli() {
 
 install_chafa() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install chafa -y
+		apt_install chafa
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install chafa
 	fi
@@ -592,7 +598,7 @@ _install_gum_charm_repo() {
 	sudo mkdir -p /etc/apt/keyrings
 	curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
 	echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
-	sudo apt update && sudo apt install -y gum
+	sudo env DEBIAN_FRONTEND=noninteractive apt update && apt_install gum
 }
 
 install_gum() {
@@ -627,14 +633,14 @@ install_csvcut() {
 
 install_xclip() {
 	[[ "$OS_TYPE" == "mac" ]] && return 0
-	sudo apt install -y xclip
+	apt_install xclip
 	gum_warning "NOTE: For remote tmux clipboard functionality, ensure X11 forwarding is enabled in your SSH config:"
 	gum_warning "  Add 'ForwardX11 yes' to your ~/.ssh/config for the relevant hosts"
 }
 
 install_xsel() {
 	[[ "$OS_TYPE" == "mac" ]] && return 0
-	sudo apt install -y xsel
+	apt_install xsel
 }
 
 install_nbpreview() {
@@ -643,7 +649,7 @@ install_nbpreview() {
 
 install_tmux() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y tmux
+		apt_install tmux
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install tmux
 	fi
@@ -652,7 +658,7 @@ install_tmux() {
 
 install_rg() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y ripgrep
+		apt_install ripgrep
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install ripgrep
 	fi
@@ -661,7 +667,7 @@ install_rg() {
 
 install_fd() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y fd-find
+		apt_install fd-find
 		# fd-find installs as fdfind on Debian/Ubuntu; symlink to fd
 		ln -sf "$(command -v fdfind)" "$HOME/bin/fd"
 	elif [[ "$OS_TYPE" == "mac" ]]; then
@@ -672,7 +678,7 @@ install_fd() {
 
 install_jq() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
-		sudo apt install -y jq
+		apt_install jq
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install jq
 	fi
@@ -773,7 +779,7 @@ install_meslo_font() {
 		if [[ "$OS_TYPE" == "mac" ]]; then
 			brew install --cask font-meslo-lg-nerd-font
 		else
-			sudo apt install -y fontconfig
+			apt_install fontconfig
 			# Direct download method for Linux
 			mkdir -p "$HOME/.local/share/fonts"
 			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
@@ -1057,8 +1063,8 @@ install_gh() {
 		sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
 		echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
 			| sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
-		sudo apt update
-		sudo apt install -y gh
+		sudo env DEBIAN_FRONTEND=noninteractive apt update
+		apt_install gh
 	fi
 	gum_success "gh installed successfully."
 }
