@@ -23,16 +23,27 @@ providers:
     - google
     - mojeek
     - public
+enabledProviders:
+  - claude
 modelRoles:
-  default: openai-codex/gpt-5.6-sol:high
-  plan: anthropic/claude-fable-5
-  task: anthropic/claude-opus-4-8
+  plan: anthropic/claude-fable-5-1:high
+  task: openai-codex/gpt-5.6-terra
+  default: anthropic/claude-fable-5-1:high
 symbolPreset: nerd
 theme:
-  dark: titanium
+  dark: obsidian
   light: light
 setupVersion: 2
 dev:
   autoqaConsent: granted
 composer:
-  shape: claude
+  shape: borderless
+task:
+  agentModelOverrides:
+    task: openai-codex/gpt-5.6-terra
+    sonic: openai-codex/gpt-5.6-terra
+    scout: anthropic/claude-sonnet-5
+    reviewer: openai-codex/gpt-5.6-terra
+    security-reviewer: openai-codex/gpt-5.6-terra
+autolearn:
+  enabled: true
