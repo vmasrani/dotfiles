@@ -132,7 +132,11 @@ install-hooks:
 # none add `--features`/`--release`/`--target`. A second tuple recompiles the
 # whole workspace a second time. Check with `rg -n -- '--features' justfile`
 # before adding one.
-ci-fast: (_require-cmd "cargo") fmt-check lint _test-binary-layout test build
+# `build` is deliberately not in this chain: clippy-driver produces artifacts
+# with a different fingerprint than rustc, so a trailing `cargo build
+# --workspace` here recompiles the whole graph a second time for nothing that
+# lint or test consumes. Run `just build` by hand when you need dev binaries.
+ci-fast: (_require-cmd "cargo") fmt-check lint _test-binary-layout test
 
 # Grow this as real integration/e2e suites appear.
 ci-deep: ci-fast

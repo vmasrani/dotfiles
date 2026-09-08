@@ -5,6 +5,43 @@ riding along on every Python/frontend session; rewritten for the `testq` → `qu
 (2026-08-03). The four rules that prevent real mistakes stayed in `CLAUDE.md`; everything
 below is lookup material — read it when you actually need it.
 
+## This machine (Linux VM — verified 2026-07-24)
+
+64 threads (2×16-core Xeon Platinum 8280L, 2 threads/core), **503 GB RAM**, ext4 on `/` (497 G)
+and `/data` (1 T). Present: `cargo`, `clippy`, `miri`, `rustfmt`, `rust-analyzer`, `just`,
+`tsp`/`queue`, `cargo-nextest` (0.9.143) and `sccache` (wired as `rustc-wrapper`) — both verified
+2026-09-03; earlier notes saying they were missing are obsolete. Everything below marked *M4* was
+measured on the macOS laptop and has **not** been reproduced here — the hardware gap is large
+enough to invalidate the reasoning, not just the constants.
+
+- **nextest is the runner here.** `queue cargo nextest run --workspace`; fail-fast is off via the
+  seeded `.config/nextest.toml`; `NEXTEST_TEST_THREADS` = cpus / `QUEUE_SLOTS` (64 / 3 = 21, from
+  `.zshenv`) caps each job so three slots never oversubscribe the box. `cargo nextest
+  list|--version|show-config` and `cargo test --list` are read-only and run unqueued.
+- **sccache is live, so the M4 sccache bullets apply.** It still never shares across worktrees:
+  sccache hashes the compile's `cwd` (`SCCACHE_BASEDIRS` covers only the C/C++ path, issue #2652,
+  Rust fix unmerged, PR #2678). `SCCACHE_DIR` falls back to `~/.cache/sccache` on Linux
+  (`.aliases-and-envs.zsh`).
+- **No copy-on-write.** `/`, `/home` and `/data` are ext4; `cp --reflink=always` fails with
+  `Operation not supported`, and macOS `cp -c -R` doesn't exist in GNU coreutils. Seeding a slot
+  from a warm `target/` is a full multi-GB byte copy here, not 0.59 s at zero bytes — let slots
+  build cold. (The M4 measurement showed only ~12 s of payoff even *with* free cloning, so
+  nothing is lost.)
+- **`cargo-slot` needs `CARGO_SLOT_ROOT=/data/.cargo-targets`** exported — its built-in default
+  `/Volumes/external/.cargo-targets` does not exist here.
+- **Cheap jobs overlapping a suite are genuinely free here.** On the M4 a concurrent `cargo check`
+  really did take cores from a suite running ~9x parallel on 10 cores; at 64 threads that suite
+  leaves ~55 idle.
+- **Build-time numbers do not transfer and have not been re-measured.** Reference only: 573-crate
+  cold build of parot-core ≈58 s on the M4 (59.8 / 58 / 58). This Xeon has many more cores at a
+  much lower clock, so the figure here could land either side. Measure once (`time cargo build
+  --workspace`) and write it down instead of reasoning from the M4 value.
+- **`QUEUE_SLOTS=3` here since 2026-09-02 (`.zshenv`), still unmeasured.** The old weighted-budget
+  reasoning (10 cores / 16 GB, 1 GB bench peaking ~7.5 GB RSS) doesn't describe this machine — 503 GB
+  makes even several concurrent suites a small fraction of memory, and `NEXTEST_TEST_THREADS=21`
+  keeps 3 slots inside 64 threads. That doesn't make raising it further safe: suite peak RSS has
+  never been recorded on *either* machine. Don't change it without measuring.
+
 ## Semantics
 
 `queue X` behaves exactly like `X` — it blocks until a slot frees, then runs in-process: live streamed stdout/stderr (kept separate), the command's own exit code, inherited cwd/env/stdin. It is a queue, not a sandbox. While waiting, a heartbeat line on stderr (every `QUEUE_HEARTBEAT` seconds, default 30) names the job blocking you and estimates the remaining wait from that command's median runtime — without it the wrapper goes silent for the length of the queue, which reads as a hang and provokes callers into re-running the job.
@@ -64,6 +101,6 @@ Which means the history has to actually accumulate, so a job's duration key is `
 Measured, closed questions:
 
 - clippy does NOT thrash build artifacts
-- sccache never shares across worktrees (upstream gap)
-- CoW-seeding a target dir saves only ~12 s — not worth orchestration
+- sccache never shares across worktrees (upstream gap) — *moot on this box, sccache isn't installed*
+- CoW-seeding a target dir saves only ~12 s — not worth orchestration; *and it is impossible on this box, ext4 has no reflink*
 - Agents share one warm `target/` per worktree — `cargo-slot` only matters if you raise the slot count
