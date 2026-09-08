@@ -52,7 +52,13 @@ _require-file +PATHS:
 # Fails loud when a workspace crate violates the one-integration-harness-per-
 # crate rule (rust-gates: test-binary layout) -- more than one flat
 # `tests/*.rs` file, or a flat file alongside a `tests/<suite>/main.rs`
-# harness, unless the crate's Cargo.toml sets `autotests = false`.
+# harness, unless the crate's Cargo.toml sets `autotests = false`. For a
+# crate that sets `autotests = false`, every top-level `tests/*.rs` file must
+# still be reachable -- either a `[[test]] path = "tests/<name>.rs"` target,
+# or pulled in as `mod <stem>;` from a harness (`tests/main.rs` or
+# `tests/<suite>/main.rs`) -- else it silently never builds or runs at all
+# ("skipped" indistinguishable from "passed", the exact failure this gate
+# exists to prevent).
 _test-binary-layout: (_require-cmd "jq" "cargo")
     #!/usr/bin/env bash
     set -euo pipefail
@@ -66,6 +72,22 @@ _test-binary-layout: (_require-cmd "jq" "cargo")
         tests_dir="$dir/tests"
         [ -d "$tests_dir" ] || continue
         if grep -qE '^\s*autotests\s*=\s*false' "$manifest"; then
+            # autotests OFF: every top-level tests/*.rs must be reachable, else it
+            # never builds. Reachable == a `[[test]] path` target OR pulled in as
+            # `mod <stem>;` from a harness (tests/main.rs or tests/<suite>/main.rs).
+            harness_mods=$(cat "$tests_dir"/main.rs "$tests_dir"/*/main.rs 2>/dev/null || true)
+            while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                stem=$(basename "$f" .rs)
+                if grep -qE "path[[:space:]]*=[[:space:]]*\"tests/${stem}\.rs\"" "$manifest"; then
+                    continue
+                fi
+                if printf '%s\n' "$harness_mods" | grep -qE "^[[:space:]]*mod[[:space:]]+${stem}[[:space:]]*;"; then
+                    continue
+                fi
+                printf '%s: tests/%s.rs is not compiled by any [[test]] target (add `mod %s;` to a harness or a [[test]] path=)\n' "$crate" "$stem" "$stem"
+                violations=$((violations + 1))
+            done < <(find "$tests_dir" -maxdepth 1 -name '*.rs' -type f)
             continue
         fi
         flat_count=$(find "$tests_dir" -maxdepth 1 -name '*.rs' -type f | wc -l | tr -d ' ')
