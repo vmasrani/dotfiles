@@ -108,5 +108,27 @@ Terse, to the user:
 - issues labeled `fast-lane`, and how many stayed strict
 - the `/start-task` batch commands, ready to run
 
+Then, ALWAYS, a **"What's left"** section: the full inventory of every issue
+still open after the pass — not just the ones this pass touched. The user
+reads this to know the state of the backlog, so it must be complete and it
+must group by what happens next, not by number:
+
+- **Ready to start** — `fast-lane` batches (the commands above) and any strict
+  issue that is fully specified and unblocked. One line each: number, a
+  plain-language name, and why it is in this bucket.
+- **Needs a decision from the user** — issues whose next step is a choice
+  only the maintainer can make (cost, scope, API shape). Name the decision
+  and give a recommendation.
+- **Blocked / waiting on something external** — issues gated on another repo,
+  a measurement, or an upstream verdict. Name the gate and how to check it.
+- **Parked / experimental** — explicitly deferred or "do not start without
+  a go". One line each; do not re-argue them.
+
+Close the section with the non-issue leftovers the pass noticed in passing —
+stale branches and worktrees whose PRs merged, downstream pins that lag
+`dev`, an unmerged integration branch — each with a one-line verdict
+(safe to delete / needs a re-pin / still live). Report these; never act on
+them in this pass.
+
 Never open a branch, never start work, never edit code in this pass. Triage
 that slides into implementation is not a separate act.

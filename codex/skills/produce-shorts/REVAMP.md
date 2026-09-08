@@ -685,7 +685,7 @@ editorial stage still cannot express either structure.
 
 **What the orchestrator presents at gate 1.** The transcripts, not the memo. Concretely, replace
 `editorial.md:49` with: emit `gate1.md` concatenating every candidate's `transcript.md` in the
-editor's ranked order; present that; then AskUserQuestion over the slugs. The selection memo
+editor's ranked order; present that; then use the `ask` tool over the slugs. The selection memo
 survives as an appendix the user may read *after* forming a view, and the rejected list stays —
 it did real work (FINDINGS: gate 1 stopped B-roll spend on 20 rejected candidates).
 

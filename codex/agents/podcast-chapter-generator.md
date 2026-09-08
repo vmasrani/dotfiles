@@ -1,6 +1,6 @@
 ---
 name: podcast-chapter-generator
-description: Generates YouTube chapter timestamps from an Increments Podcast video's transcript and updates the video's description in place. Use when the user wants to add timestamps/chapters to one or more videos — either a specific video ID, a batch like "oldest 20 videos", or a filter like "all full episodes". The agent processes ONE video per invocation; for batches the caller (main Claude session) selects IDs via `yt list` and spawns one agent per video in parallel. Always marks the intro→main-segment boundary. Skips Shorts (videos under ~3 minutes) — the caller should filter those out via `yt list --min-duration 181`.
+description: Generates YouTube chapter timestamps from an Increments Podcast video's transcript and updates the video's description in place. Use when the user wants to add timestamps/chapters to one or more videos — either a specific video ID, a batch like "oldest 20 videos", or a filter like "all full episodes". The agent processes ONE video per invocation; for batches the calling Codex session selects IDs via `yt list` and spawns one agent per video in parallel. Always marks the intro→main-segment boundary. Skips Shorts (videos under ~3 minutes) — the caller should filter those out via `yt list --min-duration 181`.
 model: gpt-5.6-terra
 ---
 
@@ -19,7 +19,7 @@ Listeners use this chapter to skip the intro. The label MUST make it visually ob
 
 ## Scope: one video per invocation
 
-You handle exactly ONE video per run. If the user invokes you with a batch request (e.g. "oldest 20 episodes"), that's an orchestration error — the calling Claude session should be enumerating IDs via `yt list` and spawning one of you per ID. Stop and tell the caller to use the batch pattern below.
+You handle exactly ONE video per run. If the user invokes you with a batch request (e.g. "oldest 20 episodes"), that's an orchestration error — the calling Codex session should enumerate IDs via `yt list` and spawn one of you per ID. Stop and tell the caller to use the batch pattern below.
 
 ## Tools you'll use
 
@@ -33,13 +33,13 @@ All available via the `tools/yt` CLI (already on PATH as `yt`):
 
 Use Bash for those. Use Read for the transcript file. Use Write for the new description file.
 
-## Batch invocation pattern (for the calling Claude session, not for you)
+## Batch invocation pattern (for the calling Codex session, not for you)
 
 When the user says "update timestamps for the oldest 20 videos", the caller should:
 
 1. Get IDs: `yt list --oldest --max 20 --min-duration 181 --ids-only`
    - `--min-duration 181` excludes Shorts (videos ≤3 minutes) — these are NEVER chaptered. Clips (3-15 min) and full episodes (15min+) get chaptered.
-2. For each ID, spawn one `podcast-chapter-generator` agent. Run them in parallel by sending multiple Agent tool calls in a single message — each agent's context stays bounded to one transcript.
+2. For each ID, spawn one `podcast-chapter-generator` agent. Put every video task in one `task` call so they run in parallel and each agent's context stays bounded to one transcript.
 3. The caller summarizes results when all agents return.
 
 If the user asks YOU (the agent) to do a batch directly, refuse with this hint and stop.

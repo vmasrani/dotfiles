@@ -4,7 +4,7 @@
 
 | Entry | Purpose |
 |-------|---------|
-| `SKILL.md` | Skill definition with all 6 phases — the executable workflow invoked by `/create-plan` |
+| `SKILL.md` | Skill definition with all 6 phases — the executable `create-plan` workflow |
 | `spec-template.md` | Markdown template for `.codex/specs/{feature}-spec.md`; Phase 2 reads this before writing specs |
 
 <!-- peek -->
@@ -14,8 +14,8 @@
 - Phases must run sequentially and require user confirmation before advancing — never auto-proceed.
 - Specs are written to `.codex/specs/{feature-name}-spec.md` (relative to the project root), not inside this directory.
 - Phase 3 (test generation) delegates entirely to the `test-generator` agent and expects a `justfile` with `test`, `test-verbose`, and `test-cov` recipes. If the project has no justfile, the agent creates one.
-- Phase 4 launches 2-3 parallel `codebase-researcher` agents via Task tool with `run_in_background=true` — each covers a distinct layer (data, UI, API, etc.).
-- Phase 6 runs `just test` after every subtask to catch regressions incrementally, not just at the end.
+- Phase 4 launches 2–3 parallel `scout` agents in one `task` call, each covering a distinct layer.
+- Phase 6 runs only each subtask's focused tests, then one full gate on the merged result.
 
 ## Gotchas
 

@@ -1,0 +1,38 @@
+providers:
+  webSearchOrder:
+    - codex
+    - perplexity
+    - gemini
+    - anthropic
+    - xai
+    - zai
+    - exa
+    - tinyfish
+    - jina
+    - kagi
+    - tavily
+    - firecrawl
+    - brave
+    - kimi
+    - parallel
+    - synthetic
+    - searxng
+    - startpage
+    - duckduckgo
+    - ecosia
+    - google
+    - mojeek
+    - public
+modelRoles:
+  default: openai-codex/gpt-5.6-sol:high
+  plan: anthropic/claude-fable-5
+  task: anthropic/claude-opus-4-8
+symbolPreset: nerd
+theme:
+  dark: titanium
+  light: light
+setupVersion: 2
+dev:
+  autoqaConsent: granted
+composer:
+  shape: claude

@@ -2,6 +2,7 @@ local
 __pycache__
 **/.credentials.json
 **/.update.lock
+omp/agent/*.lock
 **/logs/
 .claude/
 # Ignore specific subdirectories in maintained_global_claude

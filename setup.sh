@@ -99,7 +99,7 @@ install_if_missing chafa install_chafa # ASCII art image renderer
 install_if_missing "${OS_CLIPBOARD:-xclip}" install_xclip # Clipboard for tmux (xclip on Linux, pbcopy on macOS)
 install_if_missing "${OS_CLIPBOARD:-xsel}" install_xsel   # Clipboard for tmux (xsel on Linux, pbcopy on macOS)
 install_if_missing uwu-cli install_uwu # uwu-cli for terminal UI
-install_if_missing codex install_codex # OpenAI Codex CLI
+ensure_codex # OpenAI Codex CLI; repairs wrappers whose platform binary is missing
 install_if_missing opencode install_opencode # OpenCode AI coding TUI
 
 # install tools that depend on uv (must be after uv installation)

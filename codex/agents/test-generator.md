@@ -20,7 +20,7 @@ Gather test targets in priority order. Stop when you have enough context:
 1. **Spec files:** Glob for `.codex/specs/*-spec.md`. Read matching specs and extract `SC-N:` success criteria. Each SC maps to one or more test cases.
 2. **Plan files:** Glob for `.codex/plans/*-plan.md`. Extract function signatures, file paths, and subtask descriptions.
 3. **Git diff:** Run `git diff --stat` and `git diff` to identify changed/added files. Derive test targets from new functions, classes, or endpoints.
-4. **User interview (fallback):** If none of the above yields test targets, use AskUserQuestion to ask:
+4. **User interview (fallback):** If none of the above yields test targets, use the `ask` tool:
    - What feature or module needs tests?
    - What are the key functions and their expected inputs/outputs?
    - Are there known edge cases?
@@ -88,9 +88,9 @@ test-cov *ARGS:
 **Rust:**
 ```just
 test *ARGS:
-    cargo test {{ARGS}}
+    queue cargo nextest run {{ARGS}}
 test-verbose *ARGS:
-    cargo test -- --nocapture {{ARGS}}
+    queue cargo nextest run --no-capture {{ARGS}}
 ```
 
 **Go:**
