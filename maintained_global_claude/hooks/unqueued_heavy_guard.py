@@ -183,28 +183,47 @@ def _git(cwd, *args, timeout=5):
     return proc.stdout.strip() if proc.returncode == 0 else None
 
 
+_PRE_DEV_RE = re.compile(r"pre-dev\d*")
+
+
+def _pre_dev_branches(cwd):
+    """Local branches matching `^pre-dev[0-9]*$` -- CLAUDE.md's numbered
+    concurrent-wave integration branches (`pre-dev`, `pre-dev2`, `pre-dev3`,
+    ...), each with the same rules. Empty when there are none, no git, or not
+    a repo -- a legitimate absence, not something to raise (fail open)."""
+    out = _git(cwd, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+    if out is None:
+        return []
+    return sorted(name for name in out.splitlines() if _PRE_DEV_RE.fullmatch(name))
+
+
 def pre_dev_offender(tokens, cwd):
-    """Concurrent work = pre-dev integration (CLAUDE.md): while
-    `refs/heads/pre-dev` exists, heavy gates run ONCE, from `pre-dev`, by the
-    orchestrator -- a worker's own `queue` prefix is not an exemption. Returns
-    the offending command name, or None when the rule does not apply here
-    (no cwd, no git, not a repo, no `pre-dev` ref, or already on `pre-dev`)."""
+    """Concurrent work = pre-dev integration (CLAUDE.md): while any local
+    branch matching `^pre-dev[0-9]*$` exists, heavy gates run ONCE, from that
+    integration branch itself, by the orchestrator -- a worker's own `queue`
+    prefix is not an exemption. Returns (offending command name, the
+    integration branches that exist), or None when the rule does not apply
+    here (no cwd, no git, not a repo, no such branch, or already on one)."""
     if not cwd:
         return None
-    if _git(cwd, "rev-parse", "--verify", "--quiet", "refs/heads/pre-dev") is None:
+    branches = _pre_dev_branches(cwd)
+    if not branches:
         return None
     branch = _git(cwd, "rev-parse", "--abbrev-ref", "HEAD")
-    if branch is None or branch == "pre-dev":
+    if branch is None or _PRE_DEV_RE.fullmatch(branch):
         return None
-    return _heavy_ignoring_queue(tokens)
+    offender = _heavy_ignoring_queue(tokens)
+    return (offender, branches) if offender else None
 
 
-def reason_pre_dev(offender):
+def reason_pre_dev(offender, branches):
+    names = ", ".join(branches)
     return (
-        f"pre-dev integration is active: workers never run gates. `{offender}` is denied "
-        f"here even though it looks queued -- `queue` schedules, it does not exempt.\n\n"
-        f"Merge into pre-dev and let the orchestrator run the single `{offender}` from the "
-        f"pre-dev worktree -- never from a worker branch. See CLAUDE.md: "
+        f"pre-dev integration is active ({names}): workers never run gates. `{offender}` is "
+        f"denied here even though it looks queued -- `queue` schedules, it does not exempt.\n\n"
+        f"Merge into the integration branch and let the orchestrator run the single "
+        f"`{offender}` from its worktree -- never from a worker branch. Concurrent waves may "
+        f"be numbered (pre-dev, pre-dev2, ...), each with the same rules. See CLAUDE.md: "
         f'"Concurrent work = pre-dev integration".'
     )
 
@@ -260,15 +279,16 @@ def main():
     except ValueError:
         tokens = None
     if tokens is not None:
-        pd_offender = pre_dev_offender(tokens, data.get("cwd"))
-        if pd_offender:
+        pd_result = pre_dev_offender(tokens, data.get("cwd"))
+        if pd_result:
+            pd_offender, pd_branches = pd_result
             print(
                 json.dumps(
                     {
                         "hookSpecificOutput": {
                             "hookEventName": "PreToolUse",
                             "permissionDecision": "deny",
-                            "permissionDecisionReason": reason_pre_dev(pd_offender),
+                            "permissionDecisionReason": reason_pre_dev(pd_offender, pd_branches),
                         }
                     }
                 )
