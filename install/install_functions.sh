@@ -584,10 +584,6 @@ install_dotfiles() {
 		fi
 		ensure_symlink "$source" "$target" "$force_link"
 
-		# Only chmod +x if it's a file, not a directory
-		if [ -f "$source" ]; then
-			chmod +x "$source"
-		fi
 	done
 
 	# Symlink local (machine-specific, git-ignored) skills into every managed agent skill tree.
