@@ -1,0 +1,60 @@
+{
+  "description": "Safety guards and lifecycle logging for Codex sessions.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 ~/.codex/hooks/bash_footgun_guard.py"
+          },
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 ~/.codex/hooks/unqueued_heavy_guard.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 ~/.codex/hooks/post_tool_use.py"
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 ~/.codex/hooks/test_count_guard.py"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 ~/.codex/hooks/pre_compact.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zsh ~/.codex/hooks/canary_check.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

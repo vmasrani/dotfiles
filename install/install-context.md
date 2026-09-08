@@ -16,9 +16,11 @@
 
 `install_functions.sh` sources `shell/helper_functions.sh` and `shell/gum_utils.sh` at the top — these must exist before this file is usable. It detects `$OS_TYPE` (mac/linux) at load time; all platform branching uses `install_on_brew_or_mac <linux-pkg> [mac-pkg]` where the mac package defaults to the linux package name if omitted.
 
-`install_dotfiles` uses `ensure_symlink source target force_link`. By default, symlinks are skipped if target already exists and is not broken — it does NOT overwrite. The `force_replace_targets` array is the exception: those targets (all `~/.claude/*` and `~/.codex/config.toml`) are always deleted and re-linked, making Claude/Codex config idempotent.
+`install_dotfiles` uses `ensure_symlink source target force_link`. By default, symlinks are skipped if the target already exists and is not broken. The `force_replace_targets` array is the exception: managed Claude, Codex, OMP, and Antigravity config targets are deleted and re-linked, keeping setup idempotent.
 
-One-off scripts (`install_helix_language_servers.sh`, etc.) are NOT called from `setup.sh` — they are standalone scripts invoked manually for specific situations. `install_htop.sh` is the exception: `install_functions.sh` defines a thin `install_htop()` wrapper (`bash install/install_htop.sh`, same delegation idiom as `install_bat`/`install_eza` calling `install_tar.sh`) that `setup.sh` calls via `install_if_missing htop install_htop`.
+One-off scripts (`install_helix_language_servers.sh`, etc.) are NOT called from `setup.sh` — they are standalone scripts invoked manually for specific situations. `install_htop.sh` is the exception: `install_functions.sh` defines a thin `install_htop()` wrapper (`bash install/install_htop.sh`, same delegation idiom as `install_bat`/`install_eza` calling `install_tar.sh`) that `setup.sh` calls via `install_if_missing htop install_htop`. Codex uses `ensure_codex` instead of the generic command-existence check because npm can leave a wrapper whose platform binary is missing.
+
+Only `~/.omp/agent/config.yml` is portable OMP configuration and is linked from `omp/agent/config.yml`. Runtime databases, sessions, logs, caches, auth material, machine install ID, and generated plugin state remain under `~/.omp/`.
 
 ## Gotchas
 
@@ -26,7 +28,7 @@ One-off scripts (`install_helix_language_servers.sh`, etc.) are NOT called from 
 
 `install_htop.sh`'s Linux build-skip check compares `~/bin/htop --version` against `git describe` on the `~/bin/htop_src` checkout — it embeds that describe string via htop's own `configure.ac` (`AC_INIT` joins the release version with `git describe`), so this isn't a guess; it round-trips through what htop itself puts in `--version`. The macOS path is a straight `brew install`/`brew upgrade htop` — never a source build there, since Homebrew's bottle already carries the Darwin backend.
 
-Local (machine-specific) skills in `$dotfiles/local/local_skills/` are symlinked into `maintained_global_claude/skills/` at the end of `install_dotfiles` — they won't appear in `~/.claude/skills/` until `setup.sh` is re-run.
+Local machine-specific skills in `$dotfiles/local/local_skills/` are symlinked into the Claude, Codex, and Antigravity managed skill trees at the end of `install_dotfiles`; rerun `setup.sh` after adding one.
 
 `install_functions.sh` uses `find` (not `fd`) for `chmod +x` on `.sh` files — intentional legacy behavior inside the install system, not a bug to fix.
 

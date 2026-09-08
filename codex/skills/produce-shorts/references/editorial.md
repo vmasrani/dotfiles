@@ -143,7 +143,7 @@ Returns: updated `candidates.yaml` (verdicts filled), one `clips/<slug>/clip.yam
 
 ## Human approval gate 1
 
-Present to the user: the selection memo, per-clip duration, and the rejected-candidate list with reasons (so the human can rescue one). Use AskUserQuestion with multiSelect over the proposed clips when the list is short; otherwise present `candidates.md` and ask which slugs to produce. **Nothing downstream of this gate runs until the user picks clips.** No B-roll research, no licensing, no downloads — those spend money and API quota on clips that may be cut.
+Present to the user: the selection memo, per-clip duration, and the rejected-candidate list with reasons (so the human can rescue one). Use the `ask` tool with multi-select enabled over the proposed clips when the list is short; otherwise present `candidates.md` and ask which slugs to produce. **Nothing downstream of this gate runs until the user picks clips.** No B-roll research, no licensing, no downloads — those spend money and API quota on clips that may be cut.
 
 Record approved slugs by setting `clip.status: approved_edit`; delete or leave `proposed` the rest (leave — they're cheap and the user may return).
 

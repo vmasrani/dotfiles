@@ -13,7 +13,7 @@ WHY THIS EXISTS
     with three failures, a "committed" marker for a commit that never happened.
     A crash teaches you something. These teach you something false.
 
-    `rg -r` in particular is ALREADY documented in ~/.codex/CLAUDE.md and was
+    `rg -r` in particular is ALREADY documented in ~/.codex/AGENTS.md and was
     hit anyway, by an agent that had that text in context. Prose has been tried
     and measured; it failed. Hence a deny.
 

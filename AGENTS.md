@@ -5,7 +5,7 @@
 - `install/` contains installer helpers invoked by `setup.sh`; extend `install_functions.sh` when adding new tool installers.
 - `tools/` houses CLI utilities (bash and python) consumed by agents; keep entry points executable and document usage in inline help.
 - `preview/` scripts render rich previews for fzf/tui flows; update when adding new filetypes.
-- `maintained_global_claude/`, `codex/`, and `vscode/` store agent/editor settings; mirror structural changes in `setup.sh`.
+- `maintained_global_claude/`, `codex/`, `omp/`, and `vscode/` store agent/editor settings; mirror structural changes in `setup.sh`.
 - `local/` is ignored by git and intended for per-machine overrides such as secrets or machine-specific env files.
 
 ## Build, Test, and Development Commands

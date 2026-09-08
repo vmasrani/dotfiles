@@ -13,6 +13,7 @@ false-positive shape that must keep working.
 """
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -248,6 +249,7 @@ def guard(command):
 
 for cmd in [
     "cargo nextest run --workspace",
+    "cargo nextest r --workspace",
     "cargo test",
     "cargo +nightly test -p parot-daemon",
     "cargo bench --bench index",
@@ -267,6 +269,11 @@ for cmd in [
     # the shell consumes the operator before `queue` is exec'd -- the hook sees
     # the raw string, so it is the only component that can catch it at all.
     "queue cd /repo && cargo nextest run",
+    # Full optimized builds/installs cost as much as a suite -- see the guard's
+    # own comment and commit f99394d (2026-08-14): an unqueued release compile
+    # was caught running loose.
+    "cargo build --release",
+    "cargo install --release --path .",
 ]:
     expect(cmd, guard(cmd), "deny")
 
@@ -281,10 +288,17 @@ print("\n== unqueued_heavy_guard: what must NEVER be denied ==")
 for cmd in [
     "cargo check --workspace",
     "cargo clippy --all-targets -- -D warnings",
-    "cargo build --release",
+    "cargo build",
+    "cargo build --workspace",
     "cargo install --path .",
     "just lint",
     "cargo fmt",
+    # `cargo nextest`/`cargo test` read-only subcommands never run tests, so
+    # they never saturate the box -- must stay unqueued and instant.
+    "cargo nextest --version",
+    "cargo nextest list",
+    "cargo nextest show-config",
+    "cargo test --list",
     # already queued -- must never be double-flagged
     "queue cargo nextest run --workspace",
     "queue --solo cargo bench",
@@ -295,6 +309,112 @@ for cmd in [
     "git status",
 ]:
     expect(cmd, guard(cmd), "allow")
+
+print("\n== unqueued_heavy_guard: pre-dev integration (concurrent-work rule) ==")
+# AGENTS.md: "Concurrent work = pre-dev integration" -- while refs/heads/pre-dev
+# exists, heavy gates are denied off pre-dev EVEN WHEN CORRECTLY QUEUED, since
+# the whole point is that workers never run their own gate, queued or not.
+
+
+def guard_cwd(command, cwd):
+    proc = run_hook(
+        "unqueued_heavy_guard.py",
+        {"tool_name": "Bash", "cwd": cwd, "tool_input": {"command": command}},
+    )
+    if proc.returncode != 0:
+        return f"hook errored: {proc.stderr.strip()[:80]}"
+    if not proc.stdout.strip():
+        return "allow"
+    out = json.loads(proc.stdout)["hookSpecificOutput"]
+    return out["permissionDecision"]
+
+
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td) / "repo"
+    root.mkdir()
+    env = {
+        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t.t",
+        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t.t",
+    }
+    sh = lambda *a, cwd=root: subprocess.run(  # noqa: E731
+        a, cwd=str(cwd), capture_output=True, text=True, check=True, env={**os.environ, **env}
+    )
+    sh("git", "init", "-q", "-b", "issue-1")
+    sh("git", "commit", "-q", "--allow-empty", "-m", "init")
+    sh("git", "branch", "pre-dev")
+
+    expect(
+        "issue-1 branch: queue just ci-fast -> deny (pre-dev active)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: just ci-fast -> deny (pre-dev active)",
+        guard_cwd("just ci-fast", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: cargo check -> allow (never a heavy target)",
+        guard_cwd("cargo check", str(root)),
+        "allow",
+    )
+
+    sh("git", "checkout", "-q", "pre-dev")
+    expect(
+        "pre-dev branch: queue just ci-fast -> allow (the one gate)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+
+    sh("git", "checkout", "-q", "issue-1")
+    sh("git", "branch", "-D", "pre-dev")
+    expect(
+        "issue-1 branch after pre-dev deleted: queue just ci-fast -> allow",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+
+    # Numbered integration branches (pre-dev2, pre-dev3, ...) carry the same
+    # rules -- a second concurrent wave gets its own branch and its own gate.
+    sh("git", "branch", "pre-dev2")
+    expect(
+        "issue-1 branch: queue just ci-fast -> deny (pre-dev2 active)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "deny",
+    )
+    sh("git", "checkout", "-q", "pre-dev2")
+    expect(
+        "pre-dev2 branch: queue just ci-fast -> allow (its own one gate)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+
+    sh("git", "checkout", "-q", "issue-1")
+    sh("git", "branch", "pre-dev")
+    expect(
+        "issue-1 branch: queue just ci-fast -> deny (pre-dev and pre-dev2 both active)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "deny",
+    )
+    sh("git", "checkout", "-q", "pre-dev2")
+    expect(
+        "pre-dev2 branch: queue just ci-fast -> allow (pre-dev also active)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+
+    sh("git", "checkout", "-q", "issue-1")
+    sh("git", "branch", "-D", "pre-dev")
+    sh("git", "branch", "-D", "pre-dev2")
+    sh("git", "branch", "pre-development")
+    sh("git", "branch", "pre-dev-foo")
+    expect(
+        "issue-1 branch: queue just ci-fast -> allow (pre-development/pre-dev-foo don't match)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+    sh("git", "branch", "-D", "pre-development")
+    sh("git", "branch", "-D", "pre-dev-foo")
 
 print("\n== hook <-> queue: the names the guard accepts must really exist ==")
 # The guard treats a command as safe when it starts with `queue`. If the tool
