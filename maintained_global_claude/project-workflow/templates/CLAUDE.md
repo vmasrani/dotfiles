@@ -7,10 +7,27 @@ is in `.agent-workflow/AGENT_WORKFLOW.md` and is binding.
 
 1. Confirm access with `gh auth status`; create or claim one issue using `gh issue`.
 2. Create an isolated, issue-named worktree and branch from `dev`.
-3. Make focused changes; run `just ci-fast` from the project root (solo work only).
+3. Make focused changes; run `just ci-fast` from the project root (a genuinely
+   lone issue only — see the default lane below).
 4. Commit focused work, push the branch, and use `gh pr create --base dev`.
 5. Use `gh pr checks`, `gh run watch`, and `gh run view --log-failed` to repair
    failed CI on this PR only. Comment the handoff or result on the PR/issue.
+
+## Default lane: pre-dev integration — one gate per wave
+
+Whenever 2+ issues are in flight in this repo — by 2+ agents at once, or by
+one session working a batch — nobody runs `just ci-fast`, `just test*`,
+`cargo test`, or `cargo nextest run` per issue or per agent. The orchestrator
+branches `pre-dev` from `dev` before dispatch (a second concurrent wave gets
+`pre-dev2`, `pre-dev3`, …; regex `^pre-dev[0-9]*$`); each agent merges its
+finished issue branch into `pre-dev` with `git merge --no-ff` (merge subject
+names the issue); the orchestrator runs ONE `just ci-fast` on `pre-dev`,
+delegates any red back to the owning agent by its merge commit, re-runs once,
+and opens ONE PR `pre-dev → dev` listing every issue. Cleanup after the merge
+is mandatory: delete `pre-dev` and every worker branch (local and remote) and
+remove their worktrees. A hook denies gates off an integration branch while
+one exists. Full mechanics: the "Concurrent lane" in
+`.agent-workflow/AGENT_WORKFLOW.md`.
 
 ## Issue granularity
 

@@ -99,9 +99,12 @@ preserve these requirements.
 
 ## Concurrent lane — pre-dev integration
 
-Whenever 2+ agents work 2+ issues in the same repo at the same time, nobody
-runs gates on their own branch; all work funnels through one `pre-dev` branch
-and ONE gate.
+This is the DEFAULT lane. Whenever 2+ issues are in flight in the same repo —
+by 2+ agents at once, or by one session working a batch of issues — nobody
+runs gates per issue or per agent; all issue changes funnel through one
+`pre-dev` branch, get ONE gate, red is delegated back to the owning agent by
+its per-issue merge commit, and ONE PR lands the wave. One gate per wave,
+never one gate per issue.
 
 1. **Before dispatching**, the orchestrator creates `pre-dev` from `dev`
    (`git branch pre-dev dev`, its own worktree `<repo>-pre-dev`) and pushes it
@@ -140,13 +143,16 @@ and ONE gate.
    `git worktree list` + `git branch -a` that nothing from the wave lingers.
    Only branches whose commits are now on `dev` are deleted — an unmerged
    branch is never deleted, it is reported.
-6. **Solo work is unchanged**: rule 2's one-issue-one-PR default still applies,
-   with `just ci-fast` green before its PR when rule 3's scope requires it.
+6. **A genuinely lone issue** (nothing else in flight in the repo) keeps rule
+   2's one-issue-one-PR path, with `just ci-fast` green before its PR when
+   rule 3's scope requires it. The moment a second issue starts, open
+   `pre-dev` and fold both in.
 
-A mechanical guard enforces this: while `refs/heads/pre-dev` exists, the
-heavy-guard hook denies `just ci-fast`/`ci-deep`/`test*`, `cargo test`, and
-`cargo nextest run` — even correctly `queue`d — from any branch other than
-`pre-dev`.
+A mechanical guard enforces this: while any local branch matching
+`^pre-dev[0-9]*$` exists, the heavy-guard hook denies `just
+ci-fast`/`ci-deep`/`test*`, `cargo test`, and `cargo nextest run` — even
+correctly `queue`d — from any branch that is not itself an integration
+branch.
 
 ## Fast lane: batching pre-triaged mechanical issues
 
