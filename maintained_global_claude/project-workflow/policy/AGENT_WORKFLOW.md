@@ -28,6 +28,12 @@ preserve these requirements.
    the gate; when unsure whether a file is gated, run it. Open and inspect PRs
    with `gh pr`; inspect failed runs with `gh pr checks`, `gh run watch`, and
    `gh run view --log-failed`.
+3a. Rust repos additionally enforce test-binary layout: each crate exposes one
+    integration-test harness (`tests/main.rs` or `tests/<suite>/main.rs` with
+    `autotests = false`), never multiple flat `tests/*.rs` files, checked by
+    the justfile's `_test-binary-layout` recipe wired into `ci-fast`. Every
+    `cargo build|nextest|clippy` line reachable from `ci-fast` reuses the same
+    `(--features, profile, target)` tuple as `test`. See `rust-gates`.
 4. Keep the issue and PR as the durable handoff record. State the goal,
    verification, remaining risks, and the next concrete action. Do not create
    scattered progress markdown files.

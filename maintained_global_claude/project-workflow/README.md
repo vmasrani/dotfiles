@@ -74,7 +74,10 @@ the project `CLAUDE.md`), never pushes to `dev` directly, and never merges its
 own PR. The canonical policy carries a `<!-- policy-version: N -->` stamp so a
 repo's vintage is greppable; byte-comparison, not the stamp, decides whether a
 sync is needed. After any change to `policy/` or `templates/` in this kit, run
-`sync-policy` across the active repos.
+`sync-policy` across the active repos. `templates/justfile.rust` does not
+propagate this way — it is project-owned and generated once — so an existing
+Rust repo adopts a new recipe (e.g. `_test-binary-layout`) by copying it
+straight from the template into its own `justfile`.
 
 A repo can keep a deliberate divergence in a managed file by putting the exact
 substring `kit-sync: project-owned` in that file (conventionally in a comment,

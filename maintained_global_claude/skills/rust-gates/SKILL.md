@@ -28,6 +28,15 @@ sccache is wired machine-wide (`~/.cargo/config.toml` → `rustc-wrapper`): it d
 - **Pin the toolchain** (`rust-toolchain.toml`) so sibling worktrees don't silently rebuild the world on rustc drift.
 - **Settled — don't re-investigate a shared `CARGO_TARGET_DIR` across worktrees:** cargo's target-dir lock would serialize the unqueued `check`/`clippy` calls that are kept instant on purpose; sccache already de-dupes the expensive part without lock contention.
 
+## Test-binary layout — one integration harness per crate
+
+Cargo links every top-level `tests/*.rs` file into its own executable (each one carries the whole crate graph + debug info: ~70 MB in cartridge), and nextest spawns every executable twice (`--list`, `--list --ignored`) per invocation before a single test runs. Incident 2026-09-07 (cartridge, 76 flat test files → 198 binaries): a 10-min `ci-fast` took 1.5–2.5 h because under RAM starvation each spawn paged a 70 MB binary in (~24 s at 0% CPU; the same binary lists in 0.00 s by hand). Rules:
+
+- **One harness per crate:** `tests/main.rs` (or `tests/<suite>/main.rs` per coherent suite) declaring the former files as `mod`s; `autotests = false` + explicit `[[test]]` in that crate's `Cargo.toml`; shared helpers become ordinary modules, never `#[path = "…/mod.rs"]` re-includes. Test bodies do not change. nextest still runs every test in its own process, so isolation and parallelism are unchanged — only link count, list count, and disk shrink. A flat `tests/foo.rs` next to a harness is a layout regression: the kit's `_test-binary-layout` recipe fails on it.
+- **One compile tuple per gate:** every `cargo build|nextest|clippy` line reachable from `ci-fast` uses the SAME `(--features, profile, target)` tuple as `test-fast` unless a recorded reason forces another (e.g. a shipped-binary leak audit). Each distinct tuple is a full recompile of every workspace crate in the same target dir (P2 in cartridge#417/#426: ≈60 s/141 units per flip, far more under load). Before adding a recipe, `rg -n -- '--features' justfile` and reuse an existing spelling verbatim.
+- **nextest once per gate.** A filtered check (`-E 'test(=name)'`) still lists every binary of its `-p` set; fold such checks into the main run's filter set or run them against the main run's `--list` output, never as a second `cargo nextest run`.
+- **Diagnose a "hung" gate before killing it:** `ps -eo pid,etime,pcpu,command | rg 'nextest|--list'`. Children that are `<test-bin> --list --format terse` at 0% CPU, one every ~20–30 s, plus `sysctl vm.swapusage` > 50 % used = memory starvation (close idle agents/sessions; each Claude Code agent process holds 250–530 MB RSS regardless of task), not a deadlock. Killing and resubmitting re-pays the whole run.
+
 ## Evidence discipline for build/test gates
 
 The language-agnostic core (never pipe a run, grep the log, conditional markers) lives in `CLAUDE.md`. These are the gate-specific additions:
