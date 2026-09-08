@@ -105,9 +105,14 @@ and ONE gate.
 
 1. **Before dispatching**, the orchestrator creates `pre-dev` from `dev`
    (`git branch pre-dev dev`, its own worktree `<repo>-pre-dev`) and pushes it
-   (`git push -u origin pre-dev`). At most one `pre-dev` exists per repo at a
-   time; its existence is the machine-visible signal that concurrent
-   integration is active.
+   (`git push -u origin pre-dev`). Its existence is the machine-visible
+   signal that concurrent integration is active. A second wave that must run
+   while `pre-dev` is still open gets its own numbered integration branch —
+   `pre-dev2`, then `pre-dev3`, … (`^pre-dev[0-9]*$`) — with exactly the same
+   rules: its own worktree, its own ONE gate, its own ONE PR into `dev`, its
+   own cleanup. Never reuse a number, never merge one integration branch into
+   another; when two are open, rebase the later one onto `dev` after the
+   earlier one merges.
 2. **Workers** take their issue in their own worktree/branch as usual (branch
    from `dev`), keep instant static checks (`cargo check`/clippy/`just
    lint*`/format), and NEVER run `just ci-fast`, `just ci-deep`, `just test*`,
