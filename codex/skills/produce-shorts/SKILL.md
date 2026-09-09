@@ -51,7 +51,7 @@ Follow `references/editorial.md`: chunk → parallel miners → merge into `cand
 
 ### GATE 1
 
-Present the selection memo, durations, and rejected list. AskUserQuestion (multiSelect) for the clips to produce. Mark approvals `approved_edit`. **No B-roll searching, licensing, or downloading before this gate passes.**
+Present the selection memo, durations, and rejected list. Use the `ask` tool with multi-select enabled for the clips to produce. Mark approvals `approved_edit`. **No B-roll searching, licensing, or downloading before this gate passes.**
 
 ### Stages 4–7 — design loop (per approved clip, clips in parallel)
 

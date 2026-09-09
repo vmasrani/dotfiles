@@ -374,6 +374,48 @@ with tempfile.TemporaryDirectory() as td:
         "allow",
     )
 
+    # Numbered integration branches (pre-dev2, pre-dev3, ...) carry the same
+    # rules -- a second concurrent wave gets its own branch and its own gate.
+    sh("git", "branch", "pre-dev2")
+    expect(
+        "issue-1 branch: queue just ci-fast -> deny (pre-dev2 active)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "deny",
+    )
+    sh("git", "checkout", "-q", "pre-dev2")
+    expect(
+        "pre-dev2 branch: queue just ci-fast -> allow (its own one gate)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+
+    sh("git", "checkout", "-q", "issue-1")
+    sh("git", "branch", "pre-dev")
+    expect(
+        "issue-1 branch: queue just ci-fast -> deny (pre-dev and pre-dev2 both active)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "deny",
+    )
+    sh("git", "checkout", "-q", "pre-dev2")
+    expect(
+        "pre-dev2 branch: queue just ci-fast -> allow (pre-dev also active)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+
+    sh("git", "checkout", "-q", "issue-1")
+    sh("git", "branch", "-D", "pre-dev")
+    sh("git", "branch", "-D", "pre-dev2")
+    sh("git", "branch", "pre-development")
+    sh("git", "branch", "pre-dev-foo")
+    expect(
+        "issue-1 branch: queue just ci-fast -> allow (pre-development/pre-dev-foo don't match)",
+        guard_cwd("queue just ci-fast", str(root)),
+        "allow",
+    )
+    sh("git", "branch", "-D", "pre-development")
+    sh("git", "branch", "-D", "pre-dev-foo")
+
 print("\n== hook <-> queue: the names the guard accepts must really exist ==")
 # The guard treats a command as safe when it starts with `queue`. If the tool
 # were renamed again and the guard not updated, every suite would read as

@@ -1,17 +1,20 @@
 # agents
-> Claude Code subagent definitions symlinked to `~/.codex/agents/` — invoked automatically by the Claude harness based on their `description` trigger text.
-`8 files | 2026-04-02`
+> Codex subagent definitions symlinked to `~/.codex/agents/` and selected by the harness from their `description` trigger text.
+`12 files | 2026-09-07`
 
 | Entry | Purpose |
 |-------|---------|
-| `context-researcher.md` | Analyzes a single directory and writes a `*-context.md` file; called by the `/research` skill |
-| `structural-completeness-reviewer.md` | Post-change hygiene reviewer — checks dead code, incomplete integrations, dev artifacts; NOT a logic reviewer |
-| `plan-writer.md` | Converts research findings + success criteria into a step-by-step implementation plan with exact file paths; uses GPT-5.6 Terra |
-| `spec-interviewer.md` | Interviews the user to extract requirements and produce a declarative spec; reads NO code |
-| `codebase-researcher.md` | Maps a codebase via `ctx-index`/`ctx-peek` to find integration points for a feature |
-| `test-generator.md` | Generates failing test suites across 5 categories and verifies the red phase |
-| `vault-analyst.md` | Read-only Dendron daily-notes pattern detector; never writes to vault files |
-| `modern-translation.md` | Rewrites archaic/old-fashioned English prose into plain modern English |
+| `context-researcher.md` | Analyzes one directory and writes a `*-context.md` file |
+| `structural-completeness-reviewer.md` | Reviews post-change hygiene: dead code, incomplete integrations, and dev artifacts |
+| `plan-writer.md` | Converts research findings and success criteria into an implementation plan |
+| `spec-interviewer.md` | Interviews the user to produce a declarative spec; reads no code |
+| `codebase-researcher.md` | Maps a codebase to find integration points |
+| `test-generator.md` | Generates focused failing tests and verifies the red phase |
+| `perf-reviewer.md` | Reviews an uncommitted diff for performance regressions without running code |
+| `podcast-chapter-generator.md` | Generates and publishes chapters for one podcast video |
+| `vault-analyst.md` | Read-only Dendron daily-notes pattern detector |
+| `modern-translation.md` | Rewrites archaic English into clear modern English |
+| `terra-worker.md` | General implementation, benchmarking, test, and review worker |
 
 <!-- peek -->
 

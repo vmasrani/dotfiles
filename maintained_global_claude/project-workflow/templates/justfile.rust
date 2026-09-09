@@ -15,6 +15,14 @@
 # coverage loss. Reconcile the test COUNT against a known baseline, and make a
 # gate that CANNOT run its guarded tests say so and exit non-zero. "Skipped"
 # and "passed" must never be the same observable state.
+#
+# Test-binary layout is part of this: more than one flat `tests/*.rs` file in
+# a crate (without `autotests = false` plus a `tests/main.rs` harness) links a
+# redundant multi-megabyte binary per file and multiplies nextest's
+# list-before-run overhead, so `ci-fast` runs `_test-binary-layout` to fail on
+# it. Every `cargo build|nextest|clippy` line reachable from `ci-fast` must
+# reuse the exact same `(--features, profile, target)` tuple as `test`, since
+# each distinct tuple forces a full workspace recompile.
 
 # Fail loud when a required command is absent. Usage: `_require-cmd cargo`
 _require-cmd +CMDS:
@@ -41,6 +49,63 @@ _require-file +PATHS:
         exit 1
     fi
 
+# Fails loud when a workspace crate violates the one-integration-harness-per-
+# crate rule (rust-gates: test-binary layout) -- more than one flat
+# `tests/*.rs` file, or a flat file alongside a `tests/<suite>/main.rs`
+# harness, unless the crate's Cargo.toml sets `autotests = false`. For a
+# crate that sets `autotests = false`, every top-level `tests/*.rs` file must
+# still be reachable -- either a `[[test]] path = "tests/<name>.rs"` target,
+# or pulled in as `mod <stem>;` from a harness (`tests/main.rs` or
+# `tests/<suite>/main.rs`) -- else it silently never builds or runs at all
+# ("skipped" indistinguishable from "passed", the exact failure this gate
+# exists to prevent).
+_test-binary-layout: (_require-cmd "jq" "cargo")
+    #!/usr/bin/env bash
+    set -euo pipefail
+    violations=0
+    checked=0
+    while IFS= read -r manifest; do
+        [[ "$manifest" == *"/vendor/"* ]] && continue
+        checked=$((checked + 1))
+        dir=$(dirname "$manifest")
+        crate=$(basename "$dir")
+        tests_dir="$dir/tests"
+        [ -d "$tests_dir" ] || continue
+        if grep -qE '^\s*autotests\s*=\s*false' "$manifest"; then
+            # autotests OFF: every top-level tests/*.rs must be reachable, else it
+            # never builds. Reachable == a `[[test]] path` target OR pulled in as
+            # `mod <stem>;` from a harness (tests/main.rs or tests/<suite>/main.rs).
+            harness_mods=$(cat "$tests_dir"/main.rs "$tests_dir"/*/main.rs 2>/dev/null || true)
+            while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                stem=$(basename "$f" .rs)
+                if grep -qE "path[[:space:]]*=[[:space:]]*\"tests/${stem}\.rs\"" "$manifest"; then
+                    continue
+                fi
+                if printf '%s\n' "$harness_mods" | grep -qE "^[[:space:]]*mod[[:space:]]+${stem}[[:space:]]*;"; then
+                    continue
+                fi
+                printf '%s: tests/%s.rs is not compiled by any [[test]] target (add `mod %s;` to a harness or a [[test]] path=)\n' "$crate" "$stem" "$stem"
+                violations=$((violations + 1))
+            done < <(find "$tests_dir" -maxdepth 1 -name '*.rs' -type f)
+            continue
+        fi
+        flat_count=$(find "$tests_dir" -maxdepth 1 -name '*.rs' -type f | wc -l | tr -d ' ')
+        suite_mains=$(find "$tests_dir" -mindepth 2 -maxdepth 2 -name 'main.rs' -type f | wc -l | tr -d ' ')
+        if (( flat_count > 1 )); then
+            printf '%s: %d flat test files -- consolidate into tests/main.rs (rust-gates: test-binary layout)\n' "$crate" "$flat_count"
+            violations=$((violations + 1))
+        elif (( flat_count >= 1 && suite_mains >= 1 )); then
+            printf '%s: flat tests/*.rs alongside tests/*/main.rs -- consolidate into tests/main.rs (rust-gates: test-binary layout)\n' "$crate"
+            violations=$((violations + 1))
+        fi
+    done < <(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].manifest_path')
+    if (( violations > 0 )); then
+        printf 'test-binary-layout: %d violation(s)\n' "$violations" >&2
+        exit 1
+    fi
+    printf 'test-binary-layout: ok (%d crates)\n' "$checked"
+
 fmt-check:
     cargo fmt --all --check
 
@@ -62,7 +127,16 @@ install-hooks:
     git config core.hooksPath .githooks
     @echo "git hooks active (core.hooksPath=.githooks); pre-push now runs the lint gate"
 
-ci-fast: (_require-cmd "cargo") fmt-check lint test build
+# One compile tuple per gate (rust-gates): every `cargo build|nextest|clippy`
+# line below reuses the SAME (--features, profile, target) tuple as `test` --
+# none add `--features`/`--release`/`--target`. A second tuple recompiles the
+# whole workspace a second time. Check with `rg -n -- '--features' justfile`
+# before adding one.
+# `build` is deliberately not in this chain: clippy-driver produces artifacts
+# with a different fingerprint than rustc, so a trailing `cargo build
+# --workspace` here recompiles the whole graph a second time for nothing that
+# lint or test consumes. Run `just build` by hand when you need dev binaries.
+ci-fast: (_require-cmd "cargo") fmt-check lint _test-binary-layout test
 
 # Grow this as real integration/e2e suites appear.
 ci-deep: ci-fast

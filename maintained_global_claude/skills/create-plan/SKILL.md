@@ -97,13 +97,13 @@ Task(subagent_type="general-purpose",
      prompt="Implement subtask N: {description}. Files: {paths}. Code: {snippets}. Success criteria: {relevant SCs}")
 ```
 
-After each subtask completes:
-1. Run `just test` and compare to the previous run (new passes? new failures? regressions?)
-2. If the subtask's tests still fail, give the subagent `just test-verbose` output to fix
+After each subtask completes (NO full suite here — one full run per plan, at the end):
+1. Run ONLY the subtask's own tests (a name/path filter: `just test <filter>`, `cargo nextest run -E 'test(/<mod>/)'`, `pytest path::test`) and compare to the previous run (new passes? new failures?)
+2. If the subtask's tests still fail, give the subagent that filtered output to fix
 3. Continue to the next subtask
 
 After all subtasks complete:
-1. Run `just test` -- all tests should pass (green phase)
+1. Run `just test` ONCE (or, when an integration branch `pre-dev*` exists, merge into it and let the orchestrator run the wave's single gate) -- all tests should pass (green phase)
 2. If failures remain, launch a focused fix subagent with `just test-verbose` output
 3. Run `just test-cov` to check coverage
 4. Launch the `structural-completeness-reviewer` agent for a final review

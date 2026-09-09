@@ -155,6 +155,10 @@ alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
 alias cc='claude'
 alias ccc='claude --continue'
 alias ccd='claude --dangerously-skip-permissions'
+
+# Claude Code Remote Control: prefix for auto-generated session names in the mobile app
+export CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX=wrk
+
 alias upd='update-packages'
 alias updq='update-packages --quiet'
 
@@ -176,7 +180,14 @@ export CLAUDE_CODE_NO_FLICKER=1
 # 2. 1 GiB (the old launchctl value) was 100% FULL and thrashing —
 #    evicting entries faster than they could be reused. Measured Rust
 #    hit rate at 1 GiB: 1.39%.
-export SCCACHE_DIR=/Volumes/external/sccache
+# macOS: the external SSD. Linux boxes have no /Volumes — fall back to
+# ~/.cache/sccache (a Mac path there made every cargo build fail with
+# "failed to create directory /Volumes/external/sccache: Permission denied").
+if [[ -d /Volumes/external ]]; then
+  export SCCACHE_DIR=/Volumes/external/sccache
+else
+  export SCCACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sccache"
+fi
 export SCCACHE_CACHE_SIZE=100G
 # export CARGO_INCREMENTAL=0
 

@@ -78,6 +78,7 @@ install_if_missing lazydocker install_lazydocker # Terminal UI for managing Dock
 install_if_missing lazysql install_lazysql # Terminal UI for database management
 install_if_missing btop install_btop # Resource monitor with CPU, memory, disk, network stats
 install_if_missing ctop install_ctop # Container metrics and monitoring
+install_if_missing htop install_htop # Interactive process viewer (Homebrew on macOS, built from source on Linux)
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
 
@@ -98,7 +99,7 @@ install_if_missing chafa install_chafa # ASCII art image renderer
 install_if_missing "${OS_CLIPBOARD:-xclip}" install_xclip # Clipboard for tmux (xclip on Linux, pbcopy on macOS)
 install_if_missing "${OS_CLIPBOARD:-xsel}" install_xsel   # Clipboard for tmux (xsel on Linux, pbcopy on macOS)
 install_if_missing uwu-cli install_uwu # uwu-cli for terminal UI
-install_if_missing codex install_codex # OpenAI Codex CLI
+ensure_codex # OpenAI Codex CLI; repairs wrappers whose platform binary is missing
 install_if_missing opencode install_opencode # OpenCode AI coding TUI
 
 # install tools that depend on uv (must be after uv installation)

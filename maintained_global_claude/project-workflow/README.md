@@ -74,7 +74,10 @@ the project `CLAUDE.md`), never pushes to `dev` directly, and never merges its
 own PR. The canonical policy carries a `<!-- policy-version: N -->` stamp so a
 repo's vintage is greppable; byte-comparison, not the stamp, decides whether a
 sync is needed. After any change to `policy/` or `templates/` in this kit, run
-`sync-policy` across the active repos.
+`sync-policy` across the active repos. `templates/justfile.rust` does not
+propagate this way — it is project-owned and generated once — so an existing
+Rust repo adopts a new recipe (e.g. `_test-binary-layout`) by copying it
+straight from the template into its own `justfile`.
 
 A repo can keep a deliberate divergence in a managed file by putting the exact
 substring `kit-sync: project-owned` in that file (conventionally in a comment,
@@ -88,10 +91,17 @@ that never reached the template (→ upstream the fix into `templates/`, don't
 mark). If the change is right for every repo, it belongs in the kit; the marker
 is only for divergences that are right for one repo.
 
-## Three lanes: strict, fast, chore
+## Four lanes: pre-dev (default), strict, fast, chore
 
-The default lifecycle is **strict**: one issue, one branch, one worktree, one
-PR, author self-merges once mergeable-green.
+The **default** for any repo with 2+ issues in flight is **pre-dev
+integration**: every issue branch merges `--no-ff` into one `pre-dev` (or
+`pre-dev2`, `pre-dev3`, … for a second concurrent wave), the orchestrator
+runs ONE `ci-fast` on it, delegates red back to the owning agent, and lands
+ONE PR `pre-dev → dev`. One gate per wave, never per issue or per agent. The
+heavy-guard hook enforces it while an integration branch exists.
+
+A genuinely lone issue uses **strict**: one issue, one branch, one worktree,
+one PR, author self-merges once mergeable-green.
 
 The **fast lane** batches 2–4 issues labeled `fast-lane` into one branch/PR:
 claim by assignment plus one comment on the lead issue, one commit per issue so
@@ -112,7 +122,7 @@ formatter run, a lockfile regen, a comment typo, a dependency repin: branch
 the issue, never the branch, the gate, or the PR — `dev` is what every
 in-flight worktree branches from.
 
-Green `ci-fast` and green PR checks gate all three lanes, and `main` remains
+Green `ci-fast` (once per wave on pre-dev, once per PR elsewhere) and green PR checks gate all four lanes, and `main` remains
 the user's alone. Full rules live in `policy/AGENT_WORKFLOW.md`.
 
 ## CI contract

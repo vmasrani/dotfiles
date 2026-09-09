@@ -347,6 +347,7 @@ install_dotfiles() {
 	mkdir -p "$HOME/.local/bin"
 	mkdir -p "$HOME/.claude"
 	mkdir -p "$HOME/.codex"
+	mkdir -p "$HOME/.omp/agent"
 	mkdir -p "$HOME/.gemini"
 	mkdir -p "$HOME/.gemini/antigravity-cli"
 	if [[ "$OS_TYPE" == "mac" ]]; then
@@ -367,7 +368,7 @@ install_dotfiles() {
 	local tpm_dir="$HOME/.tmux/plugins/tpm"
 
 	# Targets we always want to match the repo source (delete existing non-matching
-	# file/dir and re-symlink). This keeps setup idempotent for Claude/Codex config.
+	# file/dir and re-symlink). This keeps managed agent config idempotent.
 	declare -a force_replace_targets=(
 		"$home/.claude/agents"
 		"$home/.claude/commands"
@@ -381,6 +382,8 @@ install_dotfiles() {
 		"$home/.codex/skills"
 		"$home/.codex/AGENTS.md"
 		"$home/.codex/config.toml"
+		"$home/.codex/hooks.json"
+		"$home/.omp/agent/config.yml"
 		"$home/.gemini/antigravity-cli/agents"
 		"$home/.gemini/antigravity-cli/hooks"
 		"$home/.gemini/antigravity-cli/skills"
@@ -526,6 +529,10 @@ install_dotfiles() {
 		"$dotfiles/codex/hooks:$home/.codex/hooks"
 		"$dotfiles/codex/skills:$home/.codex/skills"
 		"$dotfiles/codex/AGENTS.md:$home/.codex/AGENTS.md"
+		"$dotfiles/codex/hooks.json:$home/.codex/hooks.json"
+
+		# OMP settings; runtime databases, sessions, logs, caches, auth, and install ID stay local.
+		"$dotfiles/omp/agent/config.yml:$home/.omp/agent/config.yml"
 
 		# agy directories and files (symlink contents to ~/.gemini/antigravity-cli)
 		"$dotfiles/maintained_global_agy/agents:$home/.gemini/antigravity-cli/agents"
@@ -577,19 +584,16 @@ install_dotfiles() {
 		fi
 		ensure_symlink "$source" "$target" "$force_link"
 
-		# Only chmod +x if it's a file, not a directory
-		if [ -f "$source" ]; then
-			chmod +x "$source"
-		fi
 	done
 
-	# Symlink local (machine-specific, git-ignored) skills into maintained_global_claude/skills/ and maintained_global_agy/skills/
+	# Symlink local (machine-specific, git-ignored) skills into every managed agent skill tree.
 	local local_skills_dir="$dotfiles/local/local_skills"
 	if [ -d "$local_skills_dir" ]; then
 		for skill_dir in "$local_skills_dir"/*/; do
 			[ -d "$skill_dir" ] || continue
 			skill_name="$(basename "$skill_dir")"
 			ensure_symlink "$skill_dir" "$dotfiles/maintained_global_claude/skills/$skill_name" "false"
+			ensure_symlink "$skill_dir" "$dotfiles/codex/skills/$skill_name" "false"
 			ensure_symlink "$skill_dir" "$dotfiles/maintained_global_agy/skills/$skill_name" "false"
 		done
 	fi
@@ -817,6 +821,12 @@ install_btop() {
 		brew install btop
 	fi
 	gum_success "btop installed successfully."
+}
+
+install_htop() {
+	# Full OS-switch, build-from-source-on-Linux logic lives in the standalone
+	# script so it stays runnable on its own; see install/install_htop.sh.
+	bash install/install_htop.sh
 }
 
 install_ctop() {
@@ -1206,7 +1216,23 @@ install_uwu() {
 install_codex() {
 	gum_info "Installing OpenAI Codex CLI..."
 	npm install -g @openai/codex
+	if ! codex --version >/dev/null 2>&1; then
+		gum_error "Codex installed, but its platform binary cannot run. Reinstall Node/npm and retry."
+		return 1
+	fi
 	gum_success "Codex installed successfully."
+}
+
+ensure_codex() {
+	if command_exists codex && codex --version >/dev/null 2>&1; then
+		gum_dim "codex is already installed."
+		return 0
+	fi
+
+	if command_exists codex; then
+		gum_warning "Codex wrapper exists but cannot run; reinstalling it..."
+	fi
+	install_codex
 }
 
 install_opencode() {

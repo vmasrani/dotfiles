@@ -50,6 +50,7 @@ FAILURE POSTURE
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -102,7 +103,21 @@ def _heavy_at(tokens, i):
         if j < len(tokens) and tokens[j].startswith("+"):  # +nightly toolchain selector
             j += 1
         if j < len(tokens) and tokens[j] in HEAVY_CARGO_VERBS:
-            return f"cargo {tokens[j]}"
+            verb = tokens[j]
+            rest = tokens[j + 1 :]
+            # `cargo nextest` is only heavy when it actually RUNS tests. Every
+            # other subcommand (--version, list, show-config, archive, self,
+            # ...) is a read-only enumeration/introspection call and must stay
+            # unqueued -- denying those trains agents to stop trusting the hook.
+            if verb == "nextest":
+                if rest and rest[0] in ("run", "r"):
+                    return "cargo nextest run"
+                return None
+            # `cargo test --list` enumerates tests without running them --
+            # the same no-run case as `cargo nextest list`.
+            if verb == "test" and "--list" in rest:
+                return None
+            return f"cargo {verb}"
         # `cargo build`/`install` are cheap in debug but a full optimized
         # `--release` workspace build is exactly as heavy as a test suite.
         if j < len(tokens) and tokens[j] in ("build", "install") and "--release" in tokens[j + 1 :]:
@@ -131,6 +146,88 @@ def inspect(command):
     return offender, queued_somewhere
 
 
+def _heavy_ignoring_queue(tokens):
+    """Like inspect(), but treats a `queue`/`testq` prefix as transparent.
+
+    Used only by the pre-dev concurrent-work guard below, where even a
+    correctly queued heavy command must be denied off the `pre-dev` branch --
+    the queue's job is scheduling, not exemption from "workers never run
+    gates".
+    """
+    for _sep, head in command_heads(tokens):
+        i = skip_env_assigns(tokens, head)
+        if i >= len(tokens):
+            continue
+        if tokens[i] in QUEUE_CMDS:
+            i = skip_env_assigns(tokens, i + 1)
+            if i >= len(tokens):
+                continue
+        offender = _heavy_at(tokens, i)
+        if offender:
+            return offender
+    return None
+
+
+def _git(cwd, *args, timeout=5):
+    """`git -C cwd <args>` stdout, or None on any failure -- no git, no repo,
+    and a missing ref are all a legitimate absence, not something to raise."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(cwd), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+_PRE_DEV_RE = re.compile(r"pre-dev\d*")
+
+
+def _pre_dev_branches(cwd):
+    """Local branches matching `^pre-dev[0-9]*$` -- AGENTS.md's numbered
+    concurrent-wave integration branches (`pre-dev`, `pre-dev2`, `pre-dev3`,
+    ...), each with the same rules. Empty when there are none, no git, or not
+    a repo -- a legitimate absence, not something to raise (fail open)."""
+    out = _git(cwd, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+    if out is None:
+        return []
+    return sorted(name for name in out.splitlines() if _PRE_DEV_RE.fullmatch(name))
+
+
+def pre_dev_offender(tokens, cwd):
+    """Concurrent work = pre-dev integration (AGENTS.md): while any local
+    branch matching `^pre-dev[0-9]*$` exists, heavy gates run ONCE, from that
+    integration branch itself, by the orchestrator -- a worker's own `queue`
+    prefix is not an exemption. Returns (offending command name, the
+    integration branches that exist), or None when the rule does not apply
+    here (no cwd, no git, not a repo, no such branch, or already on one)."""
+    if not cwd:
+        return None
+    branches = _pre_dev_branches(cwd)
+    if not branches:
+        return None
+    branch = _git(cwd, "rev-parse", "--abbrev-ref", "HEAD")
+    if branch is None or _PRE_DEV_RE.fullmatch(branch):
+        return None
+    offender = _heavy_ignoring_queue(tokens)
+    return (offender, branches) if offender else None
+
+
+def reason_pre_dev(offender, branches):
+    names = ", ".join(branches)
+    return (
+        f"pre-dev integration is active ({names}): workers never run gates. `{offender}` is "
+        f"denied here even though it looks queued -- `queue` schedules, it does not exempt.\n\n"
+        f"Merge into the integration branch and let the orchestrator run the single "
+        f"`{offender}` from its worktree -- never from a worker branch. Concurrent waves may "
+        f"be numbered (pre-dev, pre-dev2, ...), each with the same rules. See AGENTS.md: "
+        f'"Concurrent work = pre-dev integration".'
+    )
+
+
 # Strip the misplaced prefix (and any env assignments before it) so the
 # suggested fix is copy-pasteable. Without this the message reads
 # `queue 'queue cd /repo && cargo test'` and has to apologise for itself.
@@ -154,8 +251,8 @@ def reason(command, offender, queued_somewhere):
         f"    queue {command.strip()[:200]}\n\n"
         f"`queue X` behaves exactly like `X` -- it waits for a free slot, then streams "
         f"live output and returns the command's own exit code. Check the queue with "
-        f"`queue -l`. For long suites prefer run_in_background, since queue wait + suite "
-        f"time can exceed the 10-minute tool cap."
+        f"`queue -l`. Run long suites as background jobs so queue wait plus suite time "
+        f"does not block an interactive tool call."
     )
 
 
@@ -173,6 +270,31 @@ def main():
         sys.exit(0)
 
     offender, queued_somewhere = inspect(command)
+
+    # Concurrent-work guard runs even when the command above came back clean
+    # because it was correctly queued -- pre-dev's "workers never run gates"
+    # is not something a queue prefix can opt out of.
+    try:
+        tokens = tokenize(command)
+    except ValueError:
+        tokens = None
+    if tokens is not None:
+        pd_result = pre_dev_offender(tokens, data.get("cwd"))
+        if pd_result:
+            pd_offender, pd_branches = pd_result
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": reason_pre_dev(pd_offender, pd_branches),
+                        }
+                    }
+                )
+            )
+            sys.exit(0)
+
     if not offender:
         sys.exit(0)
 

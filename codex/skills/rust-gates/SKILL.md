@@ -1,0 +1,68 @@
+---
+name: rust-gates
+description: Rust build/test/bench doctrine — the `queue` prefix rules, sccache/cargo-clean policy, test-count reconciliation, benchmark economy (never re-measure stored numbers), and the multi-worker integration-branch workflow. Load BEFORE the first cargo test/nextest/bench, `just test*|ci-fast|ci-deep`, `queue` call, benchmark/profile run, or Rust wave dispatch in a session — and tell every Rust worker to load the `rust-gates` skill first. Self-invoke; do not wait to be asked.
+---
+
+# Rust / build-gate doctrine
+
+Binding for any Rust repo or queued build/test/bench gate. Kept out of the always-loaded `AGENTS.md` only because most sessions never touch Rust. The incident log behind each rule: `~/dotfiles/maintained_global_claude/notes/lessons.md`.
+
+## The job queue (`queue`)
+
+**Add the `queue` prefix yourself** on `cargo test|nextest|bench|miri` and `just test*|bench*|ci-fast|ci-deep` — nothing rewrites your command; a PreToolUse hook only DENIES unqueued ones. `queue X` behaves exactly like `X` (waits for a free slot, streams live output, returns X's own exit code). Leave `cargo check|clippy|build` and `just lint*` unqueued — that's what keeps them instant.
+
+- Compound commands go as ONE quoted string — `queue 'cd /repo && cargo test'`, never `queue cd /repo && cargo test` (the shell splits on `&&` first).
+- A pause before output is the QUEUE, not a hang — check `queue -l`, never re-run. Run long suites as background jobs.
+- `| tail` destroys the exit code — read `queue --exit-code --last` before claiming a pass.
+- Agents write, the lead builds — ONE process compiles and runs the suite.
+- Everything else — cancel/`--triage` semantics, SJF jumping, `--solo`, slots, coalescing, and settled findings: `~/dotfiles/maintained_global_claude/queue-reference.md`.
+- **Prefer `queue cargo nextest run --workspace` over `cargo test`.** Fail-fast is off via the seeded `.config/nextest.toml` (sweep-then-assert); per-job parallelism is capped by `NEXTEST_TEST_THREADS` (cpus/`QUEUE_SLOTS` from `.zshenv`) — never pass `-j`/`--test-threads` ad hoc. Reconcile counts from nextest's `Summary [ … ] N tests run: N passed` line. `cargo nextest list|--version|show-config` and `cargo test --list` are read-only and run unqueued.
+
+## Cargo — never compile the same dependency twice
+
+sccache is wired machine-wide (`~/.cargo/config.toml` → `rustc-wrapper`): it de-dupes rebuilds WITHIN one worktree+target dir (branch switch, `cargo clean -p`, profile flip), NOT across worktrees or agents: measured 2026-09-02 on fast-delta, 62 Rust units — same worktree+same target dir 62/62 hits (24 s → 8.5 s), different worktree 0 hits, same worktree but a different explicit `CARGO_TARGET_DIR` 0 hits. sccache 0.15–0.17 hashes rustc’s cwd and every `CARGO_*` env var into the key; the upstream fix (mozilla/sccache PR #2794) is unmerged. Each worktree pays its own dependency build once. Workspace crates stay incremental per target dir (`CARGO_INCREMENTAL=0` only inside `cargo-slot`; do not export it globally — it buys no cross-agent reuse and slows the edit loop). On a machine where `command -v sccache` fails, install it and add the wrapper line before any Rust work.
+
+- **One worktree per batch** — N worktrees × cold `target/` is where the remaining rebuild time goes.
+- **Never `cargo clean` to "fix" a problem** — it discards hours of workspace compilation on a hunch. The sanctioned forced rebuild (test count went DOWN → binary lacks your code) is `cargo clean -p <crate>` scoped to the suspect crate, never a full wipe.
+- **Keep flags stable.** Ad-hoc `RUSTFLAGS`, feature-set changes, and profile edits invalidate caches tree-wide; flags live in `.cargo/config.toml`/justfile, never per-command env vars.
+- **Pin the toolchain** (`rust-toolchain.toml`) so sibling worktrees don't silently rebuild the world on rustc drift.
+- **Settled — don't re-investigate a shared `CARGO_TARGET_DIR` across worktrees:** cargo's target-dir lock would serialize the unqueued `check`/`clippy` calls that are kept instant on purpose; sccache already de-dupes the expensive part without lock contention.
+
+## Test-binary layout — one integration harness per crate
+
+Cargo links every top-level `tests/*.rs` file into its own executable (each one carries the whole crate graph + debug info: ~70 MB in cartridge), and nextest spawns every executable twice (`--list`, `--list --ignored`) per invocation before a single test runs. Incident 2026-09-07 (cartridge, 76 flat test files → 198 binaries): a 10-min `ci-fast` took 1.5–2.5 h because under RAM starvation each spawn paged a 70 MB binary in (~24 s at 0% CPU; the same binary lists in 0.00 s by hand). Rules:
+
+- **One harness per crate:** `tests/main.rs` (or `tests/<suite>/main.rs` per coherent suite) declaring the former files as `mod`s; `autotests = false` + explicit `[[test]]` in that crate's `Cargo.toml`; shared helpers become ordinary modules, never `#[path = "…/mod.rs"]` re-includes. Test bodies do not change. nextest still runs every test in its own process, so isolation and parallelism are unchanged — only link count, list count, and disk shrink. A flat `tests/foo.rs` next to a harness is a layout regression: the kit's `_test-binary-layout` recipe fails on it.
+- **One compile tuple per gate:** every `cargo build|nextest|clippy` line reachable from `ci-fast` uses the SAME `(--features, profile, target)` tuple as `test-fast` unless a recorded reason forces another (e.g. a shipped-binary leak audit). Each distinct tuple is a full recompile of every workspace crate in the same target dir (P2 in cartridge#417/#426: ≈60 s/141 units per flip, far more under load). Before adding a recipe, `rg -n -- '--features' justfile` and reuse an existing spelling verbatim.
+- **nextest once per gate.** A filtered check (`-E 'test(=name)'`) still lists every binary of its `-p` set; fold such checks into the main run's filter set or run them against the main run's `--list` output, never as a second `cargo nextest run`.
+- **Diagnose a "hung" gate before killing it:** `ps -eo pid,etime,pcpu,command | rg 'nextest|--list'`. Children that are `<test-bin> --list --format terse` at 0% CPU, one every ~20–30 s, plus `sysctl vm.swapusage` > 50% used = memory starvation (close idle agents/sessions; each agent process may hold hundreds of MB RSS), not a deadlock. Killing and resubmitting re-pays the whole run.
+
+## Evidence discipline for build/test gates
+
+The language-agnostic core (never pipe a run, grep the log, conditional markers) lives in `AGENTS.md`. These are the gate-specific additions:
+
+- **Reconcile the test COUNT against an explicit baseline every run** (e.g. `main @ 4ee8817 = 1502`). A count that goes DOWN without deletions means the binary doesn't contain your code — force a rebuild (`cargo clean -p <crate>`).
+- **Capture in full and end the command with the run's own status:**
+
+      <cmd> > /tmp/run.log 2>&1; rc=$?; echo "exit=$rc" | tee -a /tmp/run.log; exit $rc
+
+  The `echo "exit=$?"`-only form leaves the SHELL exiting 0, and a background job completion notification carries only that process status — it will announce success for failed runs. The trailing `exit $rc` is the entire fix; a `( … )` subshell does not help.
+- **A background task's reported exit code is the wrapper's, not the command's.** Grep the log for both the status line and `rg -n 'FAIL|test run failed|^error'`.
+- **Verify a test filter selected what you think.** A pass over zero tests is a pass. Prefer positional filters; with `-E` expressions, confirm a non-zero expected count first.
+- **Re-run the full suite on the MERGED result** — per-branch greens don't cover the combination. Run it ONCE, by the agent who merges; never two identical full gates on the same SHA.
+
+## Benchmark economy — never re-measure what you already have
+
+Every solo-queue benchmark/profile run must be justified by a question ONLY that run can answer — an unnecessary 30–60 min solo job stalls every session on the machine, twice over when it later gets re-run.
+
+- **Before enqueueing any expensive run, check for existing numbers first** — search the durable results dir (experiment CSVs/logs) for the same (commit SHA, corpus, flags). Re-measuring stored results is a bug, not diligence.
+- **Baseline (control) runs are gated on evidence the change can affect them.** Run the treatment build FIRST with mechanism counters enabled; run the baseline ONLY for inputs where the counters show the changed code path actually executed. A pre/post pair where the diff'd code never runs measures noise at full price.
+- **Persist every expensive result durably at birth** — CSV/log named with commit SHA + corpus + flags, in the shared experiment dir, never only /tmp or a session transcript. A number that isn't stored WILL be re-bought at full price.
+- **Plans and handoffs must carry the reuse map:** which numbers already exist, where, and at what SHA — so the next session extends the dataset instead of regenerating it.
+
+## Multi-worker waves — pre-dev integration FIRST, measure, THEN review
+
+- This is the Rust instance of the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md` (branch `pre-dev`, one gate; user mandate 2026-08-20).
+- On `pre-dev`, run the wave's HEADLINE measurement (release benchmark/yardstick on re-pressed fixtures) BEFORE the single gate.
+- Review effort is never spent on a result that doesn't move the number; the `pre-dev` branch IS the batch.
+- **No author≠merger rule.** The agent that wrote a PR may review and merge it into `dev` itself once the pre-dev gate is green. The ONLY merge that needs someone else is `dev → main`, which remains the user's alone. Repos still carrying the old "separate review agent" clause in `.agent-workflow/AGENT_WORKFLOW.md` are stale — sync the kit policy rather than obeying them.

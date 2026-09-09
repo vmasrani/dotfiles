@@ -1,0 +1,49 @@
+providers:
+  webSearchOrder:
+    - codex
+    - perplexity
+    - gemini
+    - anthropic
+    - xai
+    - zai
+    - exa
+    - tinyfish
+    - jina
+    - kagi
+    - tavily
+    - firecrawl
+    - brave
+    - kimi
+    - parallel
+    - synthetic
+    - searxng
+    - startpage
+    - duckduckgo
+    - ecosia
+    - google
+    - mojeek
+    - public
+enabledProviders:
+  - claude
+modelRoles:
+  plan: anthropic/claude-fable-5-1:high
+  task: openai-codex/gpt-5.6-terra
+  default: anthropic/claude-fable-5-1:high
+symbolPreset: nerd
+theme:
+  dark: obsidian
+  light: light
+setupVersion: 2
+dev:
+  autoqaConsent: granted
+composer:
+  shape: borderless
+task:
+  agentModelOverrides:
+    task: openai-codex/gpt-5.6-terra
+    sonic: openai-codex/gpt-5.6-terra
+    scout: anthropic/claude-sonnet-5
+    reviewer: openai-codex/gpt-5.6-terra
+    security-reviewer: openai-codex/gpt-5.6-terra
+autolearn:
+  enabled: true

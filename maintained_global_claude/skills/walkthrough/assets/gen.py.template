@@ -1,0 +1,221 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["typer", "rich"]
+# ///
+"""gen_<slug>.py — compute the ground truth behind <slug>.html and inline it.
+
+<One paragraph: what the page claims, and what the reader is meant to leave believing.>
+
+Run:
+    ./gen_<slug>.py                 # real inputs (defaults below)
+    ./gen_<slug>.py --out other.html
+
+Writes:
+    <slug>_data.json   the committed, diffable ground truth
+    <slug>.html        the same JSON re-inlined into the page, in place
+
+EVERYTHING on the page is computed here, live, at generation time. No fixtures, no
+mock mode, no cached answers, no fallbacks: if an input or a tool is missing, this
+script CRASHES rather than rendering a plausible-looking page. A number that nothing
+measured is worse than a page that failed to build, because only one of the two is
+visible.
+
+DERIVE, NEVER RESTATE. Any constant that could depend on the input (a window size
+tied to corpus shape, a threshold implied by n, a total that appears in prose) is
+computed from the live input here and read back — never typed as a literal. A tuned
+constant is a bug that breaks silently the moment it leaves the input it was tuned on.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from datetime import date
+from pathlib import Path
+from time import perf_counter
+
+import typer
+from rich.console import Console
+
+console = Console()
+app = typer.Typer(add_completion=False)
+
+HERE = Path(__file__).resolve().parent
+# ▸ EDIT: the real inputs. Missing ones must fail loudly at first use, not be defaulted away.
+BIN = HERE / "..." / "the-tool"
+INPUT = HERE / "..." / "the-input"
+HTML = HERE / "<slug>.html"
+JSON_OUT = HERE / "<slug>_data.json"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ORACLE — ASSERTIONS ONLY. NEVER RENDERED. NEVER A SOURCE OF PAGE CONTENT.
+#
+# Known-true facts about the input may appear here ONLY as fail-loud checks that catch
+# the live pipeline missing what it should have found. Nothing in this block may reach
+# the payload. These exist so a broken tool silently producing a plausible-but-wrong
+# page CRASHES instead of shipping. If the input is replaced these must be updated — a
+# stale oracle failing loud is the intended outcome, not a reason to weaken the check.
+# ══════════════════════════════════════════════════════════════════════════════
+ORACLE_MUST_APPEAR = {"...", "..."}
+ORACLE_MIN_ROWS = 5
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# capture — verbatim tool output + real wall-clock (DECK flavor)
+# ══════════════════════════════════════════════════════════════════════════════
+def run(argv: list[str], *, keep: int | None = None) -> dict:
+    """Run a real command, return its verbatim output and measured ms.
+
+    The clock is `perf_counter` around the spawn: exactly what the presenter pays,
+    including process start. No warm-up subtraction, no best-of-N — those are ways of
+    reporting a number nobody experiences.
+    """
+    t0 = perf_counter()
+    proc = subprocess.run(argv, capture_output=True, text=True)
+    ms = (perf_counter() - t0) * 1000
+    # Fail loud: a step that errors is a broken walkthrough, not a step to skip.
+    if proc.returncode != 0:
+        raise RuntimeError(f"{' '.join(argv)} exited {proc.returncode}\n{proc.stderr}")
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    return {
+        # `display` is the command as the audience reads it — shortened paths are fine,
+        # a DIFFERENT command is not. Keep the flags identical to what actually ran.
+        "display": " ".join(argv).replace(str(INPUT), INPUT.name).replace(str(BIN), BIN.name),
+        "output": lines[:keep] if keep else lines,
+        "ms": ms,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# analysis — every function returns data, prints nothing
+# ══════════════════════════════════════════════════════════════════════════════
+def build_steps() -> list[dict]:
+    """DECK flavor: the ordered steps. Each makes exactly ONE point.
+
+    A good spine is a story, not a feature list: ask → harvest → gate → iterate →
+    control (the method must also be able to say "no") → receipts → close.
+    """
+    steps: list[dict] = []
+
+    cmd = run([str(BIN), "subcommand", "argument", str(INPUT)])
+    steps.append({
+        "n": 1,
+        "tag": "THE QUESTION",
+        "title": "What is the reader actually asking?",
+        "narration": "Why this is the first move, and what the tool does instead of the obvious thing.",
+        "commands": [cmd],
+        # `chart` / `bars` / `cards` are optional; every value in them is parsed from
+        # the verbatim output above, never retyped.
+        "chart": {"caption": "per group", "points": parse_points(cmd["output"])},
+        "kicker": "The one sentence the audience should remember from this screen.",
+        "contrast": "What the alternative approach would have had to do to answer this.",
+        "cum_baseline": 1,   # cumulative baseline units paid by that alternative so far
+    })
+    return steps
+
+
+def parse_points(lines: list[str]) -> list[dict]:
+    """Parse the tool's own output — never restate the numbers by hand."""
+    out = []
+    for ln in lines:
+        label, _, value = ln.partition("\t")
+        out.append({"label": label, "value": int(value)})
+    return sorted(out, key=lambda p: p["label"])
+
+
+def build_rows() -> list[dict]:
+    """PAGE flavor: the showcase table, computed live."""
+    raise NotImplementedError("compute the real rows here — a stub must not render")
+
+
+# ▸ KEEP ONE FLAVOR, DELETE THE OTHER. Two payload builders in one file is a fork
+#   waiting to serve the wrong shape; the page is one flavor or the other.
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# payload + validation
+# ══════════════════════════════════════════════════════════════════════════════
+def build_payload() -> dict:
+    """DECK payload. For a PAGE, return instead:
+
+        {"meta": {...derived counts, params, source, regen_cmd...},
+         "chips": [[value, label], ...],
+         "rows":  build_rows(),
+         "panel_a": [...], "panel_b": [...]}
+
+    Every key here is consumed by an id in the HTML; an unconsumed key is dead weight
+    and a consumed-but-absent key renders "—", so keep the two in step.
+    """
+    steps = build_steps()
+    return {
+        "meta": {
+            "captured_at": date.today().isoformat(),
+            "subject": f"{INPUT.name}",
+            "regen_cmd": f"./{Path(__file__).name}",
+            "score_a_label": "this tool",
+            "score_a_unit": "",
+            # Optional. Only include a baseline you MEASURED on this machine; a rival
+            # number nobody ran is the fastest way to lose a technical audience.
+            "baseline": None,
+            # e.g. {"label": "full re-scans", "unit": "2.6 GB", "per_unit_s": 52},
+        },
+        "steps": steps,
+    }
+
+
+def check_payload(payload: dict) -> None:
+    """Fail loud BEFORE writing: a page that renders is a page someone will believe."""
+    steps = payload["steps"]
+    if not steps:
+        raise ValueError("no steps captured — the page would render its empty state")
+    if len(steps) < ORACLE_MIN_ROWS:
+        raise ValueError(f"only {len(steps)} steps; expected ≥ {ORACLE_MIN_ROWS}")
+    for s in steps:
+        if not s.get("kicker"):
+            raise ValueError(f"step {s['n']} has no kicker — it makes no point")
+        for c in s.get("commands", []):
+            if not c["output"]:
+                raise ValueError(f"step {s['n']}: `{c['display']}` produced no output")
+    seen = " ".join(o for s in steps for c in s.get("commands", []) for o in c["output"])
+    missing = {t for t in ORACLE_MUST_APPEAR if t not in seen}
+    if missing:
+        raise ValueError(f"oracle miss — the pipeline stopped finding {missing}; fix it, don't relax this")
+    # A step that no longer demonstrates its point is a broken step, not a cosmetic one.
+    # Assert the DEMONSTRATION here (e.g. "the junk candidate must still lose").
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# inline — the html is the source AND the deliverable; only the data block changes
+# ══════════════════════════════════════════════════════════════════════════════
+DATA_BLOCK = re.compile(
+    r'(<script id="wt-data" type="application/json">)(.*?)(</script>)', re.S
+)
+
+
+def inline(html_path: Path, payload: dict) -> None:
+    html = html_path.read_text(encoding="utf-8")
+    if len(DATA_BLOCK.findall(html)) != 1:
+        raise ValueError(f'{html_path} must contain exactly one <script id="wt-data"> block')
+    # `</` → `<\/` keeps a stray "</script>" inside any string from ending the block early;
+    # `\/` is a valid JSON escape, so JSON.parse is unaffected.
+    blob = json.dumps(payload, ensure_ascii=False, allow_nan=False, indent=2).replace("</", "<\\/")
+    html_path.write_text(DATA_BLOCK.sub(lambda m: m.group(1) + blob + m.group(3), html, count=1),
+                         encoding="utf-8")
+
+
+@app.command()
+def main(out: Path = typer.Option(HTML, "--out", help="html file to inline into")) -> None:
+    payload = build_payload()
+    check_payload(payload)
+    JSON_OUT.write_text(json.dumps(payload, ensure_ascii=False, allow_nan=False, indent=2) + "\n",
+                        encoding="utf-8")
+    inline(out, payload)
+    total = sum(c["ms"] for s in payload["steps"] for c in s.get("commands", []))
+    console.print(f"[green]wrote[/] {out}  ({len(payload['steps'])} steps, {total:.0f} ms of real work)")
+    console.print(f"[green]wrote[/] {JSON_OUT}")
+
+
+if __name__ == "__main__":
+    app()

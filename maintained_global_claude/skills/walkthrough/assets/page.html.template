@@ -1,0 +1,307 @@
+<!doctype html>
+<!--
+  PAGE flavor — a scrolling explainer for ONE capability, in four fixed movements:
+    01 The showcase     what it produces, on real data, first thing you see
+    02 How it works     the actual mechanism: formulas, derivations, named methods
+    03 At scale         why the cost holds up as the input grows
+    04 Honest caveats   what it does NOT establish, stated before anyone asks
+
+  Self-contained: inline CSS/JS, data inlined below, no server, no network.
+
+  THIS FILE IS BOTH THE SOURCE AND THE DELIVERABLE. Edit the prose and design here;
+  `gen_<slug>.py` only rewrites the <script id="wt-data"> block in place.
+
+  RULE: prose is written by hand, every NUMBER comes from the payload. If you find
+  yourself typing a digit into the markup, it belongs in the data instead.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- ▸ EDIT -->
+<title>THE CLAIM · PROJECT explainers</title>
+<style>
+  :root{
+    --paper:#eceae4; --surface:#ffffff; --ink:#1a1a18; --dim:#77756c; --faint:#8a887f;
+    --line:#e2e0d8; --panel:#0c0d10; --panel2:#191b20; --panel-line:#23262e;
+    --panel-ink:#f2f0ea; --panel-dim:#9a9ca2;
+    --amber:#e0a13a; --pos:#4b7fd6; --neg:#c94f47; --mute:#8a8578;
+    --sans:"IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans);
+       font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px; margin:0 auto; padding:48px 24px 96px}
+  .num,code,pre,.math,th.n,td.n{font-family:var(--mono); font-variant-numeric:tabular-nums}
+  h1{font-size:34px; line-height:1.2; margin:0 0 12px; letter-spacing:-.01em}
+  h2{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim);
+     margin:0 0 16px; font-weight:600}
+  h3{font-size:18px; margin:28px 0 8px; font-weight:600}
+  h4{font-size:15px; margin:20px 0 6px; font-weight:600}
+  p{margin:0 0 14px; max-width:74ch}
+  a{color:#2f6bbf}
+  header{margin:0 0 52px}
+  section{margin:0 0 56px}
+  .sec-head{display:flex; align-items:baseline; gap:12px; border-bottom:1px solid var(--line);
+            padding-bottom:10px; margin-bottom:22px}
+  .sec-head .step{font-family:var(--mono); font-size:12px; color:var(--amber); font-weight:600}
+  .claim{font-size:20px; line-height:1.5; max-width:70ch; margin:0 0 20px}
+  .cap{font-size:13.5px; color:var(--dim); margin:0 0 12px; max-width:80ch}
+  .cap b{color:var(--ink); font-weight:600}
+
+  /* header chips — the corpus/input at a glance, all values from the payload */
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin:18px 0 0}
+  .chip{font-family:var(--mono); font-size:12px; padding:4px 9px; border:1px solid var(--line);
+        border-radius:999px; background:var(--surface); color:var(--dim)}
+  .chip b{color:var(--ink); font-weight:600}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:20px 22px}
+  .card + .card{margin-top:16px}
+  .panel{background:var(--panel); color:var(--panel-ink); border:1px solid var(--panel-line);
+         border-radius:10px; padding:20px 22px}
+  .panel p{color:var(--panel-dim)} .panel p b,.panel p strong{color:var(--panel-ink)}
+  .panel code{color:var(--amber)}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px}
+  @media (max-width:860px){.grid2,.grid3{grid-template-columns:1fr}}
+
+  /* the mechanism block: real notation, not a screenshot of it */
+  .math{background:var(--panel); color:var(--panel-ink); border-radius:8px; padding:16px 18px;
+        font-size:14px; line-height:2; overflow-x:auto; white-space:pre; margin:12px 0}
+  .math .v{color:var(--amber)}
+  .math .cmt{color:var(--panel-dim)}
+  .where{font-size:14px; color:var(--dim); margin:8px 0 0}
+  .where b{font-family:var(--mono); color:var(--ink); font-weight:600}
+
+  table{border-collapse:collapse; width:100%; font-size:14px}
+  th,td{text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap}
+  th{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); font-weight:600}
+  th.n,td.n{text-align:right; font-family:var(--mono)}
+  tbody tr:last-child td{border-bottom:none}
+  .tbl-wrap{overflow-x:auto}
+
+  .bar-row{display:grid; grid-template-columns:1fr 64px; gap:8px; align-items:center;
+           font-size:13px; padding:2px 0}
+  .bar-row .lbl{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .bar-row .lbl .ct{color:var(--faint); font-family:var(--mono); font-size:11px}
+  .bar-row .val{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums}
+  .bar{height:4px; border-radius:2px; margin-top:2px; background:var(--amber)}
+  .bar.pos{background:var(--pos)} .bar.neg{background:var(--neg)}
+
+  ul.tight{margin:0 0 14px; padding-left:20px; max-width:74ch}
+  ul.tight li{margin:0 0 8px}
+  .panel ul.tight{color:var(--panel-dim)}
+  .panel ul.tight li::marker{color:var(--amber)}
+  .panel ul.tight b{color:var(--panel-ink)}
+  .caveat{border-left:3px solid var(--amber); padding-left:14px; margin:0 0 16px; max-width:76ch}
+  .caveat b{font-weight:600}
+  details.why{margin-top:16px; background:var(--surface); border:1px solid var(--line); border-radius:10px}
+  details.why summary{cursor:pointer; padding:12px 16px; font-size:14px; color:var(--dim)}
+  details.why .body{padding:0 16px 16px}
+  footer{margin-top:64px; padding-top:18px; border-top:1px solid var(--line);
+         font-size:12.5px; color:var(--faint); max-width:88ch}
+  footer code{font-size:12px}
+  .empty{border:1px dashed var(--neg); border-radius:10px; padding:18px 20px; color:var(--neg);
+         font-size:14.5px; margin:0 0 16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <!-- ▸ EDIT: the kicker names which capability this page explains -->
+  <div class="chip" style="display:inline-block;margin-bottom:14px">PROJECT explainer · CAPABILITY</div>
+  <h1>THE CLAIM, AS A SENTENCE SOMEONE COULD DISAGREE WITH</h1>
+  <p class="claim">Two or three sentences: what the naive approach gets wrong, and what
+  this one does instead. Name the failure mode — that is what makes the page worth
+  reading rather than a feature list.</p>
+  <div class="chips" id="chips"></div>
+</header>
+
+<!-- ══ 01 ══ what it produces, on real data, before any explanation ══════════ -->
+<section id="showcase">
+  <div class="sec-head"><span class="step">01</span><h2>The showcase</h2></div>
+
+  <h3>HEADLINE RESULT</h3>
+  <p class="cap" id="cap-main"></p>
+  <div class="card tbl-wrap"><table id="t-main"></table></div>
+
+  <h3 style="margin-top:36px">THE SECOND VIEW</h3>
+  <p class="cap" id="cap-second"></p>
+  <div class="grid2">
+    <div class="card"><h4 style="margin-top:0">LEFT PANEL</h4><div id="panel-a"></div></div>
+    <div class="card"><h4 style="margin-top:0">RIGHT PANEL</h4><div id="panel-b"></div></div>
+  </div>
+</section>
+
+<!-- ══ 02 ══ the actual mechanism — named methods, real notation ════════════ -->
+<section id="how">
+  <div class="sec-head"><span class="step">02</span><h2>How it works</h2></div>
+  <p>One paragraph framing the stages and what each one is <em>for</em>. If there are
+  three stages, say what distinct failure mode each one answers.</p>
+
+  <h3>Stage 1 — NAME IT</h3>
+  <p>The naive version, and precisely how it fails. Then the fix, with its citation
+  (author, year, title) — a technique with a name is checkable; "a smart heuristic" is not.</p>
+  <div class="math"><span class="cmt">// what this expression is, in words</span>
+score = f(x)   <span class="v">parameter</span> = derived from input shape</div>
+  <p class="where"><b>x</b> what x is · <b>parameter</b> =
+  <span class="num" id="p-param"></span> — DERIVED at generation time from the input's own
+  shape, not a tuned constant, so it ports to a different input instead of rotting.</p>
+  <p id="p-stage1"></p>
+
+  <h3>Stage 2 — NAME IT</h3>
+  <div class="math"><span class="cmt">// the second mechanism</span>
+gate: keep while  condition</div>
+  <p id="p-stage2"></p>
+
+  <details class="why">
+    <summary>Why not the obvious alternative?</summary>
+    <div class="body"><p>The competing approach a reader will think of, and the specific
+    reason it was rejected. Optional, non-intrusive: it costs nothing to the reader who
+    skips it.</p></div>
+  </details>
+</section>
+
+<!-- ══ 03 ══ the cost argument ═══════════════════════════════════════════════ -->
+<section id="scale">
+  <div class="sec-head"><span class="step">03</span><h2>At scale</h2></div>
+  <div class="panel">
+    <p>Open with the claim in one sentence: which expensive thing this never does.</p>
+    <ul class="tight">
+      <li><b>Step — what it costs.</b> The operation, its complexity in the quantity that
+      actually grows, and the API/flag that delivers it.</li>
+      <li><b>Cost trap:</b> the plausible-looking call pattern that is accidentally
+      O(everything), and what to do instead.</li>
+    </ul>
+    <p style="margin-bottom:0">Close on how the property changes with size — ideally the
+    result gets <em>stronger</em>, not merely faster.</p>
+  </div>
+</section>
+
+<!-- ══ 04 ══ what this does NOT establish ═══════════════════════════════════ -->
+<section id="caveats">
+  <div class="sec-head"><span class="step">04</span><h2>Honest caveats</h2></div>
+  <!-- Hand-written caveats sit inline; ones that quote live numbers get an id and are
+       filled from the payload. Never fewer than three: a page with no caveats reads as
+       a sales page, and the first reviewer question becomes the one you did not answer. -->
+  <div class="caveat"><b>The limitation, stated as a claim.</b> Then the honest detail,
+  including what a production version would do differently.</div>
+  <div class="caveat" id="cav-a"></div>
+  <div class="caveat" id="cav-b"></div>
+</section>
+
+<footer id="foot"></footer>
+</div>
+
+<!-- ══ GROUND TRUTH ══════════════════════════════════════════════════════════
+     Rewritten IN PLACE by gen_<slug>.py. Do not hand-edit.
+-->
+<script id="wt-data" type="application/json">{
+  "meta": { "generated_at": null, "regen_cmd": "./gen_<slug>.py", "source": null, "params": {} },
+  "chips": [],
+  "rows": []
+}</script>
+
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("wt-data").textContent || "{}");
+const M = D.meta || {}, P = M.params || {};
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+const $   = (id) => document.getElementById(id);
+const el  = (t, c, txt) => { const e = document.createElement(t);
+  if (c) e.className = c; if (txt != null) e.textContent = txt; return e; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const f   = (x, d = 2) => Number.isFinite(x) ? x.toFixed(d) : "—";
+const sgn = (x, d = 2) => Number.isFinite(x) ? (x > 0 ? "+" : "") + x.toFixed(d) : "—";
+const int = (x) => Number.isFinite(x) ? x.toLocaleString("en-US") : "—";
+const pct = (x, d = 0) => Number.isFinite(x) ? (100 * x).toFixed(d) + "%" : "—";
+// A p/q value below the printed precision must NOT render as "0.000" — that reads as an
+// exact zero, which no survival function returns.
+const sci = (x, d = 3) => !Number.isFinite(x) ? "—"
+  : (x !== 0 && Math.abs(x) < 1e-3) ? x.toExponential(1) : x.toFixed(d);
+
+// HONEST EMPTY — a page with no payload says so, loudly and specifically. It must never
+// look like a legitimate "nothing found" result.
+if (!D.rows || !D.rows.length){
+  document.querySelectorAll("section .card, section .panel").forEach(n => n.remove());
+  $("showcase").insertBefore(
+    el("div", "empty", `No data inlined yet — run ${M.regen_cmd || "the generator"} and reload.`),
+    $("showcase").firstChild.nextSibling);
+}
+
+// ── header chips ─────────────────────────────────────────────────────────────
+(D.chips || []).forEach(([value, label]) => {
+  const c = el("div", "chip");
+  c.innerHTML = `<b>${esc(value)}</b> ${esc(label)}`;
+  $("chips").append(c);
+});
+
+// ── 01 showcase: the table ───────────────────────────────────────────────────
+// columns: [header, accessor, css class]
+const COLS = [
+  ["term",  (r) => esc(r.term),        ""],
+  ["count", (r) => int(r.count),       "n"],
+  ["score", (r) => sgn(r.score),       "n"],
+  ["q",     (r) => sci(r.q),           "n"],
+];
+function renderTable(tableId, cols, rows){
+  const t = $(tableId);
+  if (!t) return;
+  const head = el("thead"), hr = el("tr");
+  cols.forEach(([h, , cls]) => { const th = el("th", cls); th.innerHTML = h; hr.append(th); });
+  head.append(hr); t.append(head);
+  const body = el("tbody");
+  rows.forEach(r => {
+    const tr = el("tr");
+    cols.forEach(([, fn, cls]) => { const td = el("td", cls); td.innerHTML = fn(r); tr.append(td); });
+    body.append(tr);
+  });
+  t.append(body);
+}
+renderTable("t-main", COLS, D.rows || []);
+
+if (D.rows && D.rows.length)
+  $("cap-main").innerHTML =
+    `<b>${int(D.rows.length)} rows</b> out of <b>${int(M.n_candidates)}</b> candidates. `
+    + `SAY WHAT THE READER SHOULD NOTICE IN THIS TABLE.`;
+
+// ── a labeled bar list (reusable for either showcase panel) ──────────────────
+function renderBars(hostId, rows){
+  const host = $(hostId);
+  if (!host) return;
+  const max = Math.max(...rows.map(r => Math.abs(r.value)), 1);
+  rows.forEach(r => {
+    const row = el("div", "bar-row"), lbl = el("div", "lbl");
+    lbl.innerHTML = `${esc(r.label)}${r.note ? ` <span class="ct">${esc(r.note)}</span>` : ""}`
+      + `<div class="bar ${r.value < 0 ? "neg" : "pos"}" style="width:${(100*Math.abs(r.value)/max).toFixed(1)}%"></div>`;
+    row.append(lbl, el("div", "val", r.display ?? f(r.value)));
+    host.append(row);
+  });
+}
+renderBars("panel-a", D.panel_a || []);
+renderBars("panel-b", D.panel_b || []);
+
+// ── 02 how it works: the live parameter values ───────────────────────────────
+// Every number in the prose is injected, never typed — a typed number is a number
+// nothing computed, and it rots the first time the input changes.
+$("p-param").textContent = f(P.param, 3);
+$("p-stage1").innerHTML = `On this input, stage 1 produced <b>${int(M.n_candidates)}</b> candidates.`;
+$("p-stage2").innerHTML = `<b>${int(M.n_kept)}</b> survived; the gate removed <b>${int(M.n_killed)}</b>.`;
+
+// ── 04 caveats that quote live numbers ───────────────────────────────────────
+$("cav-a").innerHTML = `<b>THE LIMITATION.</b> Its detail, quoting the real `
+  + `<span class="num">${int(M.n_candidates)}</span> rather than a remembered number.`;
+$("cav-b").innerHTML = `<b>ANOTHER LIMITATION.</b> …`;
+
+// ── footer: provenance ───────────────────────────────────────────────────────
+$("foot").innerHTML =
+  `<b>Provenance:</b> ${esc(M.source || "—")}. Generated ${esc(M.generated_at || "—")}.`
+  + `<br>Every number on this page was computed at generation time — no fixtures, no cached `
+  + `answers, no mock mode. Regenerate with <code>${esc(M.regen_cmd || "./gen_&lt;slug&gt;.py")}</code>.`;
+</script>
+</body>
+</html>

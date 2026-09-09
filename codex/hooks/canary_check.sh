@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 #
 # Stop hook: warns when the last assistant message doesn't start with the
-# bolded canary word (see global CLAUDE.md "Canary" section). Silent in
+# bolded canary word (see global AGENTS.md "Canary" section). Silent in
 # every other case -- including malformed/absent transcript data -- since
 # this is a warning, never a gate.
 
