@@ -28,7 +28,7 @@ enabledProviders:
 modelRoles:
   plan: anthropic/claude-fable-5-1:high
   task: openai-codex/gpt-5.6-terra
-  default: anthropic/claude-fable-5-1:high
+  default: openai-codex/gpt-5.6-terra
 symbolPreset: nerd
 theme:
   dark: obsidian
@@ -47,3 +47,4 @@ task:
     security-reviewer: openai-codex/gpt-5.6-terra
 autolearn:
   enabled: true
+defaultThinkingLevel: auto
