@@ -248,3 +248,6 @@ function y() {
 	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
 	command rm -f -- "$tmp"
 }
+
+fwd()   { ssh -O forward -L "$1:localhost:$1" myremote && echo "→ localhost:$1"; }
+unfwd() { ssh -O cancel  -L "$1:localhost:$1" myremote && echo "✕ localhost:$1"; }
