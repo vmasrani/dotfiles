@@ -344,6 +344,7 @@ install_dotfiles() {
 	mkdir -p "$HOME/dev/projects"
 	mkdir -p "$HOME/.config/helix"
 	mkdir -p "$HOME/.config/htop"
+	mkdir -p "$HOME/.config/gh-dash"
 	mkdir -p "$HOME/.local/bin"
 	mkdir -p "$HOME/.claude"
 	mkdir -p "$HOME/.codex"
@@ -384,6 +385,7 @@ install_dotfiles() {
 		"$home/.codex/config.toml"
 		"$home/.codex/hooks.json"
 		"$home/.omp/agent/config.yml"
+		"$home/.config/gh-dash/config.yml"
 		"$home/.gemini/antigravity-cli/agents"
 		"$home/.gemini/antigravity-cli/hooks"
 		"$home/.gemini/antigravity-cli/skills"
@@ -515,6 +517,9 @@ install_dotfiles() {
 		"$dotfiles/editors/hx_languages.toml:$home/.config/helix/languages.toml"
 		"$dotfiles/editors/hx_config.toml:$home/.config/helix/config.toml"
 		"$dotfiles/editors/hx_themes:$home/.config/helix/themes"
+
+		# gh-dash
+		"$dotfiles/gh-dash/config.yml:$home/.config/gh-dash/config.yml"
 
 		# claude directories and files (symlink contents to ~/.claude)
 		# NOTE: plugins/ is NOT symlinked - it contains machine-specific paths
@@ -1042,32 +1047,32 @@ install_meslo_font() {
 	local font_installed=false
 	if [[ "$OS_TYPE" == "mac" ]]; then
 		(brew list --cask font-meslo-lg-nerd-font) &>/dev/null && font_installed=true
-		(ls ~/Library/Fonts/MesloLG*NerdFont*.ttf ~/Library/Fonts/MesloLGS\ NF* /Library/Fonts/MesloLGS\ NF*) &>/dev/null && font_installed=true
+		(ls ~/Library/Fonts/MesloLGSNerdFontMono*.ttf /Library/Fonts/MesloLGSNerdFontMono*.ttf) &>/dev/null && font_installed=true
 	elif command_exists fc-list; then
-		fc-list -q "MesloLGS NF" && font_installed=true
+		fc-list -q "MesloLGS Nerd Font Mono" && font_installed=true
 	fi
 
 	if [[ "$font_installed" == "false" ]]; then
-		gum_info "Installing MesloLGS NF font..."
+		gum_info "Installing MesloLGS Nerd Font Mono..."
 		if [[ "$OS_TYPE" == "mac" ]]; then
 			brew install --cask font-meslo-lg-nerd-font
 		else
 			apt_install fontconfig
 			# Direct download method for Linux
 			mkdir -p "$HOME/.local/share/fonts"
-			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Regular.ttf" \
-				--output "$HOME/.local/share/fonts/MesloLGS NF Regular.ttf"
-			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold.ttf" \
-				--output "$HOME/.local/share/fonts/MesloLGS NF Bold.ttf"
-			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Italic.ttf" \
-				--output "$HOME/.local/share/fonts/MesloLGS NF Italic.ttf"
-			curl -L "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20Bold%20Italic.ttf" \
-				--output "$HOME/.local/share/fonts/MesloLGS NF Bold Italic.ttf"
+			curl -fL "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.1/patched-fonts/Meslo/S/MesloLGSNerdFontMono-Regular.ttf" \
+				--output "$HOME/.local/share/fonts/MesloLGSNerdFontMono-Regular.ttf"
+			curl -fL "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.1/patched-fonts/Meslo/S/MesloLGSNerdFontMono-Bold.ttf" \
+				--output "$HOME/.local/share/fonts/MesloLGSNerdFontMono-Bold.ttf"
+			curl -fL "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.1/patched-fonts/Meslo/S/MesloLGSNerdFontMono-Italic.ttf" \
+				--output "$HOME/.local/share/fonts/MesloLGSNerdFontMono-Italic.ttf"
+			curl -fL "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.1/patched-fonts/Meslo/S/MesloLGSNerdFontMono-BoldItalic.ttf" \
+				--output "$HOME/.local/share/fonts/MesloLGSNerdFontMono-BoldItalic.ttf"
 			fc-cache -f -v
 		fi
-		gum_success "MesloLGS NF font installed successfully."
+		gum_success "MesloLGS Nerd Font Mono installed successfully."
 	else
-		gum_dim "MesloLGS NF font is already installed."
+		gum_dim "MesloLGS Nerd Font Mono is already installed."
 	fi
 }
 

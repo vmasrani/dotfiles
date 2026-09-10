@@ -27,7 +27,7 @@ description: Leave a durable GitHub handoff or completion record for the current
 4. Do not delete worktrees or branches with uncommitted work. Cleanup is local
    and only after the branch is safely merged.
 
-Concurrent-lane cleanup is mandatory immediately after `pre-dev` → `dev` merges — see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`:
+Concurrent-lane cleanup is mandatory immediately after `pre-dev` (or `pre-dev2`, `pre-dev3`, …) → `dev` merges — see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md` (substitute the numbered name below):
 ```
 git push origin --delete pre-dev; git branch -D pre-dev
 for b in <merged-worker-branch-1> <merged-worker-branch-2> ...; do git push origin --delete "$b"; git branch -D "$b"; done

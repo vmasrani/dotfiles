@@ -39,7 +39,7 @@ batch), optionally followed by a short branch suffix.
      worktree. No per-issue claim comments.
    No other session may work on a claimed issue without an explicit handoff.
 
-If `git show-ref --verify --quiet refs/heads/pre-dev`, workers still branch from `dev` per steps 1–6 above — this is the Concurrent lane.
+If any local branch matches `^pre-dev[0-9]*$` (`git for-each-ref --format='%(refname:short)' refs/heads/ | rg '^pre-dev[0-9]*$'`), workers still branch from `dev` per steps 1–6 above but NEVER run a gate or open a per-issue PR — they merge `--no-ff` into that integration branch when done; this is the Concurrent lane, the DEFAULT whenever 2+ issues are in flight. Starting a second issue while one is already in flight and no integration branch exists? Create `pre-dev` from `dev` first (its own worktree), then proceed.
 Full rules: `.agent-workflow/AGENT_WORKFLOW.md`.
 ## Chore mode: `/start-task chore <slug>`
 

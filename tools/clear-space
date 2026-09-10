@@ -1,0 +1,407 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+# Conservative, best-effort macOS cache cleanup. It never uses sudo.
+
+set -uo pipefail
+
+SCRIPT_NAME=${0##*/}
+DAYS=1
+DRY_RUN=false
+ASSUME_YES=false
+WITH_DOCKER=false
+AGGRESSIVE=false
+HAD_ERROR=0
+PROCESS_LIST=""
+
+usage() {
+    cat <<'EOF'
+Usage: clear-space [options]
+
+Reclaim regenerable disk space without removing source worktrees, installed
+toolchains, active Docker resources, or user application data.
+
+Options:
+  -n, --dry-run    Print every planned removal or command; make no changes.
+  -y, --yes        Skip the interactive confirmation.
+      --days N     Remove age-qualified sessions and temporary data at least N
+                   days old (non-negative integer; default: 1).
+      --docker     Also prune unused Docker images, stopped containers,
+                   unused networks, and build cache. Docker volumes are kept.
+      --aggressive With --docker only, also prune unused Docker volumes.
+  -h, --help       Show this help.
+
+Default cleanup:
+  * contents of ~/Library/Caches; uv, npm, Bun, and regenerative Cargo caches
+  * old Claude project JSONL transcripts (memory paths and recent files kept)
+  * old paired OMP agent session files/directories (recent/current kept)
+  * inactive OMP headless-browser profiles, abandoned Darwin temporary families,
+    stale /private/tmp Rust target directories, and obsolete Cursor server builds
+
+The command never removes source/worktree roots, ~/.cargo/bin, Cargo config or
+credentials, installed Rust toolchains, user application data, or active Docker
+resources. Missing paths and unavailable tools are reported or skipped.
+EOF
+}
+
+fail() {
+    printf '%s: ERROR: %s\n' "$SCRIPT_NAME" "$*" >&2
+    exit 2
+}
+
+note() {
+    printf '%s\n' "$*"
+}
+
+warn() {
+    printf '%s: WARNING: %s\n' "$SCRIPT_NAME" "$*" >&2
+}
+
+report_failure() {
+    warn "$*"
+    HAD_ERROR=1
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run)
+            DRY_RUN=true
+            ;;
+        -y|--yes)
+            ASSUME_YES=true
+            ;;
+        --days)
+            [[ $# -ge 2 ]] || fail "--days requires a non-negative integer"
+            DAYS=$2
+            shift
+            ;;
+        --docker)
+            WITH_DOCKER=true
+            ;;
+        --aggressive)
+            AGGRESSIVE=true
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            [[ $# -eq 0 ]] || fail "unexpected positional argument: $1"
+            break
+            ;;
+        *)
+            fail "unknown option: $1 (see --help)"
+            ;;
+    esac
+    shift
+done
+
+[[ "$DAYS" =~ ^[0-9]+$ ]] || fail "--days must be a non-negative integer (got: $DAYS)"
+[[ "$AGGRESSIVE" == false || "$WITH_DOCKER" == true ]] || fail "--aggressive requires --docker"
+
+# DARWIN_USER_TEMP_DIR is the canonical Darwin location. TMPDIR is preferred so
+# callers can supply an isolated fixture for a dry-run audit.
+if [[ -n ${TMPDIR:-} ]]; then
+    DARWIN_TEMP_ROOT=${TMPDIR%/}
+elif command -v getconf >/dev/null 2>&1; then
+    DARWIN_TEMP_ROOT=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)
+    DARWIN_TEMP_ROOT=${DARWIN_TEMP_ROOT%/}
+else
+    DARWIN_TEMP_ROOT=""
+fi
+
+HOME_ROOT=${HOME%/}
+[[ -n "$HOME_ROOT" && "$HOME_ROOT" != / ]] || fail "HOME must name a user directory"
+PRIVATE_TMP_ROOT=/private/tmp
+CLAUDE_ROOT="$HOME_ROOT/.claude/projects"
+OMP_ROOT="$HOME_ROOT/.omp"
+
+# Process command lines are only used to preserve active profile/version paths.
+if command -v ps >/dev/null 2>&1; then
+    PROCESS_LIST=$(ps -ax -o command= 2>/dev/null || true)
+fi
+
+show_capacity() {
+    local when=$1
+    note "Filesystem capacity ($when):"
+    if command -v df >/dev/null 2>&1; then
+        if ! df -h "$HOME_ROOT" 2>&1; then
+            report_failure "df failed for $HOME_ROOT"
+        fi
+    else
+        note "  df unavailable"
+    fi
+}
+
+is_under_root() {
+    local path=$1 root=${2%/}
+    [[ -n "$root" && "$root" != / && "$path" == "$root"/* ]]
+}
+
+safe_remove() {
+    local path=$1 root=$2
+    if ! is_under_root "$path" "$root"; then
+        report_failure "refusing to remove outside fixed root: $path (root: $root)"
+        return 1
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+        note "  [dry-run] remove $path"
+        return 0
+    fi
+    if rm -rf "$path"; then
+        note "  removed $path"
+    else
+        report_failure "could not remove $path"
+        return 1
+    fi
+}
+
+remove_children() {
+    local root=$1 child
+    [[ -d "$root" ]] || { note "  skipped (missing): $root"; return 0; }
+    while IFS= read -r -d '' child; do
+        safe_remove "$child" "$root" || true
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
+}
+
+stat_mtime() {
+    if stat -f %m "$1" >/dev/null 2>&1; then
+        stat -f %m "$1"
+    else
+        stat -c %Y "$1" 2>/dev/null || return 1
+    fi
+}
+
+is_old() {
+    local path=$1 modified now
+    modified=$(stat_mtime "$path") || { report_failure "could not read modification time: $path"; return 1; }
+    now=$(date +%s) || { report_failure "could not obtain current time"; return 1; }
+    (( now - modified >= DAYS * 86400 ))
+}
+
+is_referenced_by_process() {
+    local path=$1
+    [[ -n "$PROCESS_LIST" && "$PROCESS_LIST" == *"$path"* ]]
+}
+
+has_active_rust_build() {
+    [[ "$PROCESS_LIST" =~ (^|[[:space:]/])(cargo|rustc|nextest|cargo-nextest)([[:space:]]|$) ]]
+}
+
+is_claude_memory_path() {
+    local path=$1
+    [[ "$path" == */memory/* || "$path" == *-memory/* || "$path" == *-Memory/* ]]
+}
+
+clean_claude_transcripts() {
+    local path
+    note "Claude transcripts older than $DAYS day(s):"
+    [[ -d "$CLAUDE_ROOT" ]] || { note "  skipped (missing): $CLAUDE_ROOT"; return; }
+    while IFS= read -r -d '' path; do
+        is_claude_memory_path "$path" && continue
+        is_old "$path" || continue
+        safe_remove "$path" "$CLAUDE_ROOT" || true
+    done < <(find "$CLAUDE_ROOT" -type f -name '*.jsonl' -print0 2>/dev/null)
+}
+
+clean_omp_sessions() {
+    local sessions_root="$OMP_ROOT/agent/sessions" project session_file session_dir
+    note "OMP agent sessions older than $DAYS day(s):"
+    [[ -d "$sessions_root" ]] || { note "  skipped (missing): $sessions_root"; return; }
+    while IFS= read -r -d '' project; do
+        while IFS= read -r -d '' session_file; do
+            session_dir=${session_file%.jsonl}
+            if [[ ! -d "$session_dir" ]]; then
+                note "  preserved (unpaired session file): $session_file"
+                continue
+            fi
+            if is_old "$session_file" && is_old "$session_dir"; then
+                safe_remove "$session_dir" "$sessions_root" || true
+                safe_remove "$session_file" "$sessions_root" || true
+            else
+                note "  preserved (recent session): $session_file"
+            fi
+        done < <(find "$project" -mindepth 1 -maxdepth 1 -type f -name '*.jsonl' -print0 2>/dev/null)
+        while IFS= read -r -d '' session_dir; do
+            [[ -f "$session_dir.jsonl" ]] || note "  preserved (unpaired session directory): $session_dir"
+        done < <(find "$project" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    done < <(find "$sessions_root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+}
+
+clean_omp_browser_profiles() {
+    local root path found=false
+    note "Inactive OMP headless-browser profiles:"
+    for root in \
+        "$OMP_ROOT/browser-profiles" \
+        "$OMP_ROOT/browser" \
+        "$OMP_ROOT/browsers" \
+        "$OMP_ROOT/run/browser-profiles" \
+        "$OMP_ROOT/run/browser"; do
+        [[ -d "$root" ]] || continue
+        found=true
+        while IFS= read -r -d '' path; do
+            if is_referenced_by_process "$path"; then
+                note "  preserved (active process): $path"
+            else
+                safe_remove "$path" "$root" || true
+            fi
+        done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    done
+    root="$OMP_ROOT/run/daemons"
+    if [[ -d "$root" ]]; then
+        while IFS= read -r -d '' path; do
+            found=true
+            if is_referenced_by_process "$path"; then
+                note "  preserved (active process): $path"
+            else
+                safe_remove "$path" "$root" || true
+            fi
+        done < <(find "$root" -type d -name 'omp.browser.headless.profile' -print0 2>/dev/null)
+    fi
+    [[ "$found" == true ]] || note "  skipped (no profile roots found)"
+}
+
+clean_temp_families() {
+    local path base
+    note "Abandoned Darwin temporary families older than $DAYS day(s):"
+    [[ -n "$DARWIN_TEMP_ROOT" && -d "$DARWIN_TEMP_ROOT" ]] || { note "  skipped (Darwin temp directory unavailable)"; return; }
+    while IFS= read -r -d '' path; do
+        base=${path##*/}
+        case "$base" in
+            cartridge-test-*|pack-csv-*|"pytest-of-${USER:-unknown}"|.tmp*)
+                is_old "$path" || continue
+                safe_remove "$path" "$DARWIN_TEMP_ROOT" || true
+                ;;
+        esac
+    done < <(find "$DARWIN_TEMP_ROOT" -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
+}
+
+clean_private_tmp_targets() {
+    local target parent
+    note "Stale Rust target directories under $PRIVATE_TMP_ROOT older than $DAYS day(s):"
+    [[ -d "$PRIVATE_TMP_ROOT" ]] || { note "  skipped (missing): $PRIVATE_TMP_ROOT"; return; }
+    if has_active_rust_build; then
+        note "  preserved (cargo/rustc/nextest process is active)"
+        return
+    fi
+    while IFS= read -r -d '' target; do
+        parent=${target%/target}
+        [[ -f "$parent/Cargo.toml" ]] || continue
+        is_old "$target" || continue
+        safe_remove "$target" "$PRIVATE_TMP_ROOT" || true
+    done < <(find "$PRIVATE_TMP_ROOT" -type d -name target -print0 2>/dev/null)
+}
+
+clean_cursor_server_versions() {
+    local bin_root="$HOME_ROOT/.cursor-server/bin" platform version newest candidate newest_mtime candidate_mtime
+    note "Obsolete Cursor server versions:"
+    [[ -d "$bin_root" ]] || { note "  skipped (missing): $bin_root"; return; }
+    while IFS= read -r -d '' platform; do
+        newest=""
+        newest_mtime=-1
+        while IFS= read -r -d '' candidate; do
+            candidate_mtime=$(stat_mtime "$candidate") || continue
+            if (( candidate_mtime > newest_mtime )); then
+                newest=$candidate
+                newest_mtime=$candidate_mtime
+            fi
+        done < <(find "$platform" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+        [[ -n "$newest" ]] || continue
+        while IFS= read -r -d '' version; do
+            if [[ "$version" == "$newest" ]]; then
+                note "  preserved (newest): $version"
+            elif is_referenced_by_process "$version"; then
+                note "  preserved (active process): $version"
+            else
+                safe_remove "$version" "$platform" || true
+            fi
+        done < <(find "$platform" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    done < <(find "$bin_root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+}
+
+run_external_cleanup() {
+    local label=$1
+    shift
+    note "$label:"
+    if [[ "$DRY_RUN" == true ]]; then
+        printf '  [dry-run] run'
+        printf ' %q' "$@"
+        printf '\n'
+        return 0
+    fi
+    if "$@"; then
+        note "  completed"
+    else
+        report_failure "command failed for $label: $*"
+    fi
+}
+
+note "Planned cleanup categories:"
+note "  • ~/Library/Caches contents"
+note "  • uv, npm, Bun, and regenerative Cargo caches"
+note "  • Claude and OMP sessions older than $DAYS day(s)"
+note "  • inactive OMP browser profiles, abandoned temporary data, stale Rust targets, and Cursor server builds"
+if [[ "$WITH_DOCKER" == true ]]; then
+    if [[ "$AGGRESSIVE" == true ]]; then
+        note "  • unused Docker resources including unused volumes"
+    else
+        note "  • unused Docker resources"
+    fi
+fi
+note "Preserved: worktrees/source roots, user application data, current sessions, Cargo binaries/config/credentials/toolchains, and active Docker resources."
+
+if [[ "$DRY_RUN" != true && "$ASSUME_YES" != true ]]; then
+    if [[ ! -t 0 ]]; then
+        fail "refusing noninteractive cleanup without --yes"
+    fi
+    printf 'Continue? [y/N] '
+    read -r answer || exit 1
+    [[ "$answer" == y || "$answer" == Y || "$answer" == yes || "$answer" == YES ]] || { note "Aborted."; exit 1; }
+fi
+
+show_capacity before
+note "Library cache contents:"
+remove_children "$HOME_ROOT/Library/Caches"
+
+if command -v uv >/dev/null 2>&1; then
+    run_external_cleanup "uv cache" uv cache clean
+else
+    note "uv cache: skipped (uv unavailable)"
+fi
+if command -v npm >/dev/null 2>&1; then
+    run_external_cleanup "npm cache" npm cache clean --force
+else
+    note "npm cache: skipped (npm unavailable)"
+fi
+note "npm npx cache:"
+remove_children "$HOME_ROOT/.npm/_npx"
+note "Bun install cache:"
+remove_children "$HOME_ROOT/.bun/install/cache"
+note "Cargo regenerative caches:"
+remove_children "$HOME_ROOT/.cargo/registry"
+remove_children "$HOME_ROOT/.cargo/git"
+
+clean_claude_transcripts
+clean_omp_sessions
+clean_omp_browser_profiles
+clean_temp_families
+clean_private_tmp_targets
+clean_cursor_server_versions
+
+if [[ "$WITH_DOCKER" == true ]]; then
+    if command -v docker >/dev/null 2>&1; then
+        if [[ "$AGGRESSIVE" == true ]]; then
+            run_external_cleanup "Docker unused resources and volumes" docker system prune -af --volumes
+        else
+            run_external_cleanup "Docker unused resources" docker system prune -af
+        fi
+    else
+        note "Docker cleanup: skipped (docker unavailable)"
+    fi
+fi
+
+show_capacity after
+if [[ "$DRY_RUN" == true ]]; then
+    note "Dry run complete; no changes were made."
+fi
+exit "$HAD_ERROR"

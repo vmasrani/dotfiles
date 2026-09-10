@@ -1,0 +1,5 @@
+node_modules/
+props.json
+out/
+public/clip
+.remotion/

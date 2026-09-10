@@ -23,6 +23,8 @@ providers:
     - google
     - mojeek
     - public
+enabledProviders:
+  - claude
 modelRoles:
   default: openai-codex/gpt-5.6-sol:high
   plan: anthropic/claude-fable-5
@@ -36,3 +38,13 @@ dev:
   autoqaConsent: granted
 composer:
   shape: claude
+task:
+  agentModelOverrides:
+    task: openai-codex/gpt-5.6-terra
+    sonic: openai-codex/gpt-5.6-terra
+    scout: anthropic/claude-sonnet-5
+    reviewer: openai-codex/gpt-5.6-terra
+    security-reviewer: openai-codex/gpt-5.6-terra
+autolearn:
+  enabled: true
+defaultThinkingLevel: auto

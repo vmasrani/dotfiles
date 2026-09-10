@@ -155,6 +155,10 @@ alias ht='htop -t -u "$(whoami)" -p "$(get_filtered_pids)"'
 alias cc='claude'
 alias ccc='claude --continue'
 alias ccd='claude --dangerously-skip-permissions'
+
+# Claude Code Remote Control: prefix for auto-generated session names in the mobile app
+export CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX=wrk
+
 alias upd='update-packages'
 alias updq='update-packages --quiet'
 
@@ -255,3 +259,6 @@ function y() {
 	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
 	command rm -f -- "$tmp"
 }
+
+fwd()   { ssh -O forward -L "$1:localhost:$1" myremote && echo "→ localhost:$1"; }
+unfwd() { ssh -O cancel  -L "$1:localhost:$1" myremote && echo "✕ localhost:$1"; }

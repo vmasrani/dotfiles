@@ -64,8 +64,6 @@ export TS_SOCKET="/tmp/testq-${UID}.sock"
 [[ -d "$HOME/tools/shims" ]] && path=("$HOME/tools/shims" $path)
 export PATH
 
-# Job queue: 3 concurrent jobs (raised from 1 on 2026-09-02; 64c/503GB box)
-export QUEUE_SLOTS=3
 # Per-machine concurrency for `queue` (see ~/dotfiles/tools/queue). Defaults to
 # 1; a machine-specific override (e.g. this box's Linux-only config) sets it
 # earlier in the sourcing chain and this default leaves that untouched.

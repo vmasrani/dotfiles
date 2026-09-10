@@ -6,9 +6,15 @@ description: Run fast checks and open the current issue-owned or batch branch as
 
 1. Confirm the current branch is not `dev` or `main`, and read the linked
    issue — for a `batch-*` branch, every issue in the batch.
-2. Run `just ci-fast` in the current worktree. It must be green before you go on.
-   A check that cannot run must be visibly absent from the recipe, never a step
-   that prints `not applicable` and passes; a broken check must fail loudly.
+2. **Integration branch first.** If any local branch matches `^pre-dev[0-9]*$`
+   (`git for-each-ref --format='%(refname:short)' refs/heads/ | rg '^pre-dev[0-9]*$'`),
+   this is a wave: do NOT run a gate and do NOT open a per-issue PR — rebase
+   onto that integration branch, `git merge --no-ff` into it, push it, report,
+   and STOP here (the orchestrator runs the wave's single gate and PR). Only
+   for a genuinely lone issue with no integration branch: run `just ci-fast`
+   in the current worktree once; it must be green before you go on. A check
+   that cannot run must be visibly absent from the recipe, never a step that
+   prints `not applicable` and passes; a broken check must fail loudly.
 3. Inspect `git diff origin/dev...HEAD`, commit only the intended files, and
    push with `git push -u origin HEAD`. On a batch branch, verify each issue's
    change is its own commit referencing that issue number before pushing.
@@ -20,7 +26,7 @@ description: Run fast checks and open the current issue-owned or batch branch as
 5. Report the PR URL with `gh issue comment`: on the issue (strict lane) or on
    the batch's lowest-numbered issue only (fast lane).
 
-If `git show-ref --verify --quiet refs/heads/pre-dev`, no per-issue PR — `git merge --no-ff` your rebased branch into `pre-dev` and push it instead; see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`.
+If any `pre-dev[0-9]*` branch exists, no per-issue PR and no per-issue gate — `git merge --no-ff` your rebased branch into that integration branch and push it instead (step 2); see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`.
 ## Chore branches
 
 On a `chore/<slug>` branch there is no issue: skip the issue read in step 1 and
