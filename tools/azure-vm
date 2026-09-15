@@ -123,6 +123,172 @@ REMOTE
     fi
 }
 
+# --- Cost estimation --------------------------------------------------------
+# Pulled live from the public Azure Retail Prices API (no auth needed) so
+# figures track actual VM size / disk size / region instead of a fixed
+# placeholder number. Azure rate-limits this API to ~10 req/min -- keep calls
+# to a minimum per status check.
+
+fetch_retail_prices() {
+    local filter="$1"
+    local encoded
+    encoded=$(jq -nr --arg f "$filter" '$f | @uri')
+    curl -sf "https://prices.azure.com/api/retail/prices?\$filter=${encoded}"
+}
+
+get_vm_hourly_price() {
+    local vm_size="$1" region="$2" priority="$3"
+    local size_name="${vm_size#Standard_}"
+    [[ "$priority" == "Spot" ]] && size_name="${size_name} Spot"
+    local filter="serviceName eq 'Virtual Machines' and armRegionName eq '${region}' and armSkuName eq '${vm_size}' and priceType eq 'Consumption'"
+    fetch_retail_prices "$filter" | jq -r --arg sku "$size_name" \
+        '[.Items[] | select(.type=="Consumption" and .skuName==$sku and (.productName|test("Windows")|not))][0].retailPrice // empty'
+}
+
+get_snapshot_price_per_gb() {
+    local region="$1"
+    local filter="serviceName eq 'Storage' and armRegionName eq '${region}' and skuName eq 'Snapshots LRS'"
+    fetch_retail_prices "$filter" | jq -r \
+        '[.Items[] | select(.type=="Consumption" and .meterName=="LRS Snapshots" and (.productName|contains("Standard HDD")))][0].retailPrice // empty'
+}
+
+# Azure managed disks are billed at fixed tiers keyed off provisioned size
+# (P1..P80 Premium, E1..E80 StandardSSD, S1..S80 Standard HDD), not per-GB.
+disk_tier_for_gb() {
+    local gb="$1"
+    local sizes=(4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384 32767)
+    local tiers=(1 2 3 4 6 10 15 20 30 40 50 60 70 80)
+    local i
+    for i in "${!sizes[@]}"; do
+        if (( gb <= sizes[i] )); then
+            echo "${tiers[i]}"
+            return 0
+        fi
+    done
+    echo "${tiers[-1]}"
+}
+
+# PremiumV2_LRS/UltraSSD_LRS bill per-IOPS/throughput, not by tier -- echo
+# nothing for those so the caller can report them as "not priced" rather
+# than fabricate a number.
+disk_sku_family() {
+    case "$1" in
+        Premium_LRS|Premium_ZRS) echo "P" ;;
+        StandardSSD_LRS|StandardSSD_ZRS) echo "E" ;;
+        Standard_LRS) echo "S" ;;
+        *) echo "" ;;
+    esac
+}
+
+get_disk_monthly_price() {
+    local family="$1" tier="$2" region="$3"
+    local tier_name="${family}${tier} LRS"
+    local filter="serviceName eq 'Storage' and armRegionName eq '${region}' and skuName eq '${tier_name}'"
+    fetch_retail_prices "$filter" | jq -r --arg meter "${tier_name} Disk" \
+        '[.Items[] | select(.type=="Consumption" and .meterName==$meter and (.productName|contains("Managed Disks")))][0].retailPrice // empty'
+}
+
+# Sums live disk sizes/skus for a running VM into a monthly disk cost, and
+# (size-only, sku-agnostic) the equivalent archived-snapshot storage cost.
+# Echoes: "<disk_monthly> <total_gb> <unpriced_disk_count>"
+sum_disk_costs() {
+    local vm_json="$1" region="$2"
+    local disk_ids
+    mapfile -t disk_ids < <(jq -r '[.storageProfile.osDisk.managedDisk.id] + [.storageProfile.dataDisks[].managedDisk.id] | .[]' <<<"$vm_json")
+
+    local disk_total=0 total_gb=0 unpriced=0
+    local disk_id sku size family tier price
+    for disk_id in "${disk_ids[@]}"; do
+        sku=$(az disk show --ids "$disk_id" --query "sku.name" -o tsv)
+        size=$(az disk show --ids "$disk_id" --query "diskSizeGB" -o tsv)
+        total_gb=$((total_gb + size))
+        family=$(disk_sku_family "$sku")
+        if [[ -z "$family" ]]; then
+            unpriced=$((unpriced + 1))
+            continue
+        fi
+        tier=$(disk_tier_for_gb "$size")
+        price=$(get_disk_monthly_price "$family" "$tier" "$region")
+        if [[ -z "$price" ]]; then
+            unpriced=$((unpriced + 1))
+            continue
+        fi
+        disk_total=$(jq -n --argjson a "$disk_total" --argjson b "$price" '$a + $b')
+    done
+    echo "$disk_total $total_gb $unpriced"
+}
+
+print_running_estimate() {
+    local vm_json
+    vm_json=$(az vm show -n "$vm_name" -g "$RG" -o json)
+
+    local region vm_size priority
+    region=$(jq -r '.location' <<<"$vm_json")
+    vm_size=$(jq -r '.hardwareProfile.vmSize' <<<"$vm_json")
+    priority=$(jq -r '.priority // "Regular"' <<<"$vm_json")
+    [[ "$priority" == "Spot" ]] || priority="Regular"
+
+    local vm_hourly
+    vm_hourly=$(get_vm_hourly_price "$vm_size" "$region" "$priority")
+    if [[ -z "$vm_hourly" ]]; then
+        gum_warning "No retail price found for $vm_size ($priority) in $region; compute cost omitted below."
+        vm_hourly=0
+    fi
+    local vm_monthly
+    vm_monthly=$(jq -n --argjson h "$vm_hourly" '($h * 730 * 100 | round) / 100')
+
+    read -r disk_monthly total_gb unpriced < <(sum_disk_costs "$vm_json" "$region")
+
+    local total
+    total=$(jq -n --argjson a "$vm_monthly" --argjson b "$disk_monthly" '(($a + $b) * 100 | round) / 100')
+
+    echo "VM: $vm_size ($priority) -- \$$(printf '%.2f' "$vm_monthly")/mo compute"
+    if (( unpriced > 0 )); then
+        echo "Disks: $total_gb GB -- \$$(printf '%.2f' "$disk_monthly")/mo ($unpriced disk(s) not priced: PremiumV2/Ultra, check portal)"
+    else
+        echo "Disks: $total_gb GB -- \$$(printf '%.2f' "$disk_monthly")/mo"
+    fi
+    echo "Monthly estimate: \$$(printf '%.2f' "$total")"
+
+    local snap_price_per_gb
+    snap_price_per_gb=$(get_snapshot_price_per_gb "$region")
+    if [[ -n "$snap_price_per_gb" ]]; then
+        local archived_total savings
+        archived_total=$(jq -n --argjson g "$total_gb" --argjson p "$snap_price_per_gb" '(($g * $p) * 100 | round) / 100')
+        savings=$(jq -n --argjson a "$total" --argjson b "$archived_total" '(($a - $b) * 100 | round) / 100')
+        echo "Potential archived cost: \$$(printf '%.2f' "$archived_total")"
+        echo "Potential savings: \$$(printf '%.2f' "$savings")/month"
+    fi
+}
+
+print_archived_estimate() {
+    local region
+    region=$(jq -r '.location' "$manifest_file")
+
+    local snapshot_names
+    mapfile -t snapshot_names < <(jq -r '[.archive.osDiskSnapshot] + (.archive.dataDiskSnapshots // []) | .[] | select(. != null)' "$manifest_file")
+
+    local total_gb=0 name size
+    for name in "${snapshot_names[@]}"; do
+        size=$(az snapshot show -n "$name" -g "$RG" --query "diskSizeGB" -o tsv 2>/dev/null || echo 0)
+        total_gb=$((total_gb + size))
+    done
+
+    local price_per_gb
+    price_per_gb=$(get_snapshot_price_per_gb "$region")
+    if [[ -z "$price_per_gb" ]]; then
+        gum_error "Could not fetch current snapshot pricing for $region."
+        echo "Storage: $total_gb GB across ${#snapshot_names[@]} snapshots"
+        return
+    fi
+    local archived_total
+    archived_total=$(jq -n --argjson g "$total_gb" --argjson p "$price_per_gb" '(($g * $p) * 100 | round) / 100')
+
+    echo "Storage: $total_gb GB across ${#snapshot_names[@]} snapshots"
+    echo "Estimated monthly cost: \$$(printf '%.2f' "$archived_total")"
+    echo "Restore estimate: Fast"
+}
+
 status_vm() {
     gum_info "Checking status for VM: $vm_name"
     local vm_exists
@@ -130,10 +296,10 @@ status_vm() {
 
     if [[ -n "$vm_exists" ]]; then
         gum_success "Running"
-        echo -e "Monthly estimate: \$340\nPotential archived cost: \$18\nPotential savings: \$322/month"
+        print_running_estimate
     elif [[ -f "$manifest_file" ]]; then
         gum_box "Archived"
-        echo -e "Storage: Archived Snapshots\nEstimated monthly cost: \$17\nRestore estimate: Fast"
+        print_archived_estimate
     else
         gum_error "VM not found and no archive manifest found."
     fi

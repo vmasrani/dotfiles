@@ -160,6 +160,15 @@
 #   command's own output is captured to `out=` instead of streaming live. You
 #   get notifications or you get streaming, not both.
 #
+# HUNG ts CLIENTS
+#   `ts`'s own daemon connection has been observed to never return even after
+#   the daemon marks a job finished, which otherwise hangs this wrapper (and
+#   whatever is reading its output) forever. QUEUE_FOLLOW_HANG_GRACE (default
+#   20s) bounds how long a finished-but-unreturned follow is tolerated before
+#   it is killed and the exit code is read from the daemon directly.
+#   QUEUE_QUERY_TIMEOUT (default 10s) bounds every other `ts -l`/`ts -s`
+#   status query, so one stuck round-trip cannot leak a process forever either.
+#
 # RE-ENTRANCY
 #   A queued job runs with QUEUE_ACTIVE=1. If queue sees that set it runs the
 #   command directly instead of enqueuing it. Without this, a queued `just
@@ -319,18 +328,30 @@ readonly QUICK_RATIO="${QUEUE_QUICK_RATIO:-3}"
 ensure_server() {
   command -v ts >/dev/null 2>&1 \
     || die "task-spooler is not installed -- run: brew install task-spooler"
+  command -v timeout >/dev/null 2>&1 \
+    || die "'timeout' (coreutils) is not installed -- run: brew install coreutils"
   ts -S "$SLOTS" >/dev/null 2>&1 \
     || die "could not start or reach the queue daemon at $TS_SOCKET"
 }
 
 # ── queue introspection ──────────────────────────────────────────────────────
+# FOUND LIVE 2026-09-14: an orphaned `ts -s 61`, PPID 1, 24 days old, two open
+# fds on the real socket -- some past `state_of_id` call outlived whatever
+# spawned it and the daemon round-trip it was waiting on never came back or
+# never got read. Every introspection query below is now bounded, so a stuck
+# daemon round-trip times out and gets reaped instead of leaking a process
+# that sits on the socket forever (and, since TS_MAXCONN is finite, can crowd
+# out everyone else's queries).
+readonly TS_QUERY_TIMEOUT="${QUEUE_QUERY_TIMEOUT:-10}"
+ts_list() { timeout "$TS_QUERY_TIMEOUT" ts -l 2>/dev/null }
+
 # `ts -l` is a header line plus one line per job; state is the second column.
 # Everything here parses by COLUMN, never by searching the command text, so a
 # job whose command happens to contain the word "running" cannot skew a count.
 
 # How many jobs will consume capacity before a NEW submission does.
 queue_depth() {
-  ts -l 2>/dev/null | tail -n +2 |
+  ts_list | tail -n +2 |
     awk '$2=="queued" || $2=="running" {n++} END{print n+0}'
 }
 
@@ -342,20 +363,75 @@ queue_depth() {
 # bounded wait feel unbounded. Run order is job-id order, so only lower ids can
 # be ahead of us.
 queue_ahead_of() {
-  ts -l 2>/dev/null | tail -n +2 |
+  ts_list | tail -n +2 |
     awk -v me="$1" '($2=="queued" || $2=="running") && ($1+0) < (me+0) {n++} END{print n+0}'
 }
 
 ids_in_state() {
-  ts -l 2>/dev/null | tail -n +2 | awk -v s="$1" '$2==s {print $1}'
+  ts_list | tail -n +2 | awk -v s="$1" '$2==s {print $1}'
 }
 
-state_of_id() { ts -s "$1" 2>/dev/null || true }
+state_of_id() { timeout "$TS_QUERY_TIMEOUT" ts -s "$1" 2>/dev/null || true }
 
 # Empty means "not enqueued yet" -- NOT "gone". A caller must not treat the two
 # as the same or it will stop watching before the job ever appears.
 id_by_label() {
-  ts -l 2>/dev/null | tail -n +2 | awk -v l="[$1]" 'index($0, l) {print $1; exit}'
+  ts_list | tail -n +2 | awk -v l="[$1]" 'index($0, l) {print $1; exit}'
+}
+
+# ── the wrapper-never-exits guard ────────────────────────────────────────────
+# `ts -nf`/`ts -w` attach to the daemon and block until it reports the job
+# done -- but that client has been observed to never return even though the
+# daemon already marked the job "finished" (`ts -l` agrees, `ts -s` agrees, the
+# job is plainly gone). Reproduced across a system sleep: a suite finished at
+# 00:10, the daemon knew it, and the `queue` process itself sat alive at 0% CPU
+# until something woke and re-checked it at 09:35. Whatever holds the caller's
+# stdout pipe open (an agent's backgrounded Bash tool, a shell waiting on this
+# process) hangs right along with it, which is indistinguishable from the job
+# itself never finishing.
+#
+# The daemon's own record is ground truth regardless of whether its OWN client
+# can report it, so: once "finished" has held for FOLLOW_HANG_GRACE seconds
+# while our `ts` client is still alive, kill that client ourselves (SIGKILL --
+# it is stuck in a blocking read, nothing softer reaches it) and read the exit
+# code from `ts -l`'s E-Level column instead of blocking forever. This never
+# fires on a job that is actually still running; it only reaps a client that
+# has outlived the very job it was waiting on.
+readonly FOLLOW_HANG_GRACE="${QUEUE_FOLLOW_HANG_GRACE:-20}"
+
+exit_level_of() {
+  ts_list | tail -n +2 | awk -v id="$1" '$1==id {print $4; exit}'
+}
+
+# $1: pid to watch for liveness (either the ts client itself, or -- when it
+# sits inside a capture pipeline -- the pipeline's last stage).
+# $2: optional `pgrep -f` pattern identifying the actual ts client to kill,
+#     when that is not $1 (the capture pipeline case). Defaults to killing $1.
+# Sets HANG_DECLARED=1 iff it had to intervene. Reads $RECORD, set by the
+# caller before submission.
+HANG_DECLARED=0
+guard_follow() {
+  local watch_pid="$1" pattern="${2:-}" id="" hung_since=0 tspid
+  HANG_DECLARED=0
+  while kill -0 "$watch_pid" 2>/dev/null; do
+    sleep 1
+    id=$(rec_get "$RECORD" id 2>/dev/null) || id=""
+    if [[ -n "$id" && "$(state_of_id "$id")" == "finished" ]]; then
+      (( hung_since == 0 )) && hung_since=$SECONDS
+      if (( SECONDS - hung_since >= FOLLOW_HANG_GRACE )); then
+        tspid=""
+        [[ -n "$pattern" ]] && tspid=$(pgrep -f -- "$pattern" 2>/dev/null | head -n1)
+        [[ -n "$tspid" ]] || tspid="$watch_pid"
+        print -u2 "$SELF: ts follow for job $id outlived its finish by ${FOLLOW_HANG_GRACE}s -- killing the stuck ts client (pid $tspid) and reading the exit code from the daemon instead of blocking forever"
+        kill -9 "$tspid" 2>/dev/null
+        HANG_DECLARED=1
+        return 0
+      fi
+    else
+      hung_since=0
+    fi
+  done
+  return 0
 }
 
 # ── looking inside a `zsh -c` wrapper ────────────────────────────────────────
@@ -796,7 +872,7 @@ triage_queue() {
   # unidentifiable, which is a wrong answer that looks like a finding. The
   # record is filed under its label BEFORE submission, so the label always
   # resolves and "unidentifiable" keeps its real meaning: not ours.
-  for line in ${(f)"$(ts -l 2>/dev/null | tail -n +2 | awk '$2=="queued"||$2=="running" {
+  for line in ${(f)"$(ts_list | tail -n +2 | awk '$2=="queued"||$2=="running" {
         lbl=""; if (match($0, /\[[^][]+\]/)) lbl = substr($0, RSTART+1, RLENGTH-2)
         print $1 "\t" $2 "\t" lbl }')"}; do
     [[ -n "$line" ]] || continue
@@ -990,8 +1066,20 @@ if (( EVENTS )); then
   rec_put "$RECORD" started "$(date +%s)"
   print "RUNNING id=$id waited=$(( $(date +%s) - t0 ))s"
   t1=$(date +%s)
-  ts -w "$id" >/dev/null 2>&1
+  ts -w "$id" >/dev/null 2>&1 &
+  WPID=$!
+  guard_follow "$WPID"
+  wait "$WPID" 2>/dev/null
   rc=$?
+  if (( HANG_DECLARED )); then
+    lvl=$(exit_level_of "$id")
+    if [[ -n "$lvl" ]]; then
+      rc="$lvl"
+    else
+      print -u2 "$SELF: job $id finished with no E-Level on record -- reporting exit 1"
+      rc=1
+    fi
+  fi
   el=$(( $(date +%s) - t1 ))
   rec_put "$RECORD" finished "$(date +%s)"
   rec_put "$RECORD" exit "$rc"
@@ -1220,13 +1308,41 @@ if (( CAPTURE )); then
     { QUEUE_ACTIVE=1 ts -nf -L "$LABEL" -N "$COST" "$@"
       print -r -- $? >"$JOBS/$LABEL.rc"
     } 2>&1 1>&3 | tee "$JOBS/$LABEL.err" >&2
-  } 3>&1 | tee "$JOBS/$LABEL.out"
+  } 3>&1 | tee "$JOBS/$LABEL.out" &
+  PIPE_PID=$!
+  # $1 here is the final `tee`, not the ts client -- find that by label to kill it.
+  guard_follow "$PIPE_PID" "ts -nf -L $LABEL "
+  wait "$PIPE_PID" 2>/dev/null
   rc=$(cat "$JOBS/$LABEL.rc" 2>/dev/null) || rc=1
+  if (( HANG_DECLARED )); then
+    id=$(rec_get "$RECORD" id 2>/dev/null) || id=""
+    lvl=$([[ -n "$id" ]] && exit_level_of "$id")
+    if [[ -n "$lvl" ]]; then
+      rc="$lvl"
+      print -r -- "$lvl" >"$JOBS/$LABEL.rc"
+    else
+      print -u2 "$SELF: job $id finished with no E-Level on record -- reporting exit 1"
+      rc=1
+    fi
+  fi
   rec_put "$RECORD" out "$JOBS/$LABEL.out"
   rec_put "$RECORD" err "$JOBS/$LABEL.err"
 else
-  QUEUE_ACTIVE=1 ts -nf -L "$LABEL" -N "$COST" "$@"
+  QUEUE_ACTIVE=1 ts -nf -L "$LABEL" -N "$COST" "$@" &
+  TS_PID=$!
+  guard_follow "$TS_PID"
+  wait "$TS_PID" 2>/dev/null
   rc=$?
+  if (( HANG_DECLARED )); then
+    id=$(rec_get "$RECORD" id 2>/dev/null) || id=""
+    lvl=$([[ -n "$id" ]] && exit_level_of "$id")
+    if [[ -n "$lvl" ]]; then
+      rc="$lvl"
+    else
+      print -u2 "$SELF: job $id finished with no E-Level on record -- reporting exit 1"
+      rc=1
+    fi
+  fi
 fi
 (( SUP_PID > 0 )) && kill "$SUP_PID" 2>/dev/null
 trap - INT TERM
