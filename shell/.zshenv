@@ -64,9 +64,14 @@ export TS_SOCKET="/tmp/testq-${UID}.sock"
 [[ -d "$HOME/tools/shims" ]] && path=("$HOME/tools/shims" $path)
 export PATH
 
+# Machine-local overrides (QUEUE_SLOTS etc.) live in ~/.zshenv.local, which is
+# NOT tracked in dotfiles. Source it here so a box can set QUEUE_SLOTS before
+# the default and the NEXTEST_TEST_THREADS derivation below pick it up.
+[[ -f "$HOME/.zshenv.local" ]] && source "$HOME/.zshenv.local"
+
 # Per-machine concurrency for `queue` (see ~/dotfiles/tools/queue). Defaults to
-# 1; a machine-specific override (e.g. this box's Linux-only config) sets it
-# earlier in the sourcing chain and this default leaves that untouched.
+# 1; a machine-specific override in ~/.zshenv.local (sourced just above) sets it
+# earlier and this default leaves that untouched.
 export QUEUE_SLOTS="${QUEUE_SLOTS:-1}"
 
 # nextest defaults to one test process PER LOGICAL CPU, PER RUN -- so

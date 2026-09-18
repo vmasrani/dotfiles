@@ -30,3 +30,8 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 
 # Added by Antigravity CLI installer
 export PATH="/Users/vmasrani/.local/bin:$PATH"
+
+# Machine-local overrides (QUEUE_SLOTS etc.) live in ~/.zshenv.local, which is
+# NOT tracked in dotfiles. bash login shells don't read ~/.zshenv, so source it
+# here too. No-op on any machine without the file.
+[[ -f "$HOME/.zshenv.local" ]] && source "$HOME/.zshenv.local"
