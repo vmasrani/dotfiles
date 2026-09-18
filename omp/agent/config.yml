@@ -26,8 +26,8 @@ providers:
 enabledProviders:
   - claude
 modelRoles:
-  plan: anthropic/claude-fable-5-1:high
-  task: openai-codex/gpt-5.6-terra
+  plan: openai-codex/gpt-5.6-sol
+  task: anthropic/claude-opus-4-8
   default: openai-codex/gpt-5.6-sol
 symbolPreset: nerd
 theme:
@@ -40,7 +40,7 @@ composer:
   shape: borderless
 task:
   agentModelOverrides:
-    task: openai-codex/gpt-5.6-terra
+    task: anthropic/claude-opus-4-8
     sonic: openai-codex/gpt-5.6-terra
     scout: anthropic/claude-sonnet-5
     reviewer: openai-codex/gpt-5.6-terra
