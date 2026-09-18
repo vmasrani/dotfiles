@@ -74,11 +74,12 @@ EOF
 
 # ── help / usage ──────────────────────────────────────────────────────────────
 
-@test "help: prints usage and the attach hint" {
+@test "help: prints usage and describes the plain terminal" {
     run "$AGENT_SSH" help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage:"* ]]
-    [[ "$output" == *"tmux attach -t agent"* ]]
+    [[ "$output" == *"plain terminal"* ]]
+    [[ "$output" != *"tmux attach"* ]]
 }
 
 @test "help: unknown command fails loud" {

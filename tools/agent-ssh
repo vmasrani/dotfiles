@@ -1,9 +1,9 @@
 #!/usr/bin/env zsh
-# agent-ssh - SSH into a fresh agent-image job and attach its tmux session.
+# agent-ssh - SSH into a fresh agent-image job (a plain terminal in the image).
 #
-# Boots the published cartridge-agent image (your full zsh + tmux dotfiles baked
-# in) as a GitHub Actions job, waits for its tmate SSH bridge, and drops you into
-# it. From there `tmux attach -t agent` puts you in a live p10k session.
+# Boots the published cartridge-agent image as a GitHub Actions job, waits for its
+# tmate SSH bridge, and drops you into a plain terminal inside the image (rustc,
+# cargo-nextest, just, uv, the ctx-* tools — no tmux, no p10k).
 #
 # No args -> interactive menu. Subcommands: connect | status | build | kill | help.
 #
@@ -25,7 +25,6 @@ REPO="${AGENT_SSH_REPO:-sophiaconsulting/cartridge}"
 IMAGE_TAG="${AGENT_SSH_IMAGE_TAG:-latest}"
 PKG_ORG="sophiaconsulting"
 PKG_NAME="cartridge-agent"
-SESSION="agent"
 BUILD_WF="build-agent-image.yml"
 SSH_WF="ssh-into-agent-image.yml"
 SSH_WF_PATH=".github/workflows/${SSH_WF}"
@@ -234,8 +233,8 @@ cmd_connect() {
     local since; since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     gum_info "Starting a ${mins}-minute session from the '${IMAGE_TAG}' image…"
     gh workflow run "$SSH_WF" --repo "$REPO" --ref "$ref" \
-        -f minutes="$mins" -f session_name="$SESSION" -f image_tag="$IMAGE_TAG" \
-        || die "Could not start the session. GitHub only lets a job run once its file is on the default branch (dev), so a 'not found on the default branch' error means the ssh-into-agent-image workflow PR still needs to merge into dev. Otherwise run 'gh auth status' and confirm you can dispatch jobs in ${REPO}."
+        -f minutes="$mins" -f image_tag="$IMAGE_TAG" \
+        || die "Could not start the session. Run 'gh auth status' and confirm you can dispatch jobs in ${REPO}. If the job workflow was only just added, give GitHub a moment to register it, then retry."
 
     local id
     id="$(find_new_run "$SSH_WF" "$since")" \
@@ -256,10 +255,9 @@ cmd_connect() {
 
     local target="${addr#ssh }"
     gum_box_success \
-        "Your agent box is ready." \
+        "Your agent box is ready — a plain terminal inside the image." \
         "" \
         "  $addr" \
-        "  Once connected, run:  tmux attach -t ${SESSION}" \
         "" \
         "  Window: ${mins} min (the job self-terminates then)." \
         "  Run:    $(run_url "$id")" \
@@ -270,7 +268,6 @@ cmd_connect() {
     fi
     gum_info "Not connecting. When you are ready:"
     print -r -- "  $addr"
-    print -r -- "  then: tmux attach -t ${SESSION}"
 }
 
 cmd_kill() {
@@ -304,7 +301,7 @@ cmd_kill() {
 
 cmd_help() {
     cat <<'EOF'
-agent-ssh - SSH into a fresh agent box and attach its tmux session.
+agent-ssh - SSH into a fresh agent box (a plain terminal inside the image).
 
 Usage:
   agent-ssh              Open the interactive menu.
@@ -314,7 +311,8 @@ Usage:
   agent-ssh kill         End one or more running SSH sessions.
   agent-ssh help         Show this help.
 
-Once connected, run:  tmux attach -t agent
+You land in a plain terminal inside the image (rustc, cargo-nextest, just, uv,
+the ctx-* tools). No tmux, no p10k.
 
 Environment:
   AGENT_SSH_REPO       repo hosting the jobs   (default sophiaconsulting/cartridge)
