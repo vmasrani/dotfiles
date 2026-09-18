@@ -57,7 +57,7 @@ install_if_dir_missing ~/bin/_diff-so-fancy install_diff_so_fancy               
 # install binaries
 install_if_missing unzip install_unzip # Unzip utility required for various installations
 install_if_missing bun install_bun # Bun JavaScript runtime and package manager
-install_if_missing node install_nvm # Node Version Manager with LTS Node.js (keyed on node so a killed nvm install resumes)
+install_nvm # Node Version Manager with LTS Node.js (idempotent + resumable; keyed on nvm's own node)
 install_if_missing npm install_npm # Node.js package manager
 install_if_missing yarn install_yarn # Yarn package manager
 install_if_missing pm2 install_pm2 # Process manager for Node.js applications

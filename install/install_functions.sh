@@ -108,6 +108,11 @@ git_clone_atomic() {
 ensure_apt_repos() {
 	[[ "$OS_TYPE" != "linux" ]] && return 0
 	gum_info "Configuring apt repositories..."
+	# A SIGKILL during an earlier apt run can leave dpkg half-configured, which
+	# makes every later apt_install fail with "dpkg was interrupted". Heal it up
+	# front so a resume after a mid-run kill can complete. No-op when nothing is
+	# pending.
+	sudo dpkg --configure -a 2>/dev/null || true
 	sudo mkdir -p /etc/apt/keyrings
 
 	# add-apt-repository (from software-properties-common) is needed for the PPAs
@@ -1220,7 +1225,8 @@ install_nvm() {
 	# Resumable: ~/.nvm exists the instant the nvm installer starts, but node
 	# only arrives after `nvm install --lts`. A run killed in between must, on
 	# resume, still finish installing node (never skip it because the dir is
-	# there). Keyed on node actually being runnable, not on the dir existing.
+	# there). Called unconditionally from setup.sh; every step below is guarded
+	# so a completed run is a quiet no-op.
 	export NVM_DIR="$HOME/.nvm"
 	if [ ! -s "$NVM_DIR/nvm.sh" ]; then
 		gum_info "Installing NVM..."
@@ -1231,11 +1237,17 @@ install_nvm() {
 	# shellcheck disable=SC1091
 	[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-	if ! command_exists node; then
+	# Key on nvm's OWN node, never on a system node that may already be on PATH
+	# (e.g. the macOS CI runner ships one). Otherwise npm -g installs would land
+	# in a system prefix we may not own. Install LTS only if nvm has no node yet.
+	local nvm_node
+	nvm_node="$(find "$NVM_DIR/versions/node" -maxdepth 3 -type f -name node 2>/dev/null | head -1)"
+	if [ -z "$nvm_node" ]; then
 		gum_info "Installing latest LTS Node.js via nvm..."
 		nvm install --lts
-		nvm use --lts
 	fi
+	# Select nvm's node for the rest of this run so npm/npx resolve to it.
+	nvm use --lts >/dev/null 2>&1 || nvm use default >/dev/null 2>&1 || true
 
 	if ! command_exists node; then
 		gum_error "install_nvm: node is still unavailable after nvm install --lts"
