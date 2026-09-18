@@ -333,8 +333,12 @@ install_if_missing() {
 
 	if ! command_exists "$command_name"; then
 		gum_dim "$command_name is not installed. Installing $command_name..."
+		local __start=$SECONDS
 		$install_function
-		gum_success "$command_name installed successfully."
+		local __elapsed=$((SECONDS - __start))
+		gum_success "$command_name installed successfully (${__elapsed}s)."
+		# Machine-parseable timing marker for the CI duration table (Feature 5).
+		printf 'TIMING\t%d\t%s\n' "$__elapsed" "$command_name"
 	else
 		gum_dim "$command_name is already installed."
 	fi
@@ -346,8 +350,11 @@ install_if_dir_missing() {
 
 	if [ ! -d "$dir_path" ]; then
 		gum_dim "Directory $dir_path does not exist. Installing..."
+		local __start=$SECONDS
 		$install_function
-		gum_success "Installation completed successfully."
+		local __elapsed=$((SECONDS - __start))
+		gum_success "Installation completed successfully (${__elapsed}s)."
+		printf 'TIMING\t%d\t%s\n' "$__elapsed" "$install_function"
 	else
 		gum_dim "$dir_path is already installed."
 	fi

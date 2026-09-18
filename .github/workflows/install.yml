@@ -49,6 +49,25 @@ jobs:
           ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run1.log"
           exit "${PIPESTATUS[0]}"
 
+      - name: First-run timing summary
+        if: always()
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/run1.log"
+          [ -f "$log" ] || { echo "no run1 log to summarize"; exit 0; }
+          tab=$'\t'
+          {
+            echo "### First-run install durations — ${{ github.job }}"
+            echo ""
+            echo "| tool | seconds |"
+            echo "| --- | ---: |"
+            grep -aE "^TIMING${tab}" "$log" | sort -t"$tab" -k2 -rn | head -15 \
+              | awk -F"$tab" '{printf "| %s | %s |\n", $3, $2}'
+            total=$(grep -aE "^TIMING${tab}" "$log" | awk -F"$tab" '{s+=$2} END{print s+0}')
+            echo ""
+            echo "**Total measured install time: ${total}s**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Second run must be a no-op
         shell: bash
         run: |
@@ -125,6 +144,25 @@ jobs:
           cd ~/dotfiles
           ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run1.log"
           exit "${PIPESTATUS[0]}"
+
+      - name: First-run timing summary
+        if: always()
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/run1.log"
+          [ -f "$log" ] || { echo "no run1 log to summarize"; exit 0; }
+          tab=$'\t'
+          {
+            echo "### First-run install durations — ${{ github.job }}"
+            echo ""
+            echo "| tool | seconds |"
+            echo "| --- | ---: |"
+            grep -aE "^TIMING${tab}" "$log" | sort -t"$tab" -k2 -rn | head -15 \
+              | awk -F"$tab" '{printf "| %s | %s |\n", $3, $2}'
+            total=$(grep -aE "^TIMING${tab}" "$log" | awk -F"$tab" '{s+=$2} END{print s+0}')
+            echo ""
+            echo "**Total measured install time: ${total}s**"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Second run must be a no-op
         shell: bash
@@ -207,6 +245,25 @@ jobs:
           cd ~/dotfiles
           ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run1.log"
           exit "${PIPESTATUS[0]}"
+
+      - name: First-run timing summary
+        if: always()
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/run1.log"
+          [ -f "$log" ] || { echo "no run1 log to summarize"; exit 0; }
+          tab=$'\t'
+          {
+            echo "### First-run install durations — ${{ github.job }}"
+            echo ""
+            echo "| tool | seconds |"
+            echo "| --- | ---: |"
+            grep -aE "^TIMING${tab}" "$log" | sort -t"$tab" -k2 -rn | head -15 \
+              | awk -F"$tab" '{printf "| %s | %s |\n", $3, $2}'
+            total=$(grep -aE "^TIMING${tab}" "$log" | awk -F"$tab" '{s+=$2} END{print s+0}')
+            echo ""
+            echo "**Total measured install time: ${total}s**"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Second run must be a no-op
         shell: bash
@@ -295,6 +352,25 @@ jobs:
           timeout -s KILL 180 ./setup.sh > "$RUNNER_TEMP/run1.log" 2>&1
           rc=$?
           echo "first run exit code: $rc (137 = killed as intended)"
+
+      - name: First-run timing summary
+        if: always()
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/run1.log"
+          [ -f "$log" ] || { echo "no run1 log to summarize"; exit 0; }
+          tab=$'\t'
+          {
+            echo "### First-run install durations — ${{ github.job }} (killed mid-run)"
+            echo ""
+            echo "| tool | seconds |"
+            echo "| --- | ---: |"
+            grep -aE "^TIMING${tab}" "$log" | sort -t"$tab" -k2 -rn | head -15 \
+              | awk -F"$tab" '{printf "| %s | %s |\n", $3, $2}'
+            total=$(grep -aE "^TIMING${tab}" "$log" | awk -F"$tab" '{s+=$2} END{print s+0}')
+            echo ""
+            echo "**Total measured install time before kill: ${total}s**"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resume run must complete
         shell: bash
