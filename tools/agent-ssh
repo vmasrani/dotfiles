@@ -2,7 +2,7 @@
 # agent-ssh - SSH into a fresh agent-image job (a plain terminal in the image).
 #
 # Boots the published cartridge-agent image as a GitHub Actions job, waits for its
-# tmate SSH bridge, and drops you into a plain terminal inside the image (rustc,
+# Upterm SSH bridge, and drops you into a plain terminal inside the image (rustc,
 # cargo-nextest, just, uv, the ctx-* tools — no tmux, no p10k).
 #
 # No args -> interactive menu. Subcommands: connect | status | build | kill | help.
@@ -37,13 +37,13 @@ die() { gum_error "$@"; exit 1; }
 
 # ── Pure, testable helpers ────────────────────────────────────────────────────
 
-# Extract the first "ssh <token>@<host>.tmate.io" from text ($* or stdin).
+# Extract the first "ssh <token>@uptermd.upterm.dev" from text ($* or stdin).
 # Prints it and returns 0; prints nothing and returns 1 when absent.
 extract_ssh_address() {
     local input addr
     if (( $# > 0 )); then input="$*"; else input="$(cat)"; fi
     addr="$(printf '%s\n' "$input" \
-        | grep -oE 'ssh [A-Za-z0-9_-]+@[A-Za-z0-9.-]+\.tmate\.io' \
+        | grep -oE 'ssh [A-Za-z0-9_-]+@uptermd\.upterm\.dev' \
         | head -1)"
     [[ -n "$addr" ]] || return 1
     printf '%s\n' "$addr"
@@ -151,10 +151,24 @@ fetch_ssh_annotation() {
     extract_ssh_address "$response"
 }
 
+# Read the workflow run state as "<status><tab><conclusion>". Returns 2 after a
+# GitHub API failure so waiting never disguises an unavailable API as "not ready".
+fetch_run_status() {
+    local run_id="$1" response rc
+    response="$(gh api "repos/${REPO}/actions/runs/${run_id}" \
+        --jq '[.status, (.conclusion // "")] | @tsv' 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        print -u2 -r -- "GitHub API failed while reading run ${run_id}: ${response}"
+        return 2
+    fi
+    printf '%s\n' "$response"
+}
+
 # Poll a running check until its stable address annotation appears.
 wait_for_ssh_address() {
     local run_id="$1" timeout="${2:-$CONNECT_TIMEOUT_SECS}" interval="${3:-10}"
-    local waited=0 addr rc
+    local waited=0 addr state status conclusion rc
     while (( waited < timeout )); do
         addr="$(fetch_ssh_annotation "$run_id")"
         rc=$?
@@ -163,6 +177,17 @@ wait_for_ssh_address() {
             1) ;;
             *) return 2 ;;
         esac
+
+        state="$(fetch_run_status "$run_id")"
+        rc=$?
+        (( rc == 0 )) || return 2
+        status="${state%%$'\t'*}"
+        conclusion="${state#*$'\t'}"
+        if [[ "$status" == "completed" ]]; then
+            print -u2 -r -- "Run ${run_id} completed with conclusion '${conclusion:-unknown}' before publishing an SSH address."
+            return 3
+        fi
+
         sleep "$interval"
         (( waited += interval ))
     done
@@ -285,6 +310,8 @@ cmd_connect() {
     rc=$?
     if (( rc == 2 )); then
         die "Stopped waiting because GitHub's API could not be read. Check your connection and 'gh auth status', then inspect: $(run_url "$id")"
+    elif (( rc == 3 )); then
+        die "The session run completed before publishing a valid SSH address. Check: $(run_url "$id")"
     elif (( rc != 0 )) || [[ -z "$addr" ]]; then
         die "No valid SSH address annotation appeared within 8 min. The job may still be starting, or the image tag '${IMAGE_TAG}' is not published. Check: $(run_url "$id"). End it with: agent-ssh kill"
     fi

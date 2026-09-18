@@ -74,7 +74,7 @@ EOF
 # A fake `gh` for the in-progress check-annotation protocol. It models a job
 # appearing after GH_READY_AFTER polls, then returns the annotation selected by
 # the real command's --jq expression. GH_ANNOTATION_MODE picks success | missing
-# | malformed | jobs-error | annotations-error.
+# | malformed | completed | jobs-error | annotations-error.
 write_fake_gh_annotations() {
     export GH_ANNOTATION_STATE="${BATS_TEST_TMPDIR}/annotation-state"
     : >"$GH_ANNOTATION_STATE"
@@ -96,14 +96,21 @@ case "$args" in
         ;;
     *"check-runs/777/annotations"*)
         case "${GH_ANNOTATION_MODE:-success}" in
-            success) echo "ssh Ready_9@lon1.tmate.io" ;;
-            missing) ;;
-            malformed) echo "connect at https://tmate.io/t/not-an-ssh-command" ;;
+            success) echo "ssh Ready_9@uptermd.upterm.dev" ;;
+            missing|completed) ;;
+            malformed) echo "connect at https://upterm.dev/not-an-ssh-command" ;;
             annotations-error)
                 echo "gh: annotation API forbidden (HTTP 403)" >&2
                 exit 1
                 ;;
         esac
+        ;;
+    *"/actions/runs/"*)
+        if [[ "${GH_ANNOTATION_MODE:-success}" == "completed" ]]; then
+            printf 'completed\tfailure\n'
+        else
+            printf 'in_progress\t\n'
+        fi
         ;;
     *) echo "unexpected gh call: $args" >&2; exit 99 ;;
 esac
@@ -136,23 +143,23 @@ EOF
 # ── ssh-address extraction ────────────────────────────────────────────────────
 
 @test "extract: pulls the ssh address out of a log line" {
-    run "$AGENT_SSH" __extract-ssh "::notice::SSH: ssh aB3xZ9qPkL7@nyc1.tmate.io"
+    run "$AGENT_SSH" __extract-ssh "::notice::SSH: ssh aB3xZ9qPkL7@uptermd.upterm.dev"
     [ "$status" -eq 0 ]
-    [ "$output" = "ssh aB3xZ9qPkL7@nyc1.tmate.io" ]
+    [ "$output" = "ssh aB3xZ9qPkL7@uptermd.upterm.dev" ]
 }
 
-@test "extract: picks the ssh line, not the web url, and tolerates _/- tokens" {
-    local log="Web shell: https://tmate.io/t/abc
-SSH: ssh To_ken-9@sfo2.tmate.io"
+@test "extract: picks the SSH command, not an Upterm web URL, and tolerates _/- tokens" {
+    local log="Service: https://upterm.dev
+SSH: ssh To_ken-9@uptermd.upterm.dev"
     run "$AGENT_SSH" __extract-ssh "$log"
     [ "$status" -eq 0 ]
-    [ "$output" = "ssh To_ken-9@sfo2.tmate.io" ]
+    [ "$output" = "ssh To_ken-9@uptermd.upterm.dev" ]
 }
 
 @test "extract: reads from stdin when given no argument" {
-    run bash -c 'printf "noise\nSSH: ssh Zz9@lon1.tmate.io\n" | "'"$AGENT_SSH"'" __extract-ssh'
+    run bash -c 'printf "noise\nSSH: ssh Zz9@uptermd.upterm.dev\n" | "'"$AGENT_SSH"'" __extract-ssh'
     [ "$status" -eq 0 ]
-    [ "$output" = "ssh Zz9@lon1.tmate.io" ]
+    [ "$output" = "ssh Zz9@uptermd.upterm.dev" ]
 }
 
 @test "extract: no address present returns non-zero and prints nothing" {
@@ -168,7 +175,7 @@ SSH: ssh To_ken-9@sfo2.tmate.io"
     export GH_ANNOTATION_MODE="success"
     run "$AGENT_SSH" __fetch-annotation 12345
     [ "$status" -eq 0 ]
-    [ "$output" = "ssh Ready_9@lon1.tmate.io" ]
+    [ "$output" = "ssh Ready_9@uptermd.upterm.dev" ]
 }
 
 @test "annotation: waits while the job is absent, then returns its address" {
@@ -177,7 +184,7 @@ SSH: ssh To_ken-9@sfo2.tmate.io"
     export GH_READY_AFTER=2
     run "$AGENT_SSH" __wait-annotation 12345 5 1
     [ "$status" -eq 0 ]
-    [ "$output" = "ssh Ready_9@lon1.tmate.io" ]
+    [ "$output" = "ssh Ready_9@uptermd.upterm.dev" ]
     [ "$(wc -l <"$GH_ANNOTATION_STATE" | tr -d ' ')" -eq 3 ]
 }
 
@@ -187,6 +194,16 @@ SSH: ssh To_ken-9@sfo2.tmate.io"
     run "$AGENT_SSH" __wait-annotation 12345 2 1
     [ "$status" -eq 1 ]
     [ -z "$output" ]
+}
+
+@test "annotation: stops immediately when the run completes without an address" {
+    write_fake_gh_annotations
+    export GH_ANNOTATION_MODE="completed"
+    run "$AGENT_SSH" __wait-annotation 12345 8 1
+    [ "$status" -eq 3 ]
+    [[ "$output" == *"completed"* ]]
+    [[ "$output" == *"failure"* ]]
+    [ "$(wc -l <"$GH_ANNOTATION_STATE" | tr -d ' ')" -eq 1 ]
 }
 
 @test "annotation: rejects malformed and missing annotation messages" {
