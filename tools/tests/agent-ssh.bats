@@ -1,12 +1,11 @@
 #!/usr/bin/env bats
 # Behaviour tests for `agent-ssh`, the tool that SSHes into a fresh agent-image
-# job and attaches its tmux session.
+# job and opens a plain terminal.
 #
 # HERMETIC BY CONSTRUCTION
-#   The tests exercise the tool's factored-out pure helpers through hidden
-#   dispatch hooks (`__extract-ssh`, `__valid-minutes`, `__resolve-ref`) so
-#   nothing here touches the network or GitHub. A fake `gh` is placed first on
-#   PATH for the ref-resolution tests and answers only which refs "exist".
+#   The tests exercise factored-out helpers through hidden dispatch hooks, so
+#   nothing here touches the network or GitHub. Fake `gh` programs are placed
+#   first on PATH and return only the exact API state under test.
 #
 #   ZDOTDIR points at an empty dir so the tool's zsh skips the user's ~/.zshenv
 #   (which, among other things, does a macOS keychain lookup on every start and
@@ -72,6 +71,52 @@ EOF
     chmod +x "$BIN/gh"
 }
 
+# A fake `gh` for the in-progress check-annotation protocol. It models a job
+# appearing after GH_READY_AFTER polls, then returns the annotation selected by
+# the real command's --jq expression. GH_ANNOTATION_MODE picks success | missing
+# | malformed | jobs-error | annotations-error.
+write_fake_gh_annotations() {
+    export GH_ANNOTATION_STATE="${BATS_TEST_TMPDIR}/annotation-state"
+    : >"$GH_ANNOTATION_STATE"
+    cat >"$BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+    *"/actions/runs/"*"/jobs"*)
+        if [[ "${GH_ANNOTATION_MODE:-success}" == "jobs-error" ]]; then
+            echo "gh: API unavailable (HTTP 503)" >&2
+            exit 1
+        fi
+        count="$(wc -l <"$GH_ANNOTATION_STATE" | tr -d ' ')"
+        printf 'poll\n' >>"$GH_ANNOTATION_STATE"
+        if (( count < ${GH_READY_AFTER:-0} )); then
+            exit 0
+        fi
+        echo "https://api.github.com/repos/test/repo/check-runs/777"
+        ;;
+    *"check-runs/777/annotations"*)
+        case "${GH_ANNOTATION_MODE:-success}" in
+            success) echo "ssh Ready_9@lon1.tmate.io" ;;
+            missing) ;;
+            malformed) echo "connect at https://tmate.io/t/not-an-ssh-command" ;;
+            annotations-error)
+                echo "gh: annotation API forbidden (HTTP 403)" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    *) echo "unexpected gh call: $args" >&2; exit 99 ;;
+esac
+EOF
+    chmod +x "$BIN/gh"
+
+    cat >"$BIN/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$BIN/sleep"
+}
+
 # ── help / usage ──────────────────────────────────────────────────────────────
 
 @test "help: prints usage and describes the plain terminal" {
@@ -114,6 +159,55 @@ SSH: ssh To_ken-9@sfo2.tmate.io"
     run "$AGENT_SSH" __extract-ssh "nothing to see here"
     [ "$status" -eq 1 ]
     [ -z "$output" ]
+}
+
+# ── live check-annotation address protocol (stubbed gh) ──────────────────────
+
+@test "annotation: returns a valid SSH command from the titled check annotation" {
+    write_fake_gh_annotations
+    export GH_ANNOTATION_MODE="success"
+    run "$AGENT_SSH" __fetch-annotation 12345
+    [ "$status" -eq 0 ]
+    [ "$output" = "ssh Ready_9@lon1.tmate.io" ]
+}
+
+@test "annotation: waits while the job is absent, then returns its address" {
+    write_fake_gh_annotations
+    export GH_ANNOTATION_MODE="success"
+    export GH_READY_AFTER=2
+    run "$AGENT_SSH" __wait-annotation 12345 5 1
+    [ "$status" -eq 0 ]
+    [ "$output" = "ssh Ready_9@lon1.tmate.io" ]
+    [ "$(wc -l <"$GH_ANNOTATION_STATE" | tr -d ' ')" -eq 3 ]
+}
+
+@test "annotation: times out when the address annotation stays missing" {
+    write_fake_gh_annotations
+    export GH_ANNOTATION_MODE="missing"
+    run "$AGENT_SSH" __wait-annotation 12345 2 1
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
+}
+
+@test "annotation: rejects malformed and missing annotation messages" {
+    write_fake_gh_annotations
+    for mode in malformed missing; do
+        export GH_ANNOTATION_MODE="$mode"
+        run "$AGENT_SSH" __fetch-annotation 12345
+        [ "$status" -eq 1 ]
+        [ -z "$output" ]
+    done
+}
+
+@test "annotation: fails loud when either GitHub API request errors" {
+    write_fake_gh_annotations
+    for mode in jobs-error annotations-error; do
+        export GH_ANNOTATION_MODE="$mode"
+        run "$AGENT_SSH" __fetch-annotation 12345
+        [ "$status" -eq 2 ]
+        [[ "$output" == *"GitHub API failed"* ]]
+        [[ "$output" == *"HTTP"* ]]
+    done
 }
 
 # ── minutes validation ────────────────────────────────────────────────────────

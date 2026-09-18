@@ -28,9 +28,9 @@ PKG_NAME="cartridge-agent"
 BUILD_WF="build-agent-image.yml"
 SSH_WF="ssh-into-agent-image.yml"
 SSH_WF_PATH=".github/workflows/${SSH_WF}"
-# Branches to try, in order, when locating the ssh workflow (until PRs merge to
-# dev the workflows only live on these feature branches).
-CANDIDATE_REFS=(dev agent-image-full-shell agent-image-ssh-workflow)
+# Branches to try, in order, when locating the SSH workflow. The feature branch
+# remains a candidate until the workflow merges to dev.
+CANDIDATE_REFS=(dev agent-image-slim)
 CONNECT_TIMEOUT_SECS=$((8 * 60))   # hard cap waiting for the SSH address
 
 die() { gum_error "$@"; exit 1; }
@@ -121,14 +121,52 @@ find_new_run() {
     return 1
 }
 
-# Live log of a (possibly in-progress) run via the job-logs API. `gh run view
-# --log` refuses in-progress runs, but the per-job endpoint streams them.
-fetch_run_log() {
-    local run_id="$1" job_id
-    job_id="$(gh run view "$run_id" --repo "$REPO" --json jobs \
-        --jq '.jobs[0].databaseId // empty' 2>/dev/null || true)"
-    [[ -n "$job_id" ]] || return 0
-    gh api "repos/${REPO}/actions/jobs/${job_id}/logs" 2>/dev/null || true
+# Read the titled check annotation emitted by the running workflow. Container-job
+# logs are unavailable until completion, but check annotations are live.
+#
+# Returns 0 and prints the validated SSH command when ready, 1 while the job or
+# annotation is not ready (including malformed/missing annotation text), and 2
+# after a GitHub API failure.
+fetch_ssh_annotation() {
+    local run_id="$1" check_url annotations_path response rc
+
+    response="$(gh api "repos/${REPO}/actions/runs/${run_id}/jobs" \
+        --jq '.jobs[0].check_run_url // empty' 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        print -u2 -r -- "GitHub API failed while reading jobs for run ${run_id}: ${response}"
+        return 2
+    fi
+    check_url="$response"
+    [[ -n "$check_url" ]] || return 1
+
+    annotations_path="${check_url#https://api.github.com/}/annotations"
+    response="$(gh api "$annotations_path" \
+        --jq '.[] | select(.title == "agent-ssh-address") | .message' 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        print -u2 -r -- "GitHub API failed while reading check annotations for run ${run_id}: ${response}"
+        return 2
+    fi
+    extract_ssh_address "$response"
+}
+
+# Poll a running check until its stable address annotation appears.
+wait_for_ssh_address() {
+    local run_id="$1" timeout="${2:-$CONNECT_TIMEOUT_SECS}" interval="${3:-10}"
+    local waited=0 addr rc
+    while (( waited < timeout )); do
+        addr="$(fetch_ssh_annotation "$run_id")"
+        rc=$?
+        case "$rc" in
+            0) printf '%s\n' "$addr"; return 0 ;;
+            1) ;;
+            *) return 2 ;;
+        esac
+        sleep "$interval"
+        (( waited += interval ))
+    done
+    return 1
 }
 
 run_url() { printf 'https://github.com/%s/actions/runs/%s\n' "$REPO" "$1"; }
@@ -242,15 +280,13 @@ cmd_connect() {
     gum_success "Session job started: $(run_url "$id")"
 
     gum_info "Waiting for the SSH address (up to 8 min)…"
-    local waited=0 addr=""
-    while (( waited < CONNECT_TIMEOUT_SECS )); do
-        addr="$(fetch_run_log "$id" | extract_ssh_address || true)"
-        [[ -n "$addr" ]] && break
-        sleep 10
-        (( waited += 10 ))
-    done
-    if [[ -z "$addr" ]]; then
-        die "No SSH address appeared within 8 min. The job may still be starting, or the image tag '${IMAGE_TAG}' is not published. Check: $(run_url "$id"). End it with: agent-ssh kill"
+    local addr rc
+    addr="$(wait_for_ssh_address "$id")"
+    rc=$?
+    if (( rc == 2 )); then
+        die "Stopped waiting because GitHub's API could not be read. Check your connection and 'gh auth status', then inspect: $(run_url "$id")"
+    elif (( rc != 0 )) || [[ -z "$addr" ]]; then
+        die "No valid SSH address annotation appeared within 8 min. The job may still be starting, or the image tag '${IMAGE_TAG}' is not published. Check: $(run_url "$id"). End it with: agent-ssh kill"
     fi
 
     local target="${addr#ssh }"
@@ -350,10 +386,12 @@ main() {
         build)        cmd_build ;;
         kill)         cmd_kill ;;
         help|-h|--help) cmd_help ;;
-        # Hidden hooks for the test suite (pure helpers, no network).
-        __extract-ssh)  shift; extract_ssh_address "$@" ;;
-        __valid-minutes) shift; valid_minutes "$1" ;;
-        __resolve-ref)  shift; resolve_workflow_ref "$@" ;;
+        # Hidden hooks for the hermetic test suite.
+        __extract-ssh)       shift; extract_ssh_address "$@" ;;
+        __valid-minutes)     shift; valid_minutes "$1" ;;
+        __resolve-ref)       shift; resolve_workflow_ref "$@" ;;
+        __fetch-annotation)  shift; fetch_ssh_annotation "$@" ;;
+        __wait-annotation)   shift; wait_for_ssh_address "$@" ;;
         *)
             gum_error "Unknown command: ${cmd}"
             cmd_help
