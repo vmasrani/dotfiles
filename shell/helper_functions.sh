@@ -10,7 +10,7 @@ command_exists() {
 }
 
 # Track command output boundaries in tmux for copy-last-output
-if [[ -n "$TMUX" ]]; then
+if [[ -n "${TMUX:-}" ]]; then
     _clo_preexec() {
         # Record scroll position just as command starts (command line is in buffer)
         local h y

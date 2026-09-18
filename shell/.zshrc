@@ -57,8 +57,8 @@ fi
 # [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 # nvm use --lts > /dev/null
 
-# fzf
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+# fzf (binary from GitHub release; shell integration straight from `fzf --zsh`)
+command -v fzf >/dev/null && source <(fzf --zsh)
 [[ -f ~/.fzf-config.zsh ]] && source ~/.fzf-config.zsh
 
 # Numeric sort

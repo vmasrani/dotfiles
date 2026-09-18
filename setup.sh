@@ -57,7 +57,7 @@ install_if_dir_missing ~/bin/_diff-so-fancy install_diff_so_fancy               
 # install binaries
 install_if_missing unzip install_unzip # Unzip utility required for various installations
 install_if_missing bun install_bun # Bun JavaScript runtime and package manager
-install_if_dir_missing ~/.nvm install_nvm # Node Version Manager with LTS Node.js
+install_nvm # Node Version Manager with LTS Node.js (idempotent + resumable; keyed on nvm's own node)
 install_if_missing npm install_npm # Node.js package manager
 install_if_missing yarn install_yarn # Yarn package manager
 install_if_missing pm2 install_pm2 # Process manager for Node.js applications
@@ -66,7 +66,6 @@ install_if_missing bfs install_bfs # Breadth-first search for filesystem travers
 install_if_missing eza install_eza # Modern replacement for ls with color and git integration
 install_if_missing fzf install_fzf # Command-line fuzzy finder for files, history, and more
 install_if_missing cargo install_cargo # Rust package manager and build system
-install_if_missing cargo-binstall install_cargo_binstall # Prebuilt Rust binary installer (avoids compiling from source)
 install_if_missing sccache install_sccache # Shared compilation cache wired into ~/.cargo/config.toml
 install_if_missing uv install_uv # Python package manager (must be before uvx_tools)
 install_if_missing tldr install_tealdeer # Simplified and community-driven man pages
@@ -78,15 +77,12 @@ install_if_missing lazydocker install_lazydocker # Terminal UI for managing Dock
 install_if_missing lazysql install_lazysql # Terminal UI for database management
 install_if_missing btop install_btop # Resource monitor with CPU, memory, disk, network stats
 install_if_missing ctop install_ctop # Container metrics and monitoring
-install_if_missing htop install_htop # Interactive process viewer (Homebrew on macOS, built from source on Linux)
+install_if_missing htop install_htop # Interactive process viewer (Homebrew on macOS, apt on Linux)
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
 
-# Install tmux plugins now that tmux is available
-if [ -d "$HOME/.tmux/plugins/tpm" ]; then
-    "$HOME/.tmux/plugins/tpm/bin/install_plugins" > /dev/null || gum_warning "Some tmux plugins failed to install"
-    "$HOME/.tmux/plugins/tpm/bin/clean_plugins" > /dev/null || gum_warning "Some stale tmux plugins failed to clean"
-fi
+# Install tmux plugins now that tmux is available (loud + verified; see fn)
+install_tmux_plugins
 install_if_missing rg install_rg # Fast recursive grep alternative
 install_if_missing fd install_fd # Fast find alternative
 install_if_missing jq install_jq # Command-line JSON processor
@@ -127,8 +123,8 @@ install_if_missing markdown-oxide install_markdown_oxide # Markdown LSP for Heli
 install_if_missing simple-completion-language-server install_simple_completion_language_server # Simple completion LSP
 install_if_missing taplo install_taplo_cli # TOML LSP and formatter
 
-# update helix grammars
-update_helix_grammars
+# build only our custom helix grammars (stock ones ship with the package)
+install_helix_grammars
 
 if [[ "$OS_TYPE" == "mac" ]]; then
     gum_info "Setup agent toggle window (TMUX REQUIRED):"

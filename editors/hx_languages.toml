@@ -1,3 +1,12 @@
+# Only fetch/build our custom grammars (the [[grammar]] source overrides below).
+# The ~245 stock grammars ship prebuilt in the packaged helix runtime (brew/apt)
+# and load at runtime via helix's runtime-dir merge, so building them here would
+# just re-clone and recompile 150+ grammars on every fresh install for nothing.
+# `only`/`except` restrict fetch and build only — never runtime loading — so the
+# stock grammars stay fully available. Keep this list in sync with the
+# [[grammar]] entries below (install_helix_grammars verifies each one builds).
+use-grammars = { only = ["gotmpl"] }
+
 [[language]]
 name = "bash"
 scope = "source.bash"

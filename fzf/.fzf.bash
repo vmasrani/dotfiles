@@ -1,7 +1,5 @@
 # Setup fzf
 # ---------
-if [[ ! "$PATH" == *"$HOME/.fzf/bin"* ]]; then
-  PATH="${PATH:+${PATH}:}$HOME/.fzf/bin"
-fi
-
-eval "$(fzf --bash)"
+# fzf ships as a prebuilt binary in ~/.local/bin (GitHub release); shell
+# integration comes straight from `fzf --bash`.
+command -v fzf >/dev/null && eval "$(fzf --bash)"
