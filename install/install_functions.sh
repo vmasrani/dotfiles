@@ -146,6 +146,12 @@ ensure_apt_repos() {
 
 	# the single authoritative update, now that every repo is registered
 	sudo env DEBIAN_FRONTEND=noninteractive apt-get update
+
+	# A C toolchain is required to compile the one remaining source build
+	# (simple-completion-language-server) and the custom helix grammar. install_zsh
+	# installs build-essential too, but it is skipped whenever zsh is already
+	# present (bare cloud images and CI containers ship zsh), so ensure it here.
+	command_exists cc || apt_install build-essential
 	gum_success "apt repositories configured."
 }
 
