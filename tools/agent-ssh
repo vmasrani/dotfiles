@@ -1,0 +1,430 @@
+#!/usr/bin/env zsh
+# agent-ssh - SSH into a fresh agent-image job (a plain terminal in the image).
+#
+# Boots the published cartridge-agent image as a GitHub Actions job, waits for its
+# Upterm SSH bridge, and drops you into a plain terminal inside the image (rustc,
+# cargo-nextest, just, uv, the ctx-* tools — no tmux, no p10k).
+#
+# No args -> interactive menu. Subcommands: connect | status | build | kill | help.
+#
+# Env overrides:
+#   AGENT_SSH_REPO       repo hosting the workflows   (default sophiaconsulting/cartridge)
+#   AGENT_SSH_REF        pin the branch the workflows run from (default: auto-resolved)
+#   AGENT_SSH_IMAGE_TAG  image tag to boot            (default latest)
+#
+# Fails loud: every error names what failed and how to fix it. No silent fallbacks.
+
+# shellcheck disable=SC1091  # gum_utils.sh is sourced at runtime.
+emulate -L zsh
+setopt pipe_fail 2>/dev/null || true
+
+source "${HOME}/dotfiles/shell/gum_utils.sh" 2>/dev/null || true
+
+# ── Config ──────────────────────────────────────────────────────────────────
+REPO="${AGENT_SSH_REPO:-sophiaconsulting/cartridge}"
+IMAGE_TAG="${AGENT_SSH_IMAGE_TAG:-latest}"
+PKG_ORG="sophiaconsulting"
+PKG_NAME="cartridge-agent"
+BUILD_WF="build-agent-image.yml"
+SSH_WF="ssh-into-agent-image.yml"
+SSH_WF_PATH=".github/workflows/${SSH_WF}"
+# Branches to try, in order, when locating the SSH workflow. The feature branch
+# remains a candidate until the workflow merges to dev.
+CANDIDATE_REFS=(dev agent-image-slim)
+CONNECT_TIMEOUT_SECS=$((8 * 60))   # hard cap waiting for the SSH address
+
+die() { gum_error "$@"; exit 1; }
+
+# ── Pure, testable helpers ────────────────────────────────────────────────────
+
+# Extract the first "ssh <token>@uptermd.upterm.dev" from text ($* or stdin).
+# Prints it and returns 0; prints nothing and returns 1 when absent.
+extract_ssh_address() {
+    local input addr
+    if (( $# > 0 )); then input="$*"; else input="$(cat)"; fi
+    addr="$(printf '%s\n' "$input" \
+        | grep -oE 'ssh [A-Za-z0-9_-]+@uptermd\.upterm\.dev' \
+        | head -1)"
+    [[ -n "$addr" ]] || return 1
+    printf '%s\n' "$addr"
+}
+
+# Valid connection window: a whole number of minutes in [5, 360].
+valid_minutes() {
+    [[ "$1" == <5-360> ]]
+}
+
+# Echo the first candidate ref that contains the given file; return 1 if none.
+# Usage: resolve_workflow_ref <repo> <file> <ref>...
+# NB: the local is `wf_path`, never `path` — in zsh `path` is the array tied to
+# $PATH, so a `local path=...` would clobber PATH and break every later command.
+resolve_workflow_ref() {
+    local repo="$1" wf_path="$2"; shift 2
+    local ref
+    for ref in "$@"; do
+        if gh api "repos/${repo}/contents/${wf_path}?ref=${ref}" >/dev/null 2>&1; then
+            printf '%s\n' "$ref"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# ── gh-backed helpers ─────────────────────────────────────────────────────────
+
+# Resolve WORKFLOW_REF once (honours AGENT_SSH_REF), or die with guidance.
+workflow_ref() {
+    if [[ -n "${AGENT_SSH_REF:-}" ]]; then
+        printf '%s\n' "$AGENT_SSH_REF"
+        return 0
+    fi
+    local ref
+    if ! ref="$(resolve_workflow_ref "$REPO" "$SSH_WF_PATH" "${CANDIDATE_REFS[@]}")"; then
+        die "Could not find ${SSH_WF} on any of: ${CANDIDATE_REFS[*]} in ${REPO}. Set AGENT_SSH_REF to the branch that has it, or merge the workflow PR."
+    fi
+    printf '%s\n' "$ref"
+}
+
+# Ask for a value with a default; returns the default in non-interactive mode.
+ask() {
+    local label="$1" default="$2" val
+    if command -v gum >/dev/null 2>&1 && [[ -z "${NO_GUM:-}" && -t 0 ]]; then
+        val="$(gum input --prompt "${label} " --value "$default")" || return 1
+    else
+        val="$default"
+    fi
+    printf '%s' "${val:-$default}"
+}
+
+# databaseId of the workflow's newest run, or empty.
+newest_run_id() {
+    gh run list --repo "$REPO" --workflow "$1" --limit 1 \
+        --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null
+}
+
+# Poll for a run of <workflow> created after <since-iso>; echo its id or return 1.
+find_new_run() {
+    local wf="$1" since="$2" i row created id
+    for i in {1..15}; do   # ~60s at 4s
+        row="$(gh run list --repo "$REPO" --workflow "$wf" --limit 1 \
+            --json databaseId,createdAt --jq '.[0]' 2>/dev/null || true)"
+        if [[ -n "$row" ]]; then
+            created="$(printf '%s' "$row" | jq -r '.createdAt // empty')"
+            id="$(printf '%s' "$row" | jq -r '.databaseId // empty')"
+            if [[ -n "$created" && "$created" > "$since" ]]; then
+                printf '%s\n' "$id"
+                return 0
+            fi
+        fi
+        sleep 4
+    done
+    return 1
+}
+
+# Read the titled check annotation emitted by the running workflow. Container-job
+# logs are unavailable until completion, but check annotations are live.
+#
+# Returns 0 and prints the validated SSH command when ready, 1 while the job or
+# annotation is not ready (including malformed/missing annotation text), and 2
+# after a GitHub API failure.
+fetch_ssh_annotation() {
+    local run_id="$1" check_url annotations_path response rc
+
+    response="$(gh api "repos/${REPO}/actions/runs/${run_id}/jobs" \
+        --jq '.jobs[0].check_run_url // empty' 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        print -u2 -r -- "GitHub API failed while reading jobs for run ${run_id}: ${response}"
+        return 2
+    fi
+    check_url="$response"
+    [[ -n "$check_url" ]] || return 1
+
+    annotations_path="${check_url#https://api.github.com/}/annotations"
+    response="$(gh api "$annotations_path" \
+        --jq '.[] | select(.title == "agent-ssh-address") | .message' 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        print -u2 -r -- "GitHub API failed while reading check annotations for run ${run_id}: ${response}"
+        return 2
+    fi
+    extract_ssh_address "$response"
+}
+
+# Read the workflow run state as "<status><tab><conclusion>". Returns 2 after a
+# GitHub API failure so waiting never disguises an unavailable API as "not ready".
+fetch_run_status() {
+    local run_id="$1" response rc
+    response="$(gh api "repos/${REPO}/actions/runs/${run_id}" \
+        --jq '[.status, (.conclusion // "")] | @tsv' 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        print -u2 -r -- "GitHub API failed while reading run ${run_id}: ${response}"
+        return 2
+    fi
+    printf '%s\n' "$response"
+}
+
+# Poll a running check until its stable address annotation appears.
+wait_for_ssh_address() {
+    local run_id="$1" timeout="${2:-$CONNECT_TIMEOUT_SECS}" interval="${3:-10}"
+    local waited=0 addr state run_status conclusion rc
+    while (( waited < timeout )); do
+        addr="$(fetch_ssh_annotation "$run_id")"
+        rc=$?
+        case "$rc" in
+            0) printf '%s\n' "$addr"; return 0 ;;
+            1) ;;
+            *) return 2 ;;
+        esac
+
+        state="$(fetch_run_status "$run_id")"
+        rc=$?
+        (( rc == 0 )) || return 2
+        run_status="${state%%$'\t'*}"
+        conclusion="${state#*$'\t'}"
+        if [[ "$run_status" == "completed" ]]; then
+            print -u2 -r -- "Run ${run_id} completed with conclusion '${conclusion:-unknown}' before publishing an SSH address."
+            return 3
+        fi
+
+        sleep "$interval"
+        (( waited += interval ))
+    done
+    return 1
+}
+
+run_url() { printf 'https://github.com/%s/actions/runs/%s\n' "$REPO" "$1"; }
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+preflight() {
+    command -v gh >/dev/null 2>&1 || die "The GitHub CLI 'gh' is not installed. Install it with: brew install gh"
+    gh auth status >/dev/null 2>&1 || die "You are not logged in to GitHub. Fix it with: gh auth login"
+    command -v ssh >/dev/null 2>&1 || die "'ssh' was not found on your PATH. Install the OpenSSH client."
+    command -v jq >/dev/null 2>&1 || die "'jq' is not installed. Install it with: brew install jq"
+    gh api "repos/${REPO}" >/dev/null 2>&1 || die "Cannot reach ${REPO} (no access, or wrong AGENT_SSH_REPO). Check that your GitHub account can see it."
+}
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+cmd_status() {
+    preflight
+    gum_info "Latest published images (${PKG_NAME}):"
+    # Fetch the raw body+error together so we can tell the three cases apart:
+    #   403 -> the login cannot read packages (scope), 404 -> package not built
+    #   yet, 200 -> show versions. `connect` never calls this, so a 403 here can
+    #   never block connecting (the job pulls the image with its own token).
+    local body rc versions
+    body="$(gh api "/orgs/${PKG_ORG}/packages/container/${PKG_NAME}/versions" 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        if [[ "$body" == *"(HTTP 403)"* || "$body" == *"read:packages"* ]]; then
+            die "Your GitHub login cannot read packages — run: gh auth refresh -h github.com -s read:packages"
+        elif [[ "$body" == *"(HTTP 404)"* || "$body" == *"Not Found"* ]]; then
+            die "No image is published yet — run: agent-ssh build"
+        else
+            die "Could not read published images for ${PKG_NAME}: ${body}"
+        fi
+    fi
+    versions="$(printf '%s\n' "$body" \
+        | jq -r '.[0:3][] | "\(.metadata.container.tags | join(",")) \(.created_at)"' 2>/dev/null)"
+    [[ -n "$versions" ]] || die "No image is published yet — run: agent-ssh build"
+    print -r -- "$versions" | while IFS= read -r line; do gum_dim "  $line"; done
+
+    local wf title runs
+    for wf in "$BUILD_WF" "$SSH_WF"; do
+        case "$wf" in
+            "$BUILD_WF") title="Image builds in progress" ;;
+            *)           title="SSH sessions in progress" ;;
+        esac
+        runs="$(gh run list --repo "$REPO" --workflow "$wf" --status in_progress \
+            --json databaseId,displayTitle,createdAt \
+            --jq '.[] | "\(.databaseId)  \(.displayTitle)  (\(.createdAt))"' 2>/dev/null || true)"
+        gum_info "$title:"
+        if [[ -z "$runs" ]]; then
+            gum_dim "  none"
+        else
+            print -r -- "$runs" | while IFS= read -r line; do gum_dim "  $line"; done
+        fi
+    done
+}
+
+cmd_build() {
+    preflight
+    local ref; ref="$(workflow_ref)" || exit 1
+    if ! gum_confirm "Build a fresh agent image now? (~15-20 min)"; then
+        gum_info "Cancelled."
+        return 0
+    fi
+    local dref; dref="$(ask "Which dotfiles ref to bake in:" "main")" || { gum_info "Cancelled."; return 0; }
+
+    local since; since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gum_info "Starting the image build (ref ${ref}, dotfiles ${dref})…"
+    gh workflow run "$BUILD_WF" --repo "$REPO" --ref "$ref" \
+        -f dotfiles_ref="$dref" -f push=true \
+        || die "Failed to start the build. Run 'gh auth status' and confirm you can dispatch workflows in ${REPO}."
+
+    local id
+    id="$(find_new_run "$BUILD_WF" "$since")" \
+        || die "The build was dispatched but no run appeared within 60s. Check: https://github.com/${REPO}/actions/workflows/${BUILD_WF}"
+    gum_success "Build started: $(run_url "$id")"
+
+    local start=$SECONDS
+    if gum_spin_wait "Building the image (this takes ~15-20 min)…" \
+        gh run watch "$id" --repo "$REPO" --exit-status; then
+        local mins=$(( (SECONDS - start) / 60 ))
+        gum_box_success "Image built in ~${mins} min and published as :${IMAGE_TAG} (and the commit SHA tag)." \
+            "$(run_url "$id")"
+    else
+        gum_error "The image build failed. Recent errors:"
+        gh run view "$id" --repo "$REPO" --log-failed 2>/dev/null | tail -20
+        die "See the full run: $(run_url "$id")"
+    fi
+}
+
+cmd_connect() {
+    preflight
+    local ref; ref="$(workflow_ref)" || exit 1
+
+    local mins
+    while :; do
+        mins="$(ask "Minutes to keep the session open (5-360):" "15")" || { gum_info "Cancelled."; return 0; }
+        valid_minutes "$mins" && break
+        gum_warning "Enter a whole number of minutes between 5 and 360."
+    done
+
+    local since; since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gum_info "Starting a ${mins}-minute session from the '${IMAGE_TAG}' image…"
+    gh workflow run "$SSH_WF" --repo "$REPO" --ref "$ref" \
+        -f minutes="$mins" -f image_tag="$IMAGE_TAG" \
+        || die "Could not start the session. Run 'gh auth status' and confirm you can dispatch jobs in ${REPO}. If the job workflow was only just added, give GitHub a moment to register it, then retry."
+
+    local id
+    id="$(find_new_run "$SSH_WF" "$since")" \
+        || die "The session was dispatched but no run appeared within 60s. Check: https://github.com/${REPO}/actions/workflows/${SSH_WF}"
+    gum_success "Session job started: $(run_url "$id")"
+
+    gum_info "Waiting for the SSH address (up to 8 min)…"
+    local addr rc
+    addr="$(wait_for_ssh_address "$id")"
+    rc=$?
+    if (( rc == 2 )); then
+        die "Stopped waiting because GitHub's API could not be read. Check your connection and 'gh auth status', then inspect: $(run_url "$id")"
+    elif (( rc == 3 )); then
+        die "The session run completed before publishing a valid SSH address. Check: $(run_url "$id")"
+    elif (( rc != 0 )) || [[ -z "$addr" ]]; then
+        die "No valid SSH address annotation appeared within 8 min. The job may still be starting, or the image tag '${IMAGE_TAG}' is not published. Check: $(run_url "$id"). End it with: agent-ssh kill"
+    fi
+
+    local target="${addr#ssh }"
+    gum_box_success \
+        "Your agent box is ready — a plain terminal inside the image." \
+        "" \
+        "  $addr" \
+        "" \
+        "  Window: ${mins} min (the job self-terminates then)." \
+        "  Run:    $(run_url "$id")" \
+        "  End early with:  agent-ssh kill"
+
+    if gum_confirm "Connect now?"; then
+        exec ssh -o StrictHostKeyChecking=accept-new "$target"
+    fi
+    gum_info "Not connecting. When you are ready:"
+    print -r -- "  $addr"
+}
+
+cmd_kill() {
+    preflight
+    local rows
+    rows="$(gh run list --repo "$REPO" --workflow "$SSH_WF" --status in_progress \
+        --json databaseId,displayTitle,createdAt \
+        --jq '.[] | "\(.databaseId)  \(.displayTitle)  (\(.createdAt))"' 2>/dev/null || true)"
+    if [[ -z "$rows" ]]; then
+        gum_info "No SSH sessions are running."
+        return 0
+    fi
+    local -a items; items=("${(@f)rows}")
+    local -a chosen
+    chosen=("${(@f)$(gum_choose --no-limit --header "Select sessions to end:" "${items[@]}")}")
+    if (( ${#chosen[@]} == 0 )); then
+        gum_info "Nothing selected."
+        return 0
+    fi
+    local line id
+    for line in "${chosen[@]}"; do
+        [[ -n "$line" ]] || continue
+        id="${line%%  *}"
+        if gh run cancel "$id" --repo "$REPO" 2>/dev/null; then
+            gum_success "Ended session $id"
+        else
+            gum_warning "Could not end session $id (it may have already finished)."
+        fi
+    done
+}
+
+cmd_help() {
+    cat <<'EOF'
+agent-ssh - SSH into a fresh agent box (a plain terminal inside the image).
+
+Usage:
+  agent-ssh              Open the interactive menu.
+  agent-ssh connect      Start a box, wait for the SSH address, and connect.
+  agent-ssh status       Show the latest published images and any running jobs.
+  agent-ssh build        Build and publish a fresh image from your dotfiles.
+  agent-ssh kill         End one or more running SSH sessions.
+  agent-ssh help         Show this help.
+
+You land in a plain terminal inside the image (rustc, cargo-nextest, just, uv,
+the ctx-* tools). No tmux, no p10k.
+
+Environment:
+  AGENT_SSH_REPO       repo hosting the jobs   (default sophiaconsulting/cartridge)
+  AGENT_SSH_REF        pin the branch the jobs run from (default: auto)
+  AGENT_SSH_IMAGE_TAG  image tag to boot       (default latest)
+EOF
+}
+
+cmd_menu() {
+    local choice
+    choice="$(gum_choose --header "What would you like to do?" \
+        "connect - start a box and SSH in" \
+        "status  - show images and running jobs" \
+        "build   - build a fresh image" \
+        "kill    - end a running session" \
+        "help    - show help")"
+    case "$choice" in
+        connect*) cmd_connect ;;
+        status*)  cmd_status ;;
+        build*)   cmd_build ;;
+        kill*)    cmd_kill ;;
+        help*)    cmd_help ;;
+        "")       gum_info "Nothing selected." ;;
+        *)        cmd_help ;;
+    esac
+}
+
+# ── Dispatch ──────────────────────────────────────────────────────────────────
+main() {
+    local cmd="${1:-}"
+    case "$cmd" in
+        ""|menu)      cmd_menu ;;
+        connect)      cmd_connect ;;
+        status)       cmd_status ;;
+        build)        cmd_build ;;
+        kill)         cmd_kill ;;
+        help|-h|--help) cmd_help ;;
+        # Hidden hooks for the hermetic test suite.
+        __extract-ssh)       shift; extract_ssh_address "$@" ;;
+        __valid-minutes)     shift; valid_minutes "$1" ;;
+        __resolve-ref)       shift; resolve_workflow_ref "$@" ;;
+        __fetch-annotation)  shift; fetch_ssh_annotation "$@" ;;
+        __wait-annotation)   shift; wait_for_ssh_address "$@" ;;
+        *)
+            gum_error "Unknown command: ${cmd}"
+            cmd_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
