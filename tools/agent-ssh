@@ -168,7 +168,7 @@ fetch_run_status() {
 # Poll a running check until its stable address annotation appears.
 wait_for_ssh_address() {
     local run_id="$1" timeout="${2:-$CONNECT_TIMEOUT_SECS}" interval="${3:-10}"
-    local waited=0 addr state status conclusion rc
+    local waited=0 addr state run_status conclusion rc
     while (( waited < timeout )); do
         addr="$(fetch_ssh_annotation "$run_id")"
         rc=$?
@@ -181,9 +181,9 @@ wait_for_ssh_address() {
         state="$(fetch_run_status "$run_id")"
         rc=$?
         (( rc == 0 )) || return 2
-        status="${state%%$'\t'*}"
+        run_status="${state%%$'\t'*}"
         conclusion="${state#*$'\t'}"
-        if [[ "$status" == "completed" ]]; then
+        if [[ "$run_status" == "completed" ]]; then
             print -u2 -r -- "Run ${run_id} completed with conclusion '${conclusion:-unknown}' before publishing an SSH address."
             return 3
         fi
