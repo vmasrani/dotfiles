@@ -1011,6 +1011,72 @@ install_tpm() {
 	gum_success "tmux plugin manager installed successfully."
 }
 
+# Install every tmux plugin declared in ~/.tmux.conf via tpm, then VERIFY each
+# one landed as a git checkout. The old inline `install_plugins >/dev/null ||
+# warn` swallowed failures, so a transient clone error (or a headless tmux
+# hiccup) left plugins missing while setup still reported success. This makes
+# the step loud, retried once, verified, and a no-op on re-runs.
+install_tmux_plugins() {
+	local tpm_dir="$HOME/.tmux/plugins/tpm"
+	if [[ ! -x "$tpm_dir/bin/install_plugins" ]]; then
+		gum_error "install_tmux_plugins: tpm not found at $tpm_dir (run install_tpm first)"
+		return 1
+	fi
+	if ! command_exists tmux; then
+		gum_error "install_tmux_plugins: tmux is not on PATH; install tmux first"
+		return 1
+	fi
+
+	local conf="$HOME/.tmux.conf"
+	# tpm installs into $TMUX_PLUGIN_MANAGER_PATH, defaulting to ~/.tmux/plugins.
+	local plugins_root="${TMUX_PLUGIN_MANAGER_PATH:-$HOME/.tmux/plugins}"
+
+	# Declared plugins: `set -g @plugin 'owner/name'`, reduced to <name>, minus tpm.
+	local -a plugins=()
+	local owner_name name
+	while IFS= read -r owner_name; do
+		name="${owner_name##*/}"
+		[[ -z "$name" || "$name" == "tpm" ]] && continue
+		plugins+=("$name")
+	done < <(grep -oE "^[[:space:]]*set -g @plugin '[^']+'" "$conf" 2>/dev/null | sed -E "s/.*'([^']+)'.*/\1/")
+
+	if [[ ${#plugins[@]} -eq 0 ]]; then
+		gum_warning "install_tmux_plugins: no @plugin entries found in $conf; nothing to do."
+		return 0
+	fi
+
+	# Guard: if every declared plugin is already a git checkout, do nothing.
+	local -a missing=()
+	local p
+	for p in "${plugins[@]}"; do
+		[[ -d "$plugins_root/$p/.git" ]] || missing+=("$p")
+	done
+	if [[ ${#missing[@]} -eq 0 ]]; then
+		gum_dim "tmux plugins already installed (${#plugins[@]} plugins)."
+		return 0
+	fi
+
+	gum_info "Installing tmux plugins: ${missing[*]}"
+	# tpm reads ~/.tmux.conf via `tmux start-server`; keep output visible. Retry
+	# once so a single transient git clone failure doesn't strand a plugin.
+	"$tpm_dir/bin/install_plugins" || {
+		gum_warning "tpm install_plugins failed once; retrying..."
+		"$tpm_dir/bin/install_plugins" || true
+	}
+	"$tpm_dir/bin/clean_plugins" || gum_warning "tpm clean_plugins reported an error (ignored)"
+
+	# Verify: every declared plugin must now be a git checkout, else fail loud.
+	missing=()
+	for p in "${plugins[@]}"; do
+		[[ -d "$plugins_root/$p/.git" ]] || missing+=("$p")
+	done
+	if [[ ${#missing[@]} -gt 0 ]]; then
+		gum_error "tmux plugins failed to install: ${missing[*]} (expected git checkouts under $plugins_root)"
+		return 1
+	fi
+	gum_success "tmux plugins installed and verified (${#plugins[@]} plugins)."
+}
+
 install_git_fuzzy() {
 	git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
 	ln -s "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"

@@ -81,11 +81,8 @@ install_if_missing htop install_htop # Interactive process viewer (Homebrew on m
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
 
-# Install tmux plugins now that tmux is available
-if [ -d "$HOME/.tmux/plugins/tpm" ]; then
-    "$HOME/.tmux/plugins/tpm/bin/install_plugins" > /dev/null || gum_warning "Some tmux plugins failed to install"
-    "$HOME/.tmux/plugins/tpm/bin/clean_plugins" > /dev/null || gum_warning "Some stale tmux plugins failed to clean"
-fi
+# Install tmux plugins now that tmux is available (loud + verified; see fn)
+install_tmux_plugins
 install_if_missing rg install_rg # Fast recursive grep alternative
 install_if_missing fd install_fd # Fast find alternative
 install_if_missing jq install_jq # Command-line JSON processor
