@@ -18,8 +18,7 @@ fi
 # Consolidated PATH Setup (order matters - earlier entries take precedence)
 PATH_ADDITIONS=(
     "$HOME/.cargo/bin"              # Rust/Cargo binaries
-    "$HOME/.local/bin"              # Local user binaries
-    "$HOME/.fzf/bin"               # fzf binary (git-clone install)
+    "$HOME/.local/bin"              # Local user binaries (fzf, github-release tools)
     "$HOME/bin"                     # Personal scripts
     "$HOME/tools"                   # Custom tools from dotfiles
     "$HOME/.claude"                 # Claude CLI

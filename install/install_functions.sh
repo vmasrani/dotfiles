@@ -59,7 +59,6 @@ bootstrap_path() {
 		"$HOME/.local/bin"
 		"$HOME/.cargo/bin"
 		"$HOME/go/bin"
-		"$HOME/.fzf/bin"
 		"$HOME/.opencode/bin" # opencode installer target
 		"$HOME/.bun/bin"
 	)
@@ -119,14 +118,6 @@ ensure_apt_repos() {
 	# the single authoritative update, now that every repo is registered
 	sudo env DEBIAN_FRONTEND=noninteractive apt-get update
 	gum_success "apt repositories configured."
-}
-
-# Install cargo-binstall (fetches prebuilt Rust binaries from GitHub releases
-# instead of compiling from source). Official installer script.
-install_cargo_binstall() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 }
 
 # Download a prebuilt binary from a GitHub release, pick the asset for the
@@ -724,9 +715,9 @@ install_uv() {
 }
 
 install_tealdeer() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo binstall -y tealdeer # prebuilt (dbrgn/tealdeer releases)
+	# Prebuilt binary from dbrgn/tealdeer releases (asset is a bare binary named
+	# tealdeer-<os>-<arch>; install_github_release renames it to the tldr command).
+	install_github_release dbrgn/tealdeer tldr 'tealdeer-'
 	tldr --update
 }
 
@@ -750,14 +741,10 @@ install_go() {
 }
 
 install_fzf() {
-	# Update in place if already cloned; never blow the dir away (it holds the
-	# built ~/.fzf/bin binary the PATH bootstrap relies on).
-	if [[ -d "$HOME/.fzf/.git" ]]; then
-		git -C "$HOME/.fzf" pull -q || gum_warning "fzf: git pull failed; using existing checkout"
-	else
-		git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
-	fi
-	"$HOME/.fzf/install" --all --no-update-rc
+	# Prebuilt binary from junegunn/fzf releases to ~/.local/bin. Shell
+	# integration (key bindings + completion) comes from `fzf --zsh` at shell
+	# startup (see shell/.zshrc), so no ~/.fzf git clone is needed any more.
+	install_github_release junegunn/fzf fzf 'fzf-'
 }
 
 install_helix() {
@@ -798,9 +785,8 @@ install_glow() {
 }
 
 install_mdterm() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo binstall -y mdterm # prebuilt (bahdotsh/mdterm releases)
+	# Prebuilt binary from bahdotsh/mdterm releases (musl tarball preferred).
+	install_github_release bahdotsh/mdterm mdterm 'mdterm-'
 }
 
 install_lazygit() {
@@ -829,9 +815,16 @@ install_btop() {
 }
 
 install_htop() {
-	# Full OS-switch, build-from-source-on-Linux logic lives in the standalone
-	# script so it stays runnable on its own; see install/install_htop.sh.
-	bash install/install_htop.sh
+	# Ubuntu 24.04 ships htop 3.3.0 in the archive, so a plain apt install is a
+	# few seconds instead of the multi-minute autotools build-from-source that
+	# used to dominate fresh Linux installs. Trade-off: apt's 3.3.0 rather than
+	# the latest git HEAD — acceptable for an interactive process viewer.
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install htop
+	else
+		apt_install htop
+	fi
+	gum_success "htop installed successfully."
 }
 
 install_ctop() {
@@ -920,10 +913,6 @@ install_xsel() {
 	apt_install xsel
 }
 
-install_nbpreview() {
-	uv tool install nbcat
-}
-
 install_tmux() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
 		apt_install tmux
@@ -973,11 +962,9 @@ install_pq() {
 }
 
 install_bat() {
-	if [[ "$OS_TYPE" == "linux" ]]; then
-		bash install/install_tar.sh "https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
-	elif [[ "$OS_TYPE" == "mac" ]]; then
-		brew install bat
-	fi
+	# Prebuilt binary from sharkdp/bat releases (musl tarball preferred on Linux).
+	# Replaces the old pinned-0.18.3 tarball download.
+	install_github_release sharkdp/bat bat 'bat-v'
 	gum_success "bat installed successfully."
 }
 
@@ -1177,15 +1164,18 @@ install_markdown_oxide() {
 install_simple_completion_language_server() {
 	# No prebuilt binaries published (estin/simple-completion-language-server has
 	# no GitHub releases and no crates.io publish), so build from git source.
+	# This is intentionally the ONLY compile-from-source step left in setup.sh;
+	# every other tool now downloads a prebuilt binary.
 	source "$HOME/.cargo/env" 2>/dev/null || true
 	export PATH="$HOME/.cargo/bin:$PATH"
 	cargo install --git https://github.com/estin/simple-completion-language-server.git
 }
 
 install_taplo_cli() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo binstall -y taplo-cli # prebuilt (tamasfe/taplo releases)
+	# Prebuilt binary from tamasfe/taplo releases. Assets are bare gzipped
+	# binaries named taplo-<os>-<arch>.gz (the -full- LSP build is not published
+	# as a release asset, so no exclusion is needed here).
+	install_github_release tamasfe/taplo taplo 'taplo-'
 }
 
 install_uwu() {
@@ -1279,9 +1269,8 @@ install_shfmt() {
 }
 
 install_just() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo binstall -y just # prebuilt (casey/just releases)
+	# Prebuilt binary from casey/just releases (musl tarball preferred).
+	install_github_release casey/just just 'just-'
 	gum_success "just installed successfully."
 }
 

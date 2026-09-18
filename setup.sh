@@ -66,7 +66,6 @@ install_if_missing bfs install_bfs # Breadth-first search for filesystem travers
 install_if_missing eza install_eza # Modern replacement for ls with color and git integration
 install_if_missing fzf install_fzf # Command-line fuzzy finder for files, history, and more
 install_if_missing cargo install_cargo # Rust package manager and build system
-install_if_missing cargo-binstall install_cargo_binstall # Prebuilt Rust binary installer (avoids compiling from source)
 install_if_missing sccache install_sccache # Shared compilation cache wired into ~/.cargo/config.toml
 install_if_missing uv install_uv # Python package manager (must be before uvx_tools)
 install_if_missing tldr install_tealdeer # Simplified and community-driven man pages
@@ -78,7 +77,7 @@ install_if_missing lazydocker install_lazydocker # Terminal UI for managing Dock
 install_if_missing lazysql install_lazysql # Terminal UI for database management
 install_if_missing btop install_btop # Resource monitor with CPU, memory, disk, network stats
 install_if_missing ctop install_ctop # Container metrics and monitoring
-install_if_missing htop install_htop # Interactive process viewer (Homebrew on macOS, built from source on Linux)
+install_if_missing htop install_htop # Interactive process viewer (Homebrew on macOS, apt on Linux)
 install_if_missing bat install_bat # Syntax highlighting cat replacement
 install_if_missing tmux install_tmux # Terminal multiplexer for multiple sessions
 
