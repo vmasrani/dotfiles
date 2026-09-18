@@ -77,6 +77,30 @@ bootstrap_path() {
 	export PATH
 }
 
+# Clone <url> into <target> so a mid-clone kill can never leave a partial dir
+# that a later dir-guarded re-run would mistake for a finished install. Clones
+# into <target>.partial and renames into place only on success, clearing any
+# stale .partial first. Any extra args (e.g. --recursive, --depth 1) pass through
+# to git clone. Idempotent: a target that is already a git checkout is left alone.
+git_clone_atomic() {
+	local url="$1" target="$2"
+	shift 2
+	if [[ -d "$target/.git" ]]; then
+		gum_dim "git_clone_atomic: $target already cloned; skipping."
+		return 0
+	fi
+	# A leftover non-git dir or a stale .partial from a killed run must not block us.
+	rm -rf "$target" "$target.partial"
+	mkdir -p "$(dirname "$target")"
+	if git clone "$@" "$url" "$target.partial"; then
+		mv "$target.partial" "$target"
+	else
+		rm -rf "$target.partial"
+		gum_error "git_clone_atomic: failed to clone $url into $target"
+		return 1
+	fi
+}
+
 # On Linux, register every third-party apt repo the installer needs ONCE and run
 # a single `apt-get update`, instead of each install function adding its own repo
 # and updating (which cost 8-9 updates per run). Idempotent: a repo whose source
@@ -984,7 +1008,7 @@ install_parquet_tools() {
 }
 
 install_fzf_tab_completion() {
-	git clone https://github.com/lincheney/fzf-tab-completion "$HOME/.zprezto/contrib/fzf-tab-completion"
+	git_clone_atomic https://github.com/lincheney/fzf-tab-completion "$HOME/.zprezto/contrib/fzf-tab-completion"
 	gum_success "fzf-tab-completion installed successfully."
 
 	if [[ "$OS_TYPE" == "mac" ]]; then
@@ -1007,7 +1031,7 @@ install_hypers() {
 }
 
 install_tpm() {
-	git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+	git_clone_atomic https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
 	gum_success "tmux plugin manager installed successfully."
 }
 
@@ -1078,21 +1102,21 @@ install_tmux_plugins() {
 }
 
 install_git_fuzzy() {
-	git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
-	ln -s "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
+	git_clone_atomic https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
+	ln -sf "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
 	gum_success "git-fuzzy setup completed."
 }
 
 install_diff_so_fancy() {
-	git clone https://github.com/so-fancy/diff-so-fancy.git "$HOME/bin/_diff-so-fancy"
-	ln -s "$HOME/bin/_diff-so-fancy/diff-so-fancy" "$HOME/bin/diff-so-fancy"
+	git_clone_atomic https://github.com/so-fancy/diff-so-fancy.git "$HOME/bin/_diff-so-fancy"
+	ln -sf "$HOME/bin/_diff-so-fancy/diff-so-fancy" "$HOME/bin/diff-so-fancy"
 	git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
 	git config --global interactive.diffFilter "diff-so-fancy --patch"
 	gum_success "diff-so-fancy setup completed."
 }
 
 install_zprezto() {
-	git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
+	git_clone_atomic https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto" --recursive
 	gum_success "zprezto installed successfully."
 }
 
@@ -1145,18 +1169,31 @@ install_iterm2() {
 }
 
 install_nvm() {
-	if [ ! -d "$HOME/.nvm" ]; then
+	# Resumable: ~/.nvm exists the instant the nvm installer starts, but node
+	# only arrives after `nvm install --lts`. A run killed in between must, on
+	# resume, still finish installing node (never skip it because the dir is
+	# there). Keyed on node actually being runnable, not on the dir existing.
+	export NVM_DIR="$HOME/.nvm"
+	if [ ! -s "$NVM_DIR/nvm.sh" ]; then
 		gum_info "Installing NVM..."
 		curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-		export NVM_DIR="$HOME/.nvm"
-		[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-		[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+	fi
+	# shellcheck disable=SC1091
+	[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+	# shellcheck disable=SC1091
+	[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+	if ! command_exists node; then
+		gum_info "Installing latest LTS Node.js via nvm..."
 		nvm install --lts
 		nvm use --lts
-		gum_success "NVM installed gum_success with latest LTS Node.js."
-	else
-		gum_dim "NVM is already installed."
 	fi
+
+	if ! command_exists node; then
+		gum_error "install_nvm: node is still unavailable after nvm install --lts"
+		return 1
+	fi
+	gum_success "NVM ready with Node $(node --version)."
 }
 
 install_unzip() {
@@ -1249,7 +1286,7 @@ install_uwu() {
 	local temp_dir="/tmp/uwu_build_$$"
 
 	# Clone and build in temp directory (subshell preserves working directory)
-	git clone https://github.com/context-labs/uwu.git "$temp_dir"
+	git_clone_atomic https://github.com/context-labs/uwu.git "$temp_dir"
 	(
 		cd "$temp_dir"
 

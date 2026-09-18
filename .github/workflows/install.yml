@@ -255,3 +255,96 @@ jobs:
           path: |
             ${{ runner.temp }}/run1.log
             ${{ runner.temp }}/run2.log
+
+  # Proves setup.sh is resumable: kill it mid-run with SIGKILL, then re-run to
+  # completion. The resume must (a) finish cleanly, (b) leave every expected tool
+  # present, and (c) never reinstall a tool that already finished in the killed run.
+  ubuntu-resume:
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
+    timeout-minutes: 90
+    env:
+      HOME: /root
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Bootstrap bare-minimum packages
+        shell: bash
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y sudo git curl ca-certificates zsh coreutils
+
+      - name: Checkout into ~/dotfiles
+        uses: actions/checkout@v4
+        with:
+          path: dotfiles-checkout
+
+      - name: Symlink checkout to ~/dotfiles
+        shell: bash
+        run: ln -sfn "$GITHUB_WORKSPACE/dotfiles-checkout" "$HOME/dotfiles"
+
+      # SIGKILL partway through; 180s reliably lands mid-run. A kill yields exit
+      # 137 (the point); a lucky early finish (exit 0) is fine too. Run1's own
+      # exit is NOT a gate — the resume run below is what must succeed.
+      - name: First run, killed mid-way
+        shell: bash
+        run: |
+          cd ~/dotfiles
+          set +e
+          timeout -s KILL 180 ./setup.sh > "$RUNNER_TEMP/run1.log" 2>&1
+          rc=$?
+          echo "first run exit code: $rc (137 = killed as intended)"
+
+      - name: Resume run must complete
+        shell: bash
+        run: |
+          cd ~/dotfiles
+          ./setup.sh 2>&1 | tee "$RUNNER_TEMP/run2.log"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Assert resume reinstalled nothing already finished
+        shell: bash
+        run: |
+          # Tools whose install_if_missing/install_if_dir_missing wrapper printed
+          # "<name> installed successfully" in the killed run...
+          grep -oE '[[:alnum:]._-]+ installed successfully' "$RUNNER_TEMP/run1.log" \
+            | sed 's/ installed successfully//' | sort -u > "$RUNNER_TEMP/completed.txt"
+          # ...must NOT reappear as "<name> is not installed. Installing" in run2.
+          grep -oE '[[:alnum:]._-]+ is not installed\. Installing' "$RUNNER_TEMP/run2.log" \
+            | sed 's/ is not installed.*//' | sort -u > "$RUNNER_TEMP/reinstalled.txt"
+          echo "completed in run1: $(wc -l < "$RUNNER_TEMP/completed.txt") tools"
+          echo "reinstalled in run2: $(wc -l < "$RUNNER_TEMP/reinstalled.txt") tools"
+          offenders=$(comm -12 "$RUNNER_TEMP/completed.txt" "$RUNNER_TEMP/reinstalled.txt")
+          if [ -n "$offenders" ]; then
+            echo "::error::these tools finished in run1 but were reinstalled on resume:"
+            printf '%s\n' "$offenders"
+            exit 1
+          fi
+          echo "resume redid no finished work"
+
+      - name: Tools present
+        shell: bash
+        run: |
+          zsh -c '
+            source "$HOME/.paths.zsh"
+            missing=""
+            for tool in ${=EXPECTED_TOOLS}; do
+              command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+            done
+            if [ -n "$missing" ]; then
+              echo "Missing tools:$missing"
+              echo "PATH=$PATH"
+              exit 1
+            fi
+            echo "All tools present"
+          '
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-logs-ubuntu-resume
+          path: |
+            ${{ runner.temp }}/run1.log
+            ${{ runner.temp }}/run2.log
