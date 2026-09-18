@@ -148,9 +148,13 @@ preflight() {
 cmd_status() {
     preflight
     gum_info "Latest published images (${PKG_NAME}):"
-    local versions
+    local versions rc
     versions="$(gh api "/orgs/${PKG_ORG}/packages/container/${PKG_NAME}/versions" \
-        --jq '.[0:3][] | "\(.metadata.container.tags | join(",") ) \(.created_at)"' 2>/dev/null || true)"
+        --jq '.[0:3][] | "\(.metadata.container.tags | join(",") ) \(.created_at)"' 2>/dev/null)"
+    rc=$?
+    if (( rc != 0 )); then
+        die "Could not read published images for ${PKG_NAME}. Your GitHub token is likely missing the 'read:packages' scope — add it with: gh auth refresh -h github.com -s read:packages  (or check you have access to the ${PKG_ORG} org)."
+    fi
     if [[ -z "$versions" ]]; then
         die "No image is published yet. Build one with: agent-ssh build"
     fi
