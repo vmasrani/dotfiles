@@ -17,6 +17,7 @@ on:
       - tools/ctx-stale
       - tools/ctx-reset
       - tools/ctx-skip
+  workflow_dispatch: {} # manual trigger for testing the dispatch chain
 
 jobs:
   dispatch:
