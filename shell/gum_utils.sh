@@ -20,20 +20,19 @@
 # ===================================================================
 
 # === Gum Color Constants ===
-# Use typeset -g to allow re-sourcing without errors
-typeset -g GUM_COLOR_SUCCESS=46      # Green
-typeset -g GUM_COLOR_ERROR=196       # Red
-typeset -g GUM_COLOR_WARNING=208     # Orange
-typeset -g GUM_COLOR_INFO=212        # Magenta
-typeset -g GUM_COLOR_DIM=245         # Gray
-typeset -g GUM_COLOR_GRAY=242        # Darker gray
-typeset -g GUM_COLOR_BLUE=111        # Blue highlights
+GUM_COLOR_SUCCESS=46      # Green
+GUM_COLOR_ERROR=196       # Red
+GUM_COLOR_WARNING=208     # Orange
+GUM_COLOR_INFO=212        # Magenta
+GUM_COLOR_DIM=245         # Gray
+GUM_COLOR_GRAY=242        # Darker gray
+GUM_COLOR_BLUE=111        # Blue highlights
 
 # === Symbol Constants ===
-typeset -g GUM_SYMBOL_SUCCESS="✓"
-typeset -g GUM_SYMBOL_ERROR="✗"
-typeset -g GUM_SYMBOL_WARNING="⚠"
-typeset -g GUM_SYMBOL_PROGRESS="→"
+GUM_SYMBOL_SUCCESS="✓"
+GUM_SYMBOL_ERROR="✗"
+GUM_SYMBOL_WARNING="⚠"
+GUM_SYMBOL_PROGRESS="→"
 
 # === Gum Availability Detection ===
 _GUM_AVAILABLE=""
