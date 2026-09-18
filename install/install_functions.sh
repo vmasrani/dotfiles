@@ -779,6 +779,8 @@ install_fzf() {
 }
 
 install_helix() {
+	# Install the helix binary only. Grammars are handled once, separately, by
+	# install_helix_grammars() (called from setup.sh after this).
 	if [[ "$OS_TYPE" == "linux" ]]; then
 		# Prefer the PPA (registered by ensure_apt_repos); snap only as fallback
 		# because snapd restarts stall unattended bootstraps.
@@ -793,22 +795,61 @@ install_helix() {
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install helix
 	fi
-
-	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch: some grammars failed to fetch (dead/unreachable upstream repos); the box still works without them"
-	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build: some grammars failed to build; the box still works without them"
-	gum_success "Helix grammars updated successfully."
 }
 
-update_helix_grammars() {
+# Build ONLY the custom tree-sitter grammars (the [[grammar]] source overrides in
+# editors/hx_languages.toml, restricted by its `use-grammars = { only = [...] }`).
+# The ~245 stock grammars ship prebuilt in the packaged helix runtime (brew:
+# libexec/runtime, apt: /usr/lib/helix/runtime) and load at runtime via helix's
+# runtime-dir merge, so we no longer fetch+compile 150+ grammars on every fresh
+# install. Consolidates the former install_helix grammar block + update_helix_grammars
+# into one function. Idempotent, and fails loud if hx is missing or a custom
+# grammar does not build.
+install_helix_grammars() {
+	if ! command_exists hx; then
+		gum_error "install_helix_grammars: hx is not installed; install helix first"
+		return 1
+	fi
+
+	local langs="$HOME/.config/helix/languages.toml"
 	local grammar_dir="$HOME/.config/helix/runtime/grammars"
-	if [[ -d "$grammar_dir" ]] && (ls "$grammar_dir"/*.so) &>/dev/null; then
-		gum_dim "Helix grammars already built."
+
+	# Custom grammars = the [[grammar]] override names in languages.toml.
+	local -a custom=()
+	local g
+	while IFS= read -r g; do
+		[[ -n "$g" ]] && custom+=("$g")
+	done < <(awk '/^\[\[grammar\]\]/{f=1;next} f&&/^name/{gsub(/^name[[:space:]]*=[[:space:]]*"/,"");gsub(/".*/,"");print;f=0}' "$langs" 2>/dev/null)
+
+	if [[ ${#custom[@]} -eq 0 ]]; then
+		gum_dim "No custom helix grammars declared; stock grammars come from the package."
 		return 0
 	fi
-	gum_info "Fetching and building Helix grammars..."
-	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch: some grammars failed to fetch (dead/unreachable upstream repos); the box still works without them"
-	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build: some grammars failed to build; the box still works without them"
-	gum_success "Helix grammars updated."
+
+	# Idempotent: skip when every custom grammar is already built.
+	local need=0
+	for g in "${custom[@]}"; do
+		[[ -f "$grammar_dir/$g.so" ]] || need=1
+	done
+	if [[ "$need" -eq 0 ]]; then
+		gum_dim "Helix custom grammars already built (${custom[*]})."
+		return 0
+	fi
+
+	gum_info "Building custom helix grammars (${custom[*]}); stock grammars come prebuilt from the package..."
+	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch reported errors (non-custom grammars are skipped by use-grammars.only)"
+	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build reported errors"
+
+	# Verify every custom grammar actually built; fail loud otherwise.
+	local -a not_built=()
+	for g in "${custom[@]}"; do
+		[[ -f "$grammar_dir/$g.so" ]] || not_built+=("$g")
+	done
+	if [[ ${#not_built[@]} -gt 0 ]]; then
+		gum_error "install_helix_grammars: custom grammars failed to build: ${not_built[*]}"
+		return 1
+	fi
+	gum_success "Helix custom grammars built (${custom[*]})."
 }
 
 install_glow() {

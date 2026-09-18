@@ -123,8 +123,8 @@ install_if_missing markdown-oxide install_markdown_oxide # Markdown LSP for Heli
 install_if_missing simple-completion-language-server install_simple_completion_language_server # Simple completion LSP
 install_if_missing taplo install_taplo_cli # TOML LSP and formatter
 
-# update helix grammars
-update_helix_grammars
+# build only our custom helix grammars (stock ones ship with the package)
+install_helix_grammars
 
 if [[ "$OS_TYPE" == "mac" ]]; then
     gum_info "Setup agent toggle window (TMUX REQUIRED):"
