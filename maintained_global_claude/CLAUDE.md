@@ -55,6 +55,12 @@ Context is re-read every turn (~6× effective price) and never shrinks.
 
 # Workflow defaults
 
+- **Simple UI apps never need CI ceremony.** Do not add hosted CI, required
+  status checks, pre-push gates, `ci-fast`/`ci-deep`, full-suite gates, or
+  workflow-kit machinery whose purpose is CI to a simple frontend/UI app.
+  Use the smallest focused visual or manual verification that exercises the
+  change. Add CI only when the user explicitly asks; never infer it from repo
+  size, framework, or the fact that a load-bearing dependency uses CI.
 - **Red-green TDD for bug fixes and core-invariant changes** — the reproducing test IS the spec; write it first, watch it fail.
 - **Multi-feature work (2+ separable features) batches:** freeze shared seams first; one worktree per batch with agents partitioned by file ownership; tests WRITTEN per feature (never deferred authorship); `cargo check`/clippy/lint per feature; one commit per feature → one branch → ONE PR; ONE full suite on the merged result, run once by the merger; red → bisect per commit, never hand-debug the union. Cap ~5–6 features. A feature that must change a shared seam lands first, alone.
 - **Verbal plan approval counts** — "proceed"/"go ahead" after a rejected ExitPlanMode means start.

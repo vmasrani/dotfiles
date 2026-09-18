@@ -1,0 +1,525 @@
+#!/usr/bin/env bash
+# Install the exact OMP Session Gateway v0.3.0 and its qualified patched OMP v18.1.14.
+# This command owns only $HOME/.local/{bin,lib}/omp-session-gateway and the gateway's managed service.
+set -euo pipefail
+
+readonly GATEWAY_VERSION="0.3.0"
+readonly GATEWAY_SHA256="e026cb5c437793dbe7813e028d8344ef7fa1724cdd388263aabe6cb3c43ac975"
+readonly GATEWAY_URL="https://github.com/alphastorm/omp-session-gateway/releases/download/v0.3.0/omp-session-gateway-0.3.0-bun.tar"
+readonly BUN_VERSION="1.4.0"
+readonly OMP_VERSION="18.1.14"
+readonly OMP_COMMIT="daf07999c2fee9b22edc7bf8fea1fb6272e0df5e"
+readonly OMP_TREE="17f84676442ee103564d01755ed1f76bbc51820e"
+readonly PATCH_SHA256="7e11924670c0e703e86ac4e4c0ce7aa52e99c48bb7cf847f58b9318fda08870b"
+readonly OMP_REPOSITORY="https://github.com/can1357/oh-my-pi.git"
+readonly NATIVE_DARWIN_SHA256="d640ae8ea3679d2b3c6ea89b1b64d978e4cc793212cb67dc8badff10937bc7cc"
+readonly NATIVE_DARWIN_FILE_SHA256="21e96210267275212d9555481d38b48deb37289dc08cab4f9c9f8c74c99675bc"
+
+readonly APP_ROOT="${HOME}/.local/lib/omp-session-gateway"
+readonly CACHE_ROOT="${HOME}/.cache/omp-session-gateway"
+readonly LOCAL_BIN="${HOME}/.local/bin"
+readonly GATEWAY_ROOT="${APP_ROOT}/gateway/v${GATEWAY_VERSION}"
+readonly OMP_ROOT="${APP_ROOT}/omp/source/v${OMP_VERSION}-${OMP_TREE:0:8}"
+readonly OMP_VERSION_DIR="${APP_ROOT}/omp/v${OMP_VERSION}-${OMP_TREE:0:8}"
+readonly OMP_BINARY="${OMP_VERSION_DIR}/omp"
+
+origin=""
+declare -a allowed_logins=()
+temporary_directory=""
+platform=""
+bun_asset=""
+bun_sha256=""
+bun_archive=""
+bun_directory=""
+bun_binary=""
+
+fail() {
+    printf 'setup-omp: %s\n' "$*" >&2
+    exit 1
+}
+
+cleanup() {
+    if [[ -n "$temporary_directory" && -d "$temporary_directory" ]]; then
+        rm -rf "$temporary_directory"
+    fi
+}
+trap cleanup EXIT
+
+usage() {
+    cat <<'USAGE'
+Usage: setup-omp [--origin https://host.tailnet.ts.net] [--allow login@example.com]...
+
+Without overrides, setup-omp derives the current node's MagicDNS HTTPS origin and
+its owning Tailscale login. It installs only the qualified private Serve route.
+USAGE
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || fail "missing required command '$1'; install it and rerun setup-omp"
+}
+
+sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
+assert_sha256() {
+    local path="$1" expected="$2" actual
+    actual="$(sha256 "$path")"
+    [[ "$actual" == "$expected" ]] || fail "checksum refusal for $path: expected $expected, got $actual; remove the untrusted file and rerun setup-omp"
+}
+
+fetch_verified() {
+    local destination="$1" url="$2" digest="$3" temporary
+    if [[ -e "$destination" ]]; then
+        assert_sha256 "$destination" "$digest"
+        return
+    fi
+    mkdir -p "$(dirname "$destination")"
+    temporary="${destination}.download.$$"
+    rm -f "$temporary"
+    curl --fail --location --proto '=https' --tlsv1.2 --output "$temporary" "$url" || {
+        rm -f "$temporary"
+        fail "download failed for $url; fix network access and rerun setup-omp"
+    }
+    assert_sha256 "$temporary" "$digest"
+    mv "$temporary" "$destination"
+}
+
+staging_directory_for() {
+    local destination="$1" parent
+    parent="$(dirname "$destination")"
+    mkdir -p "$parent"
+    mktemp -d "${parent}/.setup-omp.XXXXXX"
+}
+
+move_directory_atomically() {
+    local source="$1" destination="$2"
+    [[ ! -e "$destination" ]] || fail "refusing to replace existing $destination"
+    mkdir -p "$(dirname "$destination")"
+    mv "$source" "$destination"
+}
+
+parse_arguments() {
+    while (($#)); do
+        case "$1" in
+            --origin)
+                (($# >= 2)) || fail "--origin requires a value"
+                [[ -z "$origin" ]] || fail "--origin may be supplied once"
+                origin="$2"
+                shift 2
+                ;;
+            --allow)
+                (($# >= 2)) || fail "--allow requires a value"
+                allowed_logins+=("$2")
+                shift 2
+                ;;
+            --help|-h)
+                usage
+                exit 0
+                ;;
+            *)
+                fail "unknown argument '$1'; run setup-omp --help"
+                ;;
+        esac
+    done
+}
+
+select_platform() {
+    local system architecture
+    system="$(uname -s)"
+    architecture="$(uname -m)"
+    case "${system}-${architecture}" in
+        Darwin-arm64)
+            platform="darwin-arm64"
+            bun_asset="bun-darwin-aarch64.zip"
+            bun_sha256="c669e97f6164e1c96e0701748db98dfa77492908cbd8394c7557134a735de381"
+            ;;
+        Linux-x86_64)
+            platform="linux-x64"
+            bun_asset="bun-linux-x64.zip"
+            bun_sha256="2d03fb5fb83ac8b567aca0a281b2ce1a1a19d488f56c2968d88c3f25e92fe452"
+            ;;
+        Linux-aarch64|Linux-arm64)
+            platform="linux-arm64"
+            bun_asset="bun-linux-aarch64.zip"
+            bun_sha256="4b1a332ee861983eb93bcfe6f770fff94e3e31b2c388bdaea3c8ed35e58eed0e"
+            ;;
+        *)
+            fail "unsupported host ${system}-${architecture}; setup-omp supports only macOS arm64, Linux x86_64, and Linux arm64 TUN-mode hosts"
+            ;;
+    esac
+    bun_archive="${CACHE_ROOT}/bun/${BUN_VERSION}/${bun_asset}"
+    bun_directory="${APP_ROOT}/bun/${BUN_VERSION}/${platform}"
+    bun_binary="${bun_directory}/bun"
+}
+
+assert_tailscale_ready() {
+    local status_json user_id login dns_name
+    require_command tailscale
+    require_command jq
+    if ! status_json="$(tailscale status --json)"; then
+        fail "Tailscale is unavailable or logged out; install/start the supported Tailscale client, run 'tailscale up', then rerun setup-omp"
+    fi
+    if ! printf '%s' "$status_json" | jq -e '.BackendState == "Running" and .TUN == true' >/dev/null; then
+        fail "Tailscale must be logged in and running in TUN mode; run 'tailscale up' with userspace networking disabled, then rerun setup-omp"
+    fi
+    if [[ -z "$origin" ]]; then
+        dns_name="$(printf '%s' "$status_json" | jq -er '.Self.DNSName | strings | rtrimstr(".") | select(test("^[A-Za-z0-9-]+\\.[A-Za-z0-9.-]+\\.ts\\.net$"))')" || \
+            fail "could not derive this node's MagicDNS hostname; enable MagicDNS or pass --origin https://host.tailnet.ts.net and rerun setup-omp"
+        origin="https://${dns_name}"
+    fi
+    [[ "$origin" =~ ^https://[A-Za-z0-9.-]+\.ts\.net$ ]] || \
+        fail "origin must be a private MagicDNS HTTPS URL ending in .ts.net"
+    if ((${#allowed_logins[@]} == 0)); then
+        user_id="$(printf '%s' "$status_json" | jq -er '.Self.UserID // .Self.User | tostring')" || \
+            fail "could not determine the owning Tailscale user; pass --allow login@example.com and rerun setup-omp"
+        login="$(printf '%s' "$status_json" | jq -er --arg user_id "$user_id" '.User[$user_id].LoginName | strings | select(length > 0)')" || \
+            fail "could not determine the owning Tailscale login; pass --allow login@example.com and rerun setup-omp"
+        allowed_logins=("$login")
+    fi
+    local login_value
+    for login_value in "${allowed_logins[@]}"; do
+        [[ "$login_value" =~ ^[^[:space:]@]+@[^[:space:]@]+$ ]] || fail "invalid Tailscale login '$login_value'"
+    done
+}
+
+assert_funnel_disabled() {
+    local serve_json="$1"
+    printf '%s' "$serve_json" | jq -e '[.. | objects | select(.AllowFunnel? == true)] | length == 0' >/dev/null || \
+        fail "Tailscale Funnel is enabled; disable Funnel/public exposure before running setup-omp"
+}
+configure_private_serve() {
+    local serve_json has_expected has_conflict tcp_compatible
+    serve_json="$(tailscale serve status --json)" || fail "could not inspect Tailscale Serve; repair Tailscale and rerun setup-omp"
+    assert_funnel_disabled "$serve_json"
+    has_expected="$(printf '%s' "$serve_json" | jq -er '[.Web // {} | to_entries[]? | select(.key | test(":443$")) | .value.Handlers["/"].Proxy?] | any(. == "http://127.0.0.1:4317")')"
+    tcp_compatible="$(printf '%s' "$serve_json" | jq -er '(.TCP["443"] // {}) as $tcp | ($tcp == {} or ($tcp.HTTPS == true and (($tcp | keys) == ["HTTPS"])))')"
+    if [[ "$has_expected" == "true" && "$tcp_compatible" == "true" ]]; then
+        return
+    fi
+    has_conflict="$(printf '%s' "$serve_json" | jq -er '([.Web // {} | to_entries[]? | select(.key | test(":443$"))] | length > 0) or (.TCP["443"]? != null)')"
+    [[ "$has_conflict" == "false" ]] || \
+        fail "Tailscale Serve HTTPS/TCP 443 already has a conflicting mapping; leave unrelated Serve configuration intact, resolve that mapping, then rerun setup-omp"
+    tailscale serve --https=443 --bg --yes http://127.0.0.1:4317 || \
+        fail "could not configure private Tailscale Serve HTTPS 443 -> 127.0.0.1:4317"
+    serve_json="$(tailscale serve status --json)" || fail "could not re-read Tailscale Serve after configuration"
+    assert_funnel_disabled "$serve_json"
+    has_expected="$(printf '%s' "$serve_json" | jq -er '[.Web // {} | to_entries[]? | select(.key | test(":443$")) | .value.Handlers["/"].Proxy?] | any(. == "http://127.0.0.1:4317")')"
+    tcp_compatible="$(printf '%s' "$serve_json" | jq -er '(.TCP["443"] // {}) as $tcp | ($tcp == {} or ($tcp.HTTPS == true and (($tcp | keys) == ["HTTPS"])))')"
+    [[ "$has_expected" == "true" && "$tcp_compatible" == "true" ]] || \
+        fail "Tailscale Serve did not retain the required private HTTPS 443 mapping"
+}
+
+ensure_bun() {
+    local archive_root unpacked
+    fetch_verified "$bun_archive" "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${bun_asset}" "$bun_sha256"
+    if [[ -e "$bun_binary" ]]; then
+        [[ -x "$bun_binary" ]] || fail "retained private Bun is not executable at $bun_binary"
+        [[ "$("$bun_binary" --version)" == "$BUN_VERSION" ]] || fail "retained private Bun has the wrong version at $bun_binary; remove ${bun_directory} and rerun setup-omp"
+        return
+    fi
+    temporary_directory="$(staging_directory_for "$bun_directory")"
+    archive_root="${temporary_directory}/bun"
+    mkdir -p "$archive_root"
+    unzip -q "$bun_archive" -d "$archive_root" || fail "could not extract verified Bun archive"
+    unpacked="${archive_root}/${bun_asset%.zip}"
+    [[ -x "${unpacked}/bun" ]] || fail "verified Bun archive has an unexpected layout"
+    move_directory_atomically "$unpacked" "$bun_directory"
+    [[ "$("$bun_binary" --version)" == "$BUN_VERSION" ]] || fail "installed private Bun did not report ${BUN_VERSION}"
+    rm -rf "$temporary_directory"
+    temporary_directory=""
+}
+
+sha256_stream() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | awk '{print $1}'
+    else
+        shasum -a 256 | awk '{print $1}'
+    fi
+}
+
+gateway_payload_digest() {
+    local root="$1"
+    [[ -z "$(find "$root" -type l -print -quit)" ]] || fail "gateway payload contains a symlink and is not trusted"
+    (
+        cd "$root"
+        while IFS= read -r path; do
+            path="${path#./}"
+            printf '%s\0' "$path"
+            cat "./$path"
+            printf '\0'
+        done < <(find . -type f ! -name gateway.payload.sha256 -print | LC_ALL=C sort)
+    ) | sha256_stream
+}
+
+record_gateway_provenance() {
+    local root="$1" marker temporary digest
+    marker="${root}/gateway.payload.sha256"
+    digest="$(gateway_payload_digest "$root")"
+    temporary="${marker}.tmp.$$"
+    printf '%s\n' "$digest" > "$temporary"
+    mv "$temporary" "$marker"
+}
+
+verify_gateway_source() {
+    local root="$1" cli marker recorded actual
+    cli="${root}/apps/gateway/src/cli.js"
+    marker="${root}/gateway.payload.sha256"
+    [[ -f "$cli" && ! -L "$cli" ]] || fail "retained gateway source has unexpected layout at $root"
+    [[ -f "$marker" && ! -L "$marker" ]] || fail "retained gateway source has no provenance record; remove $root and rerun setup-omp"
+    recorded="$(cat "$marker")"
+    [[ "$recorded" =~ ^[0-9a-f]{64}$ ]] || fail "retained gateway source has an invalid provenance record; remove $root and rerun setup-omp"
+    actual="$(gateway_payload_digest "$root")"
+    [[ "$recorded" == "$actual" ]] || fail "retained gateway source payload changed after verification; remove $root and rerun setup-omp"
+}
+
+extract_gateway_archive() {
+    local archive="$1" destination="$2" expected_root roots staging extracted
+    expected_root="omp-session-gateway-${GATEWAY_VERSION}-bun"
+    roots="$(tar -tf "$archive" | awk '{sub(/^\.\//, ""); if ($0 != "") { split($0, parts, "/"); print parts[1] }}' | LC_ALL=C sort -u)"
+    [[ "$roots" == "$expected_root" ]] || fail "verified gateway archive must contain exactly ${expected_root}/ and no other top-level path"
+    staging="$(staging_directory_for "$destination")"
+    temporary_directory="$staging"
+    extracted="${staging}/payload"
+    mkdir -p "$extracted"
+    tar -xf "$archive" -C "$extracted" || fail "could not extract verified gateway archive"
+    [[ -d "${extracted}/${expected_root}" ]] || fail "verified gateway archive has an unexpected top-level directory"
+    record_gateway_provenance "${extracted}/${expected_root}"
+    move_directory_atomically "${extracted}/${expected_root}" "$destination"
+    rm -rf "$staging"
+    temporary_directory=""
+}
+
+ensure_gateway_source() {
+    local archive
+    archive="${CACHE_ROOT}/gateway/v${GATEWAY_VERSION}/omp-session-gateway-${GATEWAY_VERSION}-bun.tar"
+    fetch_verified "$archive" "$GATEWAY_URL" "$GATEWAY_SHA256"
+    if [[ -d "$GATEWAY_ROOT" ]]; then
+        verify_gateway_source "$GATEWAY_ROOT"
+        return
+    fi
+    extract_gateway_archive "$archive" "$GATEWAY_ROOT"
+}
+
+verify_omp_source() {
+    local current_tree remote dirty
+    [[ -d "$OMP_ROOT/.git" ]] || fail "retained OMP source is not a Git checkout at $OMP_ROOT"
+    remote="$(git -C "$OMP_ROOT" remote get-url origin)"
+    [[ "$remote" == "$OMP_REPOSITORY" ]] || fail "retained OMP source has wrong origin '$remote'; remove $OMP_ROOT and rerun setup-omp"
+    dirty="$(git -C "$OMP_ROOT" status --porcelain)"
+    [[ -z "$dirty" ]] || fail "retained OMP source is dirty at $OMP_ROOT; commit or remove local changes before rerunning setup-omp"
+    current_tree="$(git -C "$OMP_ROOT" rev-parse 'HEAD^{tree}')"
+    [[ "$current_tree" == "$OMP_TREE" ]] || fail "retained OMP source has wrong patched provenance; expected tree $OMP_TREE, got $current_tree"
+}
+
+ensure_omp_source() {
+    local patch temporary_source head tree
+    patch="${GATEWAY_ROOT}/patches/oh-my-pi/0001-collab-controller-autostart-registry.patch"
+    [[ -f "$patch" ]] || fail "gateway archive is missing the required OMP patch"
+    assert_sha256 "$patch" "$PATCH_SHA256"
+    if [[ -e "$OMP_ROOT" ]]; then
+        verify_omp_source
+        return
+    fi
+    temporary_directory="$(staging_directory_for "$OMP_ROOT")"
+    temporary_source="${temporary_directory}/oh-my-pi"
+    git clone --filter=blob:none --branch "v${OMP_VERSION}" --single-branch "$OMP_REPOSITORY" "$temporary_source" || \
+        fail "could not clone OMP v${OMP_VERSION}; fix network access and rerun setup-omp"
+    git -C "$temporary_source" checkout --detach "$OMP_COMMIT"
+    head="$(git -C "$temporary_source" rev-parse HEAD)"
+    [[ "$head" == "$OMP_COMMIT" ]] || fail "OMP checkout did not resolve to required commit $OMP_COMMIT"
+    git -C "$temporary_source" apply --check "$patch" || fail "the verified OMP patch does not apply to the exact required source"
+    git -C "$temporary_source" -c user.name=omp-session-gateway -c user.email=qual@example.invalid am "$patch" || \
+        fail "could not apply the verified OMP patch; remove ${temporary_source} and rerun setup-omp"
+    tree="$(git -C "$temporary_source" rev-parse 'HEAD^{tree}')"
+    [[ "$tree" == "$OMP_TREE" ]] || fail "patched OMP provenance mismatch: expected tree $OMP_TREE, got $tree"
+    [[ -z "$(git -C "$temporary_source" status --porcelain)" ]] || fail "patched OMP source unexpectedly became dirty"
+    move_directory_atomically "$temporary_source" "$OMP_ROOT"
+    rm -rf "$temporary_directory"
+    temporary_directory=""
+}
+
+stage_native_addon() {
+    local native_name native_file fixture package_json cache_file unpacked
+    case "$platform" in
+        darwin-arm64)
+            native_name="pi-natives-darwin-arm64"
+            native_file="pi_natives.darwin-arm64.node"
+            cache_file="${CACHE_ROOT}/natives/${native_name}-${OMP_VERSION}.tgz"
+            fetch_verified "$cache_file" "https://registry.npmjs.org/@oh-my-pi/${native_name}/-/${native_name}-${OMP_VERSION}.tgz" "$NATIVE_DARWIN_SHA256"
+            temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/setup-omp.XXXXXX")"
+            tar -xzf "$cache_file" -C "$temporary_directory" || fail "could not extract verified ${native_name} package"
+            unpacked="${temporary_directory}/package/${native_file}"
+            [[ -f "$unpacked" ]] || fail "verified ${native_name} package has an unexpected layout"
+            assert_sha256 "$unpacked" "$NATIVE_DARWIN_FILE_SHA256"
+            install -m 0644 "$unpacked" "${OMP_ROOT}/packages/natives/native/${native_file}"
+            rm -rf "$temporary_directory"
+            temporary_directory=""
+            ;;
+        linux-x64)
+            native_name="pi-natives-linux-x64"
+            native_file="pi_natives.linux-x64-baseline.node"
+            ;;
+        linux-arm64)
+            native_name="pi-natives-linux-arm64"
+            native_file="pi_natives.linux-arm64.node"
+            ;;
+        *)
+            fail "unsupported native addon platform $platform"
+            ;;
+    esac
+    if [[ "$platform" != "darwin-arm64" ]]; then
+        temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/setup-omp.XXXXXX")"
+        fixture="${temporary_directory}/native-fixture"
+        mkdir -p "$fixture"
+        package_json="${fixture}/package.json"
+        printf '%s\n' "{\"private\":true,\"dependencies\":{\"@oh-my-pi/${native_name}\":\"${OMP_VERSION}\"}}" > "$package_json"
+        (cd "$fixture" && "$bun_binary" install) || fail "could not install exact official ${native_name}@${OMP_VERSION} addon"
+        unpacked="${fixture}/node_modules/@oh-my-pi/${native_name}/${native_file}"
+        [[ -f "$unpacked" ]] || fail "official ${native_name}@${OMP_VERSION} package has an unexpected layout"
+        install -m 0644 "$unpacked" "${OMP_ROOT}/packages/natives/native/${native_file}"
+        rm -rf "$temporary_directory"
+        temporary_directory=""
+    fi
+}
+
+assert_binary_provenance() {
+    local recorded actual
+    [[ -x "$OMP_BINARY" && -f "${OMP_VERSION_DIR}/omp.sha256" ]] || return 1
+    recorded="$(cat "${OMP_VERSION_DIR}/omp.sha256")"
+    actual="$(sha256 "$OMP_BINARY")"
+    [[ "$recorded" == "$actual" ]] || fail "retained patched OMP binary checksum mismatch at $OMP_BINARY; remove $OMP_VERSION_DIR and rerun setup-omp"
+    [[ "$("$OMP_BINARY" --version)" == "omp/${OMP_VERSION}" ]] || fail "retained patched OMP binary has the wrong version at $OMP_BINARY"
+}
+
+build_omp_if_needed() {
+    local staged_binary binary_hash
+    if assert_binary_provenance; then
+        return
+    fi
+    [[ ! -e "$OMP_BINARY" && ! -e "${OMP_VERSION_DIR}/omp.sha256" ]] || \
+        fail "retained patched OMP install is incomplete at $OMP_VERSION_DIR; remove it and rerun setup-omp"
+    (cd "$OMP_ROOT" && "$bun_binary" install --frozen-lockfile)
+    stage_native_addon
+    (cd "$OMP_ROOT" && "$bun_binary" run ci:check:full)
+    (cd "$OMP_ROOT" && "$bun_binary" --cwd=packages/coding-agent run build)
+    staged_binary="${OMP_ROOT}/packages/coding-agent/dist/omp"
+    [[ -x "$staged_binary" ]] || fail "OMP build did not produce an executable"
+    [[ "$("$staged_binary" --version)" == "omp/${OMP_VERSION}" ]] || fail "OMP build did not report omp/${OMP_VERSION}"
+    temporary_directory="$(staging_directory_for "$OMP_VERSION_DIR")"
+    install -m 0755 "$staged_binary" "${temporary_directory}/omp"
+    binary_hash="$(sha256 "${temporary_directory}/omp")"
+    printf '%s\n' "$binary_hash" > "${temporary_directory}/omp.sha256"
+    move_directory_atomically "$temporary_directory" "$OMP_VERSION_DIR"
+    temporary_directory=""
+    assert_binary_provenance || fail "installed patched OMP binary failed provenance verification"
+}
+
+write_managed_wrapper() {
+    local path="$1" temporary
+    temporary="${path}.setup-omp.$$"
+    mkdir -p "$(dirname "$path")"
+    cat > "$temporary"
+    chmod 0755 "$temporary"
+    if [[ -e "$path" || -L "$path" ]]; then
+        cmp -s "$temporary" "$path" || fail "refusing to overwrite unrelated command $path; move it aside and rerun setup-omp"
+        rm -f "$temporary"
+    else
+        mv "$temporary" "$path"
+    fi
+}
+
+ensure_exact_symlink() {
+    local path="$1" target="$2" existing
+    if [[ -e "$path" || -L "$path" ]]; then
+        [[ -L "$path" ]] || fail "refusing to overwrite unrelated command $path; move it aside and rerun setup-omp"
+        existing="$(readlink "$path")"
+        [[ "$existing" == "$target" ]] || fail "refusing to overwrite unrelated command $path; expected our target $target, found $existing"
+    else
+        ln -s "$target" "$path"
+    fi
+}
+
+configure_omp_commands() {
+    mkdir -p "$LOCAL_BIN"
+    write_managed_wrapper "${LOCAL_BIN}/omp-gateway" <<EOF
+#!/usr/bin/env bash
+exec "${bun_binary}" "${GATEWAY_ROOT}/apps/gateway/src/cli.js" "\$@"
+EOF
+    ensure_exact_symlink "${LOCAL_BIN}/omp-gateway-patched" "$OMP_BINARY"
+    ensure_exact_symlink "${LOCAL_BIN}/omp" "$OMP_BINARY"
+    "${LOCAL_BIN}/omp-gateway-patched" config set collab.autoStart control
+    "${LOCAL_BIN}/omp-gateway-patched" config set collab.registryEndpoint auto
+    "${LOCAL_BIN}/omp-gateway-patched" config get collab.autoStart --json | jq -e '(. == "control") or (.value == "control")' >/dev/null || \
+        fail "could not verify collab.autoStart=control"
+    "${LOCAL_BIN}/omp-gateway-patched" config get collab.registryEndpoint --json | jq -e '(. == "auto") or (.value == "auto")' >/dev/null || \
+        fail "could not verify collab.registryEndpoint=auto"
+}
+
+install_gateway() {
+    local allow_args=() login
+    for login in "${allowed_logins[@]}"; do
+        allow_args+=(--allow "$login")
+    done
+    "$bun_binary" "${GATEWAY_ROOT}/apps/gateway/src/cli.js" install --origin "$origin" "${allow_args[@]}"
+}
+
+assert_gateway_service_uses_pinned_bun() {
+    local service_file
+    case "$platform" in
+        darwin-arm64)
+            service_file="${HOME}/Library/LaunchAgents/omp-session-gateway.plist"
+            ;;
+        linux-x64|linux-arm64)
+            service_file="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user/omp-session-gateway.service"
+            ;;
+        *)
+            fail "unsupported service platform $platform"
+            ;;
+    esac
+    [[ -f "$service_file" ]] || fail "gateway install did not create its user service at $service_file"
+    grep -F -- "$bun_binary" "$service_file" >/dev/null || \
+        fail "gateway service does not retain the app-private pinned Bun at $bun_binary"
+}
+
+print_success() {
+    printf 'OMP Session Gateway is ready: %s\n' "$origin"
+    printf 'Only newly started OMP processes enroll; existing OMP processes are unchanged.\n'
+    printf 'Gateway: %s (Bun %s)\n' "${LOCAL_BIN}/omp-gateway" "$("$bun_binary" --version)"
+    printf 'Patched OMP: %s -> %s (%s)\n' "${LOCAL_BIN}/omp" "$(readlink "${LOCAL_BIN}/omp")" "$("$OMP_BINARY" --version)"
+    printf 'Verify: omp-gateway doctor\n'
+}
+
+main() {
+    parse_arguments "$@"
+    select_platform
+    require_command curl
+    require_command unzip
+    require_command tar
+    require_command git
+    require_command find
+    require_command sort
+    assert_tailscale_ready
+    if [[ "${SETUP_OMP_TEST_STOP_AFTER:-}" == "identity" ]]; then
+        printf 'origin=%s\nallow=%s\n' "$origin" "${allowed_logins[*]}"
+        return
+    fi
+    ensure_bun
+    ensure_gateway_source
+    install_gateway
+    assert_gateway_service_uses_pinned_bun
+    configure_private_serve
+    "$bun_binary" "${GATEWAY_ROOT}/apps/gateway/src/cli.js" doctor
+    ensure_omp_source
+    build_omp_if_needed
+    configure_omp_commands
+    print_success
+}
+
+if [[ "${SETUP_OMP_LIB_ONLY:-}" != "1" ]]; then
+    main "$@"
+fi

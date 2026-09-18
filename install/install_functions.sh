@@ -59,7 +59,6 @@ bootstrap_path() {
 		"$HOME/.local/bin"
 		"$HOME/.cargo/bin"
 		"$HOME/go/bin"
-		"$HOME/.fzf/bin"
 		"$HOME/.opencode/bin" # opencode installer target
 		"$HOME/.bun/bin"
 	)
@@ -78,6 +77,30 @@ bootstrap_path() {
 	export PATH
 }
 
+# Clone <url> into <target> so a mid-clone kill can never leave a partial dir
+# that a later dir-guarded re-run would mistake for a finished install. Clones
+# into <target>.partial and renames into place only on success, clearing any
+# stale .partial first. Any extra args (e.g. --recursive, --depth 1) pass through
+# to git clone. Idempotent: a target that is already a git checkout is left alone.
+git_clone_atomic() {
+	local url="$1" target="$2"
+	shift 2
+	if [[ -d "$target/.git" ]]; then
+		gum_dim "git_clone_atomic: $target already cloned; skipping."
+		return 0
+	fi
+	# A leftover non-git dir or a stale .partial from a killed run must not block us.
+	rm -rf "$target" "$target.partial"
+	mkdir -p "$(dirname "$target")"
+	if git clone "$@" "$url" "$target.partial"; then
+		mv "$target.partial" "$target"
+	else
+		rm -rf "$target.partial"
+		gum_error "git_clone_atomic: failed to clone $url into $target"
+		return 1
+	fi
+}
+
 # On Linux, register every third-party apt repo the installer needs ONCE and run
 # a single `apt-get update`, instead of each install function adding its own repo
 # and updating (which cost 8-9 updates per run). Idempotent: a repo whose source
@@ -85,6 +108,11 @@ bootstrap_path() {
 ensure_apt_repos() {
 	[[ "$OS_TYPE" != "linux" ]] && return 0
 	gum_info "Configuring apt repositories..."
+	# A SIGKILL during an earlier apt run can leave dpkg half-configured, which
+	# makes every later apt_install fail with "dpkg was interrupted". Heal it up
+	# front so a resume after a mid-run kill can complete. No-op when nothing is
+	# pending.
+	sudo dpkg --configure -a 2>/dev/null || true
 	sudo mkdir -p /etc/apt/keyrings
 
 	# add-apt-repository (from software-properties-common) is needed for the PPAs
@@ -118,15 +146,13 @@ ensure_apt_repos() {
 
 	# the single authoritative update, now that every repo is registered
 	sudo env DEBIAN_FRONTEND=noninteractive apt-get update
-	gum_success "apt repositories configured."
-}
 
-# Install cargo-binstall (fetches prebuilt Rust binaries from GitHub releases
-# instead of compiling from source). Official installer script.
-install_cargo_binstall() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+	# A C toolchain is required to compile the one remaining source build
+	# (simple-completion-language-server) and the custom helix grammar. install_zsh
+	# installs build-essential too, but it is skipped whenever zsh is already
+	# present (bare cloud images and CI containers ship zsh), so ensure it here.
+	command_exists cc || apt_install build-essential
+	gum_success "apt repositories configured."
 }
 
 # Download a prebuilt binary from a GitHub release, pick the asset for the
@@ -318,8 +344,12 @@ install_if_missing() {
 
 	if ! command_exists "$command_name"; then
 		gum_dim "$command_name is not installed. Installing $command_name..."
+		local __start=$SECONDS
 		$install_function
-		gum_success "$command_name installed successfully."
+		local __elapsed=$((SECONDS - __start))
+		gum_success "$command_name installed successfully (${__elapsed}s)."
+		# Machine-parseable timing marker for the CI duration table (Feature 5).
+		printf 'TIMING\t%d\t%s\n' "$__elapsed" "$command_name"
 	else
 		gum_dim "$command_name is already installed."
 	fi
@@ -331,8 +361,11 @@ install_if_dir_missing() {
 
 	if [ ! -d "$dir_path" ]; then
 		gum_dim "Directory $dir_path does not exist. Installing..."
+		local __start=$SECONDS
 		$install_function
-		gum_success "Installation completed successfully."
+		local __elapsed=$((SECONDS - __start))
+		gum_success "Installation completed successfully (${__elapsed}s)."
+		printf 'TIMING\t%d\t%s\n' "$__elapsed" "$install_function"
 	else
 		gum_dim "$dir_path is already installed."
 	fi
@@ -724,9 +757,9 @@ install_uv() {
 }
 
 install_tealdeer() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo binstall -y tealdeer # prebuilt (dbrgn/tealdeer releases)
+	# Prebuilt binary from dbrgn/tealdeer releases (asset is a bare binary named
+	# tealdeer-<os>-<arch>; install_github_release renames it to the tldr command).
+	install_github_release dbrgn/tealdeer tldr 'tealdeer-'
 	tldr --update
 }
 
@@ -750,17 +783,15 @@ install_go() {
 }
 
 install_fzf() {
-	# Update in place if already cloned; never blow the dir away (it holds the
-	# built ~/.fzf/bin binary the PATH bootstrap relies on).
-	if [[ -d "$HOME/.fzf/.git" ]]; then
-		git -C "$HOME/.fzf" pull -q || gum_warning "fzf: git pull failed; using existing checkout"
-	else
-		git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
-	fi
-	"$HOME/.fzf/install" --all --no-update-rc
+	# Prebuilt binary from junegunn/fzf releases to ~/.local/bin. Shell
+	# integration (key bindings + completion) comes from `fzf --zsh` at shell
+	# startup (see shell/.zshrc), so no ~/.fzf git clone is needed any more.
+	install_github_release junegunn/fzf fzf 'fzf-'
 }
 
 install_helix() {
+	# Install the helix binary only. Grammars are handled once, separately, by
+	# install_helix_grammars() (called from setup.sh after this).
 	if [[ "$OS_TYPE" == "linux" ]]; then
 		# Prefer the PPA (registered by ensure_apt_repos); snap only as fallback
 		# because snapd restarts stall unattended bootstraps.
@@ -775,22 +806,61 @@ install_helix() {
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install helix
 	fi
-
-	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch: some grammars failed to fetch (dead/unreachable upstream repos); the box still works without them"
-	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build: some grammars failed to build; the box still works without them"
-	gum_success "Helix grammars updated successfully."
 }
 
-update_helix_grammars() {
+# Build ONLY the custom tree-sitter grammars (the [[grammar]] source overrides in
+# editors/hx_languages.toml, restricted by its `use-grammars = { only = [...] }`).
+# The ~245 stock grammars ship prebuilt in the packaged helix runtime (brew:
+# libexec/runtime, apt: /usr/lib/helix/runtime) and load at runtime via helix's
+# runtime-dir merge, so we no longer fetch+compile 150+ grammars on every fresh
+# install. Consolidates the former install_helix grammar block + update_helix_grammars
+# into one function. Idempotent, and fails loud if hx is missing or a custom
+# grammar does not build.
+install_helix_grammars() {
+	if ! command_exists hx; then
+		gum_error "install_helix_grammars: hx is not installed; install helix first"
+		return 1
+	fi
+
+	local langs="$HOME/.config/helix/languages.toml"
 	local grammar_dir="$HOME/.config/helix/runtime/grammars"
-	if [[ -d "$grammar_dir" ]] && (ls "$grammar_dir"/*.so) &>/dev/null; then
-		gum_dim "Helix grammars already built."
+
+	# Custom grammars = the [[grammar]] override names in languages.toml.
+	local -a custom=()
+	local g
+	while IFS= read -r g; do
+		[[ -n "$g" ]] && custom+=("$g")
+	done < <(awk '/^\[\[grammar\]\]/{f=1;next} f&&/^name/{gsub(/^name[[:space:]]*=[[:space:]]*"/,"");gsub(/".*/,"");print;f=0}' "$langs" 2>/dev/null)
+
+	if [[ ${#custom[@]} -eq 0 ]]; then
+		gum_dim "No custom helix grammars declared; stock grammars come from the package."
 		return 0
 	fi
-	gum_info "Fetching and building Helix grammars..."
-	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch: some grammars failed to fetch (dead/unreachable upstream repos); the box still works without them"
-	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build: some grammars failed to build; the box still works without them"
-	gum_success "Helix grammars updated."
+
+	# Idempotent: skip when every custom grammar is already built.
+	local need=0
+	for g in "${custom[@]}"; do
+		[[ -f "$grammar_dir/$g.so" ]] || need=1
+	done
+	if [[ "$need" -eq 0 ]]; then
+		gum_dim "Helix custom grammars already built (${custom[*]})."
+		return 0
+	fi
+
+	gum_info "Building custom helix grammars (${custom[*]}); stock grammars come prebuilt from the package..."
+	GIT_TERMINAL_PROMPT=0 hx --grammar fetch || gum_warning "hx --grammar fetch reported errors (non-custom grammars are skipped by use-grammars.only)"
+	GIT_TERMINAL_PROMPT=0 hx --grammar build || gum_warning "hx --grammar build reported errors"
+
+	# Verify every custom grammar actually built; fail loud otherwise.
+	local -a not_built=()
+	for g in "${custom[@]}"; do
+		[[ -f "$grammar_dir/$g.so" ]] || not_built+=("$g")
+	done
+	if [[ ${#not_built[@]} -gt 0 ]]; then
+		gum_error "install_helix_grammars: custom grammars failed to build: ${not_built[*]}"
+		return 1
+	fi
+	gum_success "Helix custom grammars built (${custom[*]})."
 }
 
 install_glow() {
@@ -798,9 +868,8 @@ install_glow() {
 }
 
 install_mdterm() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo binstall -y mdterm # prebuilt (bahdotsh/mdterm releases)
+	# Prebuilt binary from bahdotsh/mdterm releases (musl tarball preferred).
+	install_github_release bahdotsh/mdterm mdterm 'mdterm-'
 }
 
 install_lazygit() {
@@ -829,9 +898,16 @@ install_btop() {
 }
 
 install_htop() {
-	# Full OS-switch, build-from-source-on-Linux logic lives in the standalone
-	# script so it stays runnable on its own; see install/install_htop.sh.
-	bash install/install_htop.sh
+	# Ubuntu 24.04 ships htop 3.3.0 in the archive, so a plain apt install is a
+	# few seconds instead of the multi-minute autotools build-from-source that
+	# used to dominate fresh Linux installs. Trade-off: apt's 3.3.0 rather than
+	# the latest git HEAD — acceptable for an interactive process viewer.
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install htop
+	else
+		apt_install htop
+	fi
+	gum_success "htop installed successfully."
 }
 
 install_ctop() {
@@ -920,10 +996,6 @@ install_xsel() {
 	apt_install xsel
 }
 
-install_nbpreview() {
-	uv tool install nbcat
-}
-
 install_tmux() {
 	if [[ "$OS_TYPE" == "linux" ]]; then
 		apt_install tmux
@@ -973,11 +1045,9 @@ install_pq() {
 }
 
 install_bat() {
-	if [[ "$OS_TYPE" == "linux" ]]; then
-		bash install/install_tar.sh "https://github.com/sharkdp/bat/releases/download/v0.18.3/bat-v0.18.3-x86_64-unknown-linux-musl.tar.gz"
-	elif [[ "$OS_TYPE" == "mac" ]]; then
-		brew install bat
-	fi
+	# Prebuilt binary from sharkdp/bat releases (musl tarball preferred on Linux).
+	# Replaces the old pinned-0.18.3 tarball download.
+	install_github_release sharkdp/bat bat 'bat-v'
 	gum_success "bat installed successfully."
 }
 
@@ -997,7 +1067,7 @@ install_parquet_tools() {
 }
 
 install_fzf_tab_completion() {
-	git clone https://github.com/lincheney/fzf-tab-completion "$HOME/.zprezto/contrib/fzf-tab-completion"
+	git_clone_atomic https://github.com/lincheney/fzf-tab-completion "$HOME/.zprezto/contrib/fzf-tab-completion"
 	gum_success "fzf-tab-completion installed successfully."
 
 	if [[ "$OS_TYPE" == "mac" ]]; then
@@ -1020,26 +1090,92 @@ install_hypers() {
 }
 
 install_tpm() {
-	git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
+	git_clone_atomic https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
 	gum_success "tmux plugin manager installed successfully."
 }
 
+# Install every tmux plugin declared in ~/.tmux.conf via tpm, then VERIFY each
+# one landed as a git checkout. The old inline `install_plugins >/dev/null ||
+# warn` swallowed failures, so a transient clone error (or a headless tmux
+# hiccup) left plugins missing while setup still reported success. This makes
+# the step loud, retried once, verified, and a no-op on re-runs.
+install_tmux_plugins() {
+	local tpm_dir="$HOME/.tmux/plugins/tpm"
+	if [[ ! -x "$tpm_dir/bin/install_plugins" ]]; then
+		gum_error "install_tmux_plugins: tpm not found at $tpm_dir (run install_tpm first)"
+		return 1
+	fi
+	if ! command_exists tmux; then
+		gum_error "install_tmux_plugins: tmux is not on PATH; install tmux first"
+		return 1
+	fi
+
+	local conf="$HOME/.tmux.conf"
+	# tpm installs into $TMUX_PLUGIN_MANAGER_PATH, defaulting to ~/.tmux/plugins.
+	local plugins_root="${TMUX_PLUGIN_MANAGER_PATH:-$HOME/.tmux/plugins}"
+
+	# Declared plugins: `set -g @plugin 'owner/name'`, reduced to <name>, minus tpm.
+	local -a plugins=()
+	local owner_name name
+	while IFS= read -r owner_name; do
+		name="${owner_name##*/}"
+		[[ -z "$name" || "$name" == "tpm" ]] && continue
+		plugins+=("$name")
+	done < <(grep -oE "^[[:space:]]*set -g @plugin '[^']+'" "$conf" 2>/dev/null | sed -E "s/.*'([^']+)'.*/\1/")
+
+	if [[ ${#plugins[@]} -eq 0 ]]; then
+		gum_warning "install_tmux_plugins: no @plugin entries found in $conf; nothing to do."
+		return 0
+	fi
+
+	# Guard: if every declared plugin is already a git checkout, do nothing.
+	local -a missing=()
+	local p
+	for p in "${plugins[@]}"; do
+		[[ -d "$plugins_root/$p/.git" ]] || missing+=("$p")
+	done
+	if [[ ${#missing[@]} -eq 0 ]]; then
+		gum_dim "tmux plugins already installed (${#plugins[@]} plugins)."
+		return 0
+	fi
+
+	gum_info "Installing tmux plugins: ${missing[*]}"
+	# tpm reads ~/.tmux.conf via `tmux start-server`; keep output visible. Retry
+	# once so a single transient git clone failure doesn't strand a plugin.
+	"$tpm_dir/bin/install_plugins" || {
+		gum_warning "tpm install_plugins failed once; retrying..."
+		"$tpm_dir/bin/install_plugins" || true
+	}
+	"$tpm_dir/bin/clean_plugins" || gum_warning "tpm clean_plugins reported an error (ignored)"
+
+	# Verify: every declared plugin must now be a git checkout, else fail loud.
+	missing=()
+	for p in "${plugins[@]}"; do
+		[[ -d "$plugins_root/$p/.git" ]] || missing+=("$p")
+	done
+	if [[ ${#missing[@]} -gt 0 ]]; then
+		gum_error "tmux plugins failed to install: ${missing[*]} (expected git checkouts under $plugins_root)"
+		return 1
+	fi
+	gum_success "tmux plugins installed and verified (${#plugins[@]} plugins)."
+}
+
 install_git_fuzzy() {
-	git clone https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
-	ln -s "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
+	git_clone_atomic https://github.com/bigH/git-fuzzy.git "$HOME/bin/_git-fuzzy"
+	ln -sf "$HOME/bin/_git-fuzzy/bin/git-fuzzy" "$HOME/bin/git-fuzzy"
 	gum_success "git-fuzzy setup completed."
 }
 
 install_diff_so_fancy() {
-	git clone https://github.com/so-fancy/diff-so-fancy.git "$HOME/bin/_diff-so-fancy"
-	ln -s "$HOME/bin/_diff-so-fancy/diff-so-fancy" "$HOME/bin/diff-so-fancy"
+	git_clone_atomic https://github.com/so-fancy/diff-so-fancy.git "$HOME/bin/_diff-so-fancy"
+	ln -sf "$HOME/bin/_diff-so-fancy/diff-so-fancy" "$HOME/bin/diff-so-fancy"
 	git config --global core.pager "diff-so-fancy | less --tabs=4 -RF"
 	git config --global interactive.diffFilter "diff-so-fancy --patch"
 	gum_success "diff-so-fancy setup completed."
 }
 
 install_zprezto() {
-	git clone --recursive https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto"
+	git_clone_atomic https://github.com/sorin-ionescu/prezto.git "$HOME/.zprezto" --recursive
 	gum_success "zprezto installed successfully."
 }
 
@@ -1092,18 +1228,40 @@ install_iterm2() {
 }
 
 install_nvm() {
-	if [ ! -d "$HOME/.nvm" ]; then
+	# Resumable: ~/.nvm exists the instant the nvm installer starts, but node
+	# only arrives after `nvm install --lts`. A run killed in between must, on
+	# resume, still finish installing node (never skip it because the dir is
+	# there). Called unconditionally from setup.sh; every step below is guarded
+	# so a completed run is a quiet no-op.
+	export NVM_DIR="$HOME/.nvm"
+	if [ ! -s "$NVM_DIR/nvm.sh" ]; then
 		gum_info "Installing NVM..."
 		curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-		export NVM_DIR="$HOME/.nvm"
-		[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-		[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-		nvm install --lts
-		nvm use --lts
-		gum_success "NVM installed gum_success with latest LTS Node.js."
-	else
-		gum_dim "NVM is already installed."
 	fi
+	# shellcheck disable=SC1091
+	[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+	# NOTE: do NOT source $NVM_DIR/bash_completion here. setup.sh runs under a
+	# non-interactive zsh, where nvm's bash completion triggers `compinit` and
+	# aborts with "not interactive and can't open terminal". It is only needed for
+	# interactive completion (loaded from shell/.paths.zsh), never to install node.
+
+	# Key on nvm's OWN node, never on a system node that may already be on PATH
+	# (e.g. the macOS CI runner ships one). Otherwise npm -g installs would land
+	# in a system prefix we may not own. Install LTS only if nvm has no node yet.
+	local nvm_node
+	nvm_node="$(find "$NVM_DIR/versions/node" -maxdepth 3 -type f -name node 2>/dev/null | head -1)"
+	if [ -z "$nvm_node" ]; then
+		gum_info "Installing latest LTS Node.js via nvm..."
+		nvm install --lts
+	fi
+	# Select nvm's node for the rest of this run so npm/npx resolve to it.
+	nvm use --lts >/dev/null 2>&1 || nvm use default >/dev/null 2>&1 || true
+
+	if ! command_exists node; then
+		gum_error "install_nvm: node is still unavailable after nvm install --lts"
+		return 1
+	fi
+	gum_success "NVM ready with Node $(node --version)."
 }
 
 install_unzip() {
@@ -1177,15 +1335,18 @@ install_markdown_oxide() {
 install_simple_completion_language_server() {
 	# No prebuilt binaries published (estin/simple-completion-language-server has
 	# no GitHub releases and no crates.io publish), so build from git source.
+	# This is intentionally the ONLY compile-from-source step left in setup.sh;
+	# every other tool now downloads a prebuilt binary.
 	source "$HOME/.cargo/env" 2>/dev/null || true
 	export PATH="$HOME/.cargo/bin:$PATH"
 	cargo install --git https://github.com/estin/simple-completion-language-server.git
 }
 
 install_taplo_cli() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo binstall -y taplo-cli # prebuilt (tamasfe/taplo releases)
+	# Prebuilt binary from tamasfe/taplo releases. Assets are bare gzipped
+	# binaries named taplo-<os>-<arch>.gz (the -full- LSP build is not published
+	# as a release asset, so no exclusion is needed here).
+	install_github_release tamasfe/taplo taplo 'taplo-'
 }
 
 install_uwu() {
@@ -1193,7 +1354,7 @@ install_uwu() {
 	local temp_dir="/tmp/uwu_build_$$"
 
 	# Clone and build in temp directory (subshell preserves working directory)
-	git clone https://github.com/context-labs/uwu.git "$temp_dir"
+	git_clone_atomic https://github.com/context-labs/uwu.git "$temp_dir"
 	(
 		cd "$temp_dir"
 
@@ -1279,9 +1440,8 @@ install_shfmt() {
 }
 
 install_just() {
-	source "$HOME/.cargo/env" 2>/dev/null || true
-	export PATH="$HOME/.cargo/bin:$PATH"
-	cargo binstall -y just # prebuilt (casey/just releases)
+	# Prebuilt binary from casey/just releases (musl tarball preferred).
+	install_github_release casey/just just 'just-'
 	gum_success "just installed successfully."
 }
 

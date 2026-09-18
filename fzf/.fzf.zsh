@@ -1,7 +1,5 @@
 # Setup fzf
 # ---------
-if [[ ! "$PATH" == *"$HOME/.fzf/bin"* ]]; then
-  PATH="${PATH:+${PATH}:}$HOME/.fzf/bin"
-fi
-
-source <(fzf --zsh)
+# fzf ships as a prebuilt binary in ~/.local/bin (GitHub release); shell
+# integration comes straight from `fzf --zsh`.
+command -v fzf >/dev/null && source <(fzf --zsh)

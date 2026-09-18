@@ -1,0 +1,36 @@
+name: Notify cartridge agent image
+
+# Tells sophiaconsulting/cartridge to rebuild its CI/agent Docker image
+# (ghcr.io/sophiaconsulting/cartridge-agent) whenever the pieces of this repo
+# baked into that image change: Claude Code's skills/commands/hooks config
+# and the ctx-* navigation tools. See cartridge's Dockerfile and
+# .github/workflows/build-agent-image.yml for the consuming side.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - maintained_global_claude/**
+      - tools/ctx-index
+      - tools/ctx-peek
+      - tools/ctx-tree
+      - tools/ctx-stale
+      - tools/ctx-reset
+      - tools/ctx-skip
+  workflow_dispatch: {} # manual trigger for testing the dispatch chain
+
+jobs:
+  dispatch:
+    # Only vmasrani's own pushes to vmasrani/dotfiles fire this — a collaborator's
+    # push or a fork of this repo is a no-op, and a fork wouldn't hold the
+    # CARTRIDGE_DISPATCH_TOKEN secret to act on even if this guard were removed.
+    if: github.repository == 'vmasrani/dotfiles' && github.actor == 'vmasrani'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fire repository_dispatch to sophiaconsulting/cartridge
+        env:
+          GH_TOKEN: ${{ secrets.CARTRIDGE_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/sophiaconsulting/cartridge/dispatches \
+            -f event_type=dotfiles-updated \
+            -f "client_payload[dotfiles_sha]=${{ github.sha }}"
