@@ -226,7 +226,7 @@ cmd_connect() {
     gum_info "Starting a ${mins}-minute session from the '${IMAGE_TAG}' image…"
     gh workflow run "$SSH_WF" --repo "$REPO" --ref "$ref" \
         -f minutes="$mins" -f session_name="$SESSION" -f image_tag="$IMAGE_TAG" \
-        || die "Failed to start the session. Run 'gh auth status' and confirm you can dispatch workflows in ${REPO}."
+        || die "Could not start the session. GitHub only lets a job run once its file is on the default branch (dev), so a 'not found on the default branch' error means the ssh-into-agent-image workflow PR still needs to merge into dev. Otherwise run 'gh auth status' and confirm you can dispatch jobs in ${REPO}."
 
     local id
     id="$(find_new_run "$SSH_WF" "$since")" \
