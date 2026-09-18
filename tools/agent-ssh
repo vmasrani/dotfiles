@@ -148,16 +148,25 @@ preflight() {
 cmd_status() {
     preflight
     gum_info "Latest published images (${PKG_NAME}):"
-    local versions rc
-    versions="$(gh api "/orgs/${PKG_ORG}/packages/container/${PKG_NAME}/versions" \
-        --jq '.[0:3][] | "\(.metadata.container.tags | join(",") ) \(.created_at)"' 2>/dev/null)"
+    # Fetch the raw body+error together so we can tell the three cases apart:
+    #   403 -> the login cannot read packages (scope), 404 -> package not built
+    #   yet, 200 -> show versions. `connect` never calls this, so a 403 here can
+    #   never block connecting (the job pulls the image with its own token).
+    local body rc versions
+    body="$(gh api "/orgs/${PKG_ORG}/packages/container/${PKG_NAME}/versions" 2>&1)"
     rc=$?
     if (( rc != 0 )); then
-        die "Could not read published images for ${PKG_NAME}. Your GitHub token is likely missing the 'read:packages' scope — add it with: gh auth refresh -h github.com -s read:packages  (or check you have access to the ${PKG_ORG} org)."
+        if [[ "$body" == *"(HTTP 403)"* || "$body" == *"read:packages"* ]]; then
+            die "Your GitHub login cannot read packages — run: gh auth refresh -h github.com -s read:packages"
+        elif [[ "$body" == *"(HTTP 404)"* || "$body" == *"Not Found"* ]]; then
+            die "No image is published yet — run: agent-ssh build"
+        else
+            die "Could not read published images for ${PKG_NAME}: ${body}"
+        fi
     fi
-    if [[ -z "$versions" ]]; then
-        die "No image is published yet. Build one with: agent-ssh build"
-    fi
+    versions="$(printf '%s\n' "$body" \
+        | jq -r '.[0:3][] | "\(.metadata.container.tags | join(",")) \(.created_at)"' 2>/dev/null)"
+    [[ -n "$versions" ]] || die "No image is published yet — run: agent-ssh build"
     print -r -- "$versions" | while IFS= read -r line; do gum_dim "  $line"; done
 
     local wf title runs

@@ -46,6 +46,32 @@ EOF
     chmod +x "$BIN/gh"
 }
 
+# A fake `gh` that satisfies preflight and returns a chosen response for the
+# packages-versions endpoint. $GH_PKG_MODE picks 403 | 404 | ok | empty so the
+# status command's case discrimination can be exercised without the network.
+write_fake_gh_pkgs() {
+    cat >"$BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+    "auth status"*) exit 0 ;;
+    *packages/container*versions*)
+        case "${GH_PKG_MODE:-empty}" in
+            403) echo '{"message":"You need at least read:packages scope.","status":"403"}'
+                 echo "gh: You need at least read:packages scope to get a package's versions. (HTTP 403)" >&2
+                 exit 1 ;;
+            404) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+            ok)  echo '[{"metadata":{"container":{"tags":["latest","15116e78"]}},"created_at":"2026-09-18T06:34:00Z"}]'; exit 0 ;;
+            *)   echo '[]'; exit 0 ;;
+        esac ;;
+    "api repos/"*) echo '{}'; exit 0 ;;
+    "run list"*)   echo '[]'; exit 0 ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$BIN/gh"
+}
+
 # ── help / usage ──────────────────────────────────────────────────────────────
 
 @test "help: prints usage and the attach hint" {
@@ -135,4 +161,33 @@ SSH: ssh To_ken-9@sfo2.tmate.io"
     run "$AGENT_SSH" __resolve-ref some/repo path/to/wf.yml dev agent-image-full-shell agent-image-ssh-workflow
     [ "$status" -eq 1 ]
     [ -z "$output" ]
+}
+
+# ── status: 403 / 404 / 200 discrimination ────────────────────────────────────
+
+@test "status: a packages 403 names the read:packages fix and fails loud" {
+    write_fake_gh_pkgs
+    export GH_PKG_MODE="403"
+    run "$AGENT_SSH" status
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"read:packages"* ]]
+    [[ "$output" == *"gh auth refresh"* ]]
+}
+
+@test "status: a packages 404 tells you to build an image" {
+    write_fake_gh_pkgs
+    export GH_PKG_MODE="404"
+    run "$AGENT_SSH" status
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"No image is published yet"* ]]
+    [[ "$output" == *"agent-ssh build"* ]]
+}
+
+@test "status: a 200 with versions shows the published tags" {
+    write_fake_gh_pkgs
+    export GH_PKG_MODE="ok"
+    run "$AGENT_SSH" status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"latest"* ]]
+    [[ "$output" == *"15116e78"* ]]
 }
