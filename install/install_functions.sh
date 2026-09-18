@@ -1240,8 +1240,10 @@ install_nvm() {
 	fi
 	# shellcheck disable=SC1091
 	[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-	# shellcheck disable=SC1091
-	[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+	# NOTE: do NOT source $NVM_DIR/bash_completion here. setup.sh runs under a
+	# non-interactive zsh, where nvm's bash completion triggers `compinit` and
+	# aborts with "not interactive and can't open terminal". It is only needed for
+	# interactive completion (loaded from shell/.paths.zsh), never to install node.
 
 	# Key on nvm's OWN node, never on a system node that may already be on PATH
 	# (e.g. the macOS CI runner ships one). Otherwise npm -g installs would land
