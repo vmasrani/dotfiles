@@ -48,3 +48,5 @@ task:
 autolearn:
   enabled: true
 defaultThinkingLevel: auto
+codexResets:
+  autoRedeem: "yes"

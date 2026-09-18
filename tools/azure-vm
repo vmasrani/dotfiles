@@ -180,6 +180,23 @@ disk_sku_family() {
     esac
 }
 
+# PremiumV2_LRS/UltraSSD_LRS disks carry custom IOPS/throughput on top of
+# the SKU -- `az disk create --source <snapshot>` recreates the disk at the
+# SKU's free baseline and silently drops any manual bump. Echoes
+# "<iops>\t<mbps>" for those two SKUs, empty otherwise, so archive can save
+# it and restore can reapply it explicitly instead of losing it.
+disk_perf_tsv() {
+    local disk_id="$1"
+    local sku
+    sku=$(az disk show --ids "$disk_id" --query "sku.name" -o tsv)
+    case "$sku" in
+        PremiumV2_LRS|UltraSSD_LRS)
+            az disk show --ids "$disk_id" --query "[diskIopsReadWrite, diskMbpsReadWrite]" -o tsv ;;
+        *)
+            echo "" ;;
+    esac
+}
+
 get_disk_monthly_price() {
     local family="$1" tier="$2" region="$3"
     local tier_name="${family}${tier} LRS"
@@ -418,14 +435,46 @@ archive_vm() {
     
     gum_success "Saved VM configuration. Auto-discovered $((${#data_disk_ids[@]} + 1)) volumes (1 OS disk, ${#data_disk_ids[@]} Data disks)."
 
+    local tmp_manifest="${manifest_file}.tmp"
+
+    # Capture PremiumV2/Ultra IOPS+throughput before it's lost (see
+    # disk_perf_tsv above) so restore_vm can reapply it explicitly.
+    local os_perf os_iops os_mbps
+    os_perf=$(disk_perf_tsv "$os_disk_id")
+    os_iops=$(cut -f1 <<<"$os_perf")
+    os_mbps=$(cut -f2 <<<"$os_perf")
+    if [[ -n "$os_iops" && -n "$os_mbps" ]]; then
+        jq --argjson iops "$os_iops" --argjson mbps "$os_mbps" \
+            '.archive.osDiskIops = $iops | .archive.osDiskMbps = $mbps' \
+            "$manifest_file" > "$tmp_manifest"
+        mv "$tmp_manifest" "$manifest_file"
+        gum_dim "Captured OS disk performance: ${os_iops} IOPS / ${os_mbps} MB/s."
+    fi
+
+    local data_iops_json="[]" data_mbps_json="[]"
+    for disk_id in "${data_disk_ids[@]}"; do
+        local d_perf d_iops d_mbps
+        d_perf=$(disk_perf_tsv "$disk_id")
+        d_iops=$(cut -f1 <<<"$d_perf")
+        d_mbps=$(cut -f2 <<<"$d_perf")
+        data_iops_json=$(jq --argjson v "${d_iops:-null}" '. + [$v]' <<<"$data_iops_json")
+        data_mbps_json=$(jq --argjson v "${d_mbps:-null}" '. + [$v]' <<<"$data_mbps_json")
+    done
+    if [[ ${#data_disk_ids[@]} -gt 0 ]]; then
+        jq --argjson iops "$data_iops_json" --argjson mbps "$data_mbps_json" \
+            '.archive.dataDiskIops = $iops | .archive.dataDiskMbps = $mbps' \
+            "$manifest_file" > "$tmp_manifest"
+        mv "$tmp_manifest" "$manifest_file"
+        gum_dim "Captured data disk performance for restore."
+    fi
+
     local snap_suffix="-snap-$(date +%Y%m%d%H%M%S)"
 
     # 3. Snapshot OS Disk
     local os_snap_name="${vm_name}-osdisk${snap_suffix}"
     gum_spin_wait "Snapshotting OS disk (incremental)..." az snapshot create -g "$RG" -n "$os_snap_name" --source "$os_disk_id" --incremental -o none
-    
+
     # Update manifest with OS snapshot name
-    local tmp_manifest="${manifest_file}.tmp"
     jq --arg snap "$os_snap_name" '.archive.osDiskSnapshot = $snap' "$manifest_file" > "$tmp_manifest"
     mv "$tmp_manifest" "$manifest_file"
     gum_success "OS Disk snapshotted: $os_snap_name."
@@ -513,6 +562,13 @@ restore_vm() {
     local os_sku_args=()
     if [[ "$os_sector_size" == "4096" ]]; then
         os_sku_args=(--sku PremiumV2_LRS)
+        local os_iops os_mbps
+        os_iops=$(jq -r '.archive.osDiskIops // empty' "$manifest_file")
+        os_mbps=$(jq -r '.archive.osDiskMbps // empty' "$manifest_file")
+        if [[ -n "$os_iops" && -n "$os_mbps" ]]; then
+            os_sku_args+=(--disk-iops-read-write "$os_iops" --disk-mbps-read-write "$os_mbps")
+            gum_dim "Restoring OS disk performance: ${os_iops} IOPS / ${os_mbps} MB/s."
+        fi
     fi
 
     local os_disk_name="${vm_name}-osdisk-restored-$(date +%Y%m%d%H%M%S)"
@@ -535,6 +591,13 @@ restore_vm() {
         local sku_args=()
         if [[ "$sector_size" == "4096" ]]; then
             sku_args=(--sku PremiumV2_LRS)
+            local d_iops d_mbps
+            d_iops=$(jq -r ".archive.dataDiskIops[$idx] // empty" "$manifest_file")
+            d_mbps=$(jq -r ".archive.dataDiskMbps[$idx] // empty" "$manifest_file")
+            if [[ -n "$d_iops" && -n "$d_mbps" ]]; then
+                sku_args+=(--disk-iops-read-write "$d_iops" --disk-mbps-read-write "$d_mbps")
+                gum_dim "Restoring data disk $idx performance: ${d_iops} IOPS / ${d_mbps} MB/s."
+            fi
         fi
 
         local restored_data_disk_name="${vm_name}-datadisk-${idx}-restored-$(date +%Y%m%d%H%M%S)"
