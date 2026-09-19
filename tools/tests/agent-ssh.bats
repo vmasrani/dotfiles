@@ -695,3 +695,27 @@ EOF
     [ "$status" -eq 1 ]
     [[ "$output" == *"not an issue number"* ]]
 }
+
+@test "attach: a run that fails before publishing an address shows the job's own FAIL reason" {
+    write_fake_gh_agent
+    write_runs 555:12:in_progress
+    cat >"$BIN/gh" <<'EOF2'
+#!/usr/bin/env bash
+case "$*" in
+    "auth status"*|"api repos/test/repo") exit 0 ;;
+    "run list"*) echo '[{"databaseId":555,"displayTitle":"agent issue #12","status":"in_progress","createdAt":"2999-01-01T00:00:00Z"}]' ;;
+    *"/actions/runs/"*"/jobs"*) exit 0 ;;
+    "run view 555 --repo test/repo --log-failed")
+        printf 'ssh\tValidate\t2026-09-19T06:36:53.2Z \033[36;1m|| { echo "FAIL: script text, not output" >&2; }\033[0m\n'
+        printf 'ssh\tValidate\t2026-09-19T06:36:53.2Z FAIL: no CLAUDE_CODE_OAUTH_TOKEN secret. Run: claude setup-token\n' ;;
+    *"/actions/runs/"*) printf 'completed\tfailure\n' ;;
+    *) exit 0 ;;
+esac
+EOF2
+    chmod +x "$BIN/gh"
+    run with_tty "$AGENT_SSH" attach 12
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"FAIL: no CLAUDE_CODE_OAUTH_TOKEN secret"* ]]
+    [[ "$output" != *"script text"* ]]
+    [ ! -s "$SSH_LOG" ]
+}

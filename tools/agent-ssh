@@ -386,14 +386,17 @@ cmd_connect() {
 
 # Wait for <run id>'s SSH address; sets ADDR or dies with what to check.
 await_address() {
-    local id="$1" rc
+    local id="$1" rc why
     gum_info "Waiting for the SSH address (up to 8 min)…"
     ADDR="$(wait_for_ssh_address "$id")"
     rc=$?
     if (( rc == 2 )); then
         die "Stopped waiting because GitHub's API could not be read. Check your connection and 'gh auth status', then inspect: $(run_url "$id")"
     elif (( rc == 3 )); then
-        die "The session run completed before publishing a valid SSH address. Check: $(run_url "$id")"
+        # The workflow prints its own "FAIL: <reason>" lines; surface them (the
+        # ' FAIL: ' after the log timestamp skips the script text that echoes them).
+        why="$(gh run view "$id" --repo "$REPO" --log-failed 2>/dev/null | grep -oE 'Z FAIL: .*' | sed 's/^Z //' | head -3)"
+        die "The session run completed before publishing a valid SSH address.${why:+ Why: ${why}} Check: $(run_url "$id")"
     elif (( rc != 0 )) || [[ -z "$ADDR" ]]; then
         die "No valid SSH address annotation appeared within 8 min. The job may still be starting, or the image tag '${IMAGE_TAG}' is not published. Check: $(run_url "$id"). End it with: agent-ssh kill"
     fi
