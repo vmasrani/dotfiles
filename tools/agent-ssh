@@ -1,11 +1,14 @@
 #!/usr/bin/env zsh
-# agent-ssh - SSH into a fresh agent-image job (a plain terminal in the image).
+# agent-ssh - run Claude Code agents on GitHub issues, and SSH into them.
 #
-# Boots the published cartridge-agent image as a GitHub Actions job, waits for its
-# Upterm SSH bridge, and drops you into a plain terminal inside the image (rustc,
-# cargo-nextest, just, uv, the ctx-* tools — no tmux, no p10k).
+#   agent-ssh 12            dispatch an agent on issue #12 and drop straight into its
+#                           live Claude Code tmux session
+#   agent-ssh 12 13 14      dispatch several agents (no attach); later: agent-ssh attach 13
+#   agent-ssh connect       a plain terminal in a fresh agent-image job (no agent)
 #
-# No args -> interactive menu. Subcommands: connect | status | build | kill | help.
+# The agent runs in a GitHub Actions job on the published cartridge-agent image; an
+# Upterm SSH bridge attaches you to it. No args -> interactive menu.
+# Subcommands: connect | attach | status | build | kill | help.
 #
 # Env overrides:
 #   AGENT_SSH_REPO       repo hosting the workflows   (default sophiaconsulting/cartridge)
@@ -32,6 +35,9 @@ SSH_WF_PATH=".github/workflows/${SSH_WF}"
 # remains a candidate until the workflow merges to dev.
 CANDIDATE_REFS=(dev agent-image-slim)
 CONNECT_TIMEOUT_SECS=$((8 * 60))   # hard cap waiting for the SSH address
+AGENT_SECRET="CLAUDE_CODE_OAUTH_TOKEN"   # repo secret the agent job authenticates Claude with
+AGENT_DEFAULT_MINUTES=120
+AGENT_DEFAULT_MODEL="claude-opus-4-8"
 
 die() { gum_error "$@"; exit 1; }
 
@@ -52,6 +58,36 @@ extract_ssh_address() {
 # Valid connection window: a whole number of minutes in [5, 360].
 valid_minutes() {
     [[ "$1" == <5-360> ]]
+}
+
+# A positive integer with no leading zero: the only thing that names an issue.
+is_issue_number() {
+    [[ "$1" =~ ^[1-9][0-9]*$ ]]
+}
+
+# The exact run title the workflow gives an agent run; the tool finds runs by it.
+agent_title() { printf 'agent issue #%s\n' "$1"; }
+
+# Split "$@" into flags (accepted in any position) and positionals. Sets
+# OPT_MINUTES, OPT_MODEL, OPT_NO_ATTACH and the POSITIONAL array; on a bad flag
+# prints why to stderr and returns 1.
+parse_args() {
+    OPT_MINUTES="" OPT_MODEL="" OPT_NO_ATTACH=""
+    POSITIONAL=()
+    while (( $# > 0 )); do
+        case "$1" in
+            -m|--minutes|--model)
+                if [[ -z "${2:-}" ]]; then
+                    print -u2 -r -- "Flag $1 needs a value."
+                    return 1
+                fi
+                if [[ "$1" == --model ]]; then OPT_MODEL="$2"; else OPT_MINUTES="$2"; fi
+                shift 2 ;;
+            --no-attach) OPT_NO_ATTACH=1; shift ;;
+            -*) print -u2 -r -- "Unknown flag: $1 (see: agent-ssh help)"; return 1 ;;
+            *)  POSITIONAL+=("$1"); shift ;;
+        esac
+    done
 }
 
 # Echo the first candidate ref that contains the given file; return 1 if none.
@@ -102,23 +138,50 @@ newest_run_id() {
         --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null
 }
 
-# Poll for a run of <workflow> created after <since-iso>; echo its id or return 1.
+# Poll for a run of <workflow> created at/after <since-iso>; echo its id or
+# return 1. With <title>, only a run whose displayTitle equals it exactly counts,
+# so several agents dispatched back to back never pick up each other's runs.
 find_new_run() {
-    local wf="$1" since="$2" i row created id
+    local wf="$1" since="$2" title="${3:-}" i id
     for i in {1..15}; do   # ~60s at 4s
-        row="$(gh run list --repo "$REPO" --workflow "$wf" --limit 1 \
-            --json databaseId,createdAt --jq '.[0]' 2>/dev/null || true)"
-        if [[ -n "$row" ]]; then
-            created="$(printf '%s' "$row" | jq -r '.createdAt // empty')"
-            id="$(printf '%s' "$row" | jq -r '.databaseId // empty')"
-            if [[ -n "$created" && "$created" > "$since" ]]; then
-                printf '%s\n' "$id"
-                return 0
-            fi
+        id="$(gh run list --repo "$REPO" --workflow "$wf" --limit 20 \
+            --json databaseId,createdAt,displayTitle 2>/dev/null \
+            | jq -r --arg since "$since" --arg title "$title" \
+                'map(select(.createdAt >= $since and ($title == "" or .displayTitle == $title)))
+                 | .[0].databaseId // empty' 2>/dev/null || true)"
+        if [[ -n "$id" ]]; then
+            printf '%s\n' "$id"
+            return 0
         fi
         sleep 4
     done
     return 1
+}
+
+# TSV "<run id><tab><issue>" for every unfinished agent run. Returns 2 (message on
+# stderr) when the GitHub API fails, so "none running" is never a disguised outage.
+active_agent_runs() {
+    local body rc
+    body="$(gh run list --repo "$REPO" --workflow "$SSH_WF" --limit 30 \
+        --json databaseId,displayTitle,status 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        print -u2 -r -- "GitHub API failed while listing agent runs: ${body}"
+        return 2
+    fi
+    printf '%s\n' "$body" | jq -r '.[]
+        | select(.status != "completed")
+        | (.displayTitle | capture("^agent issue #(?<n>[0-9]+)$")) as $m
+        | "\(.databaseId)\t\($m.n)"'
+}
+
+# Echo the run id of the unfinished agent run for <issue>; return 1 when none.
+find_active_run() {
+    local issue="$1" runs id
+    runs="$(active_agent_runs)" || return 2
+    id="$(print -r -- "$runs" | awk -F'\t' -v n="$issue" '$2 == n { print $1; exit }')"
+    [[ -n "$id" ]] || return 1
+    printf '%s\n' "$id"
 }
 
 # Read the titled check annotation emitted by the running workflow. Container-job
@@ -304,37 +367,194 @@ cmd_connect() {
         || die "The session was dispatched but no run appeared within 60s. Check: https://github.com/${REPO}/actions/workflows/${SSH_WF}"
     gum_success "Session job started: $(run_url "$id")"
 
-    gum_info "Waiting for the SSH address (up to 8 min)…"
-    local addr rc
-    addr="$(wait_for_ssh_address "$id")"
-    rc=$?
-    if (( rc == 2 )); then
-        die "Stopped waiting because GitHub's API could not be read. Check your connection and 'gh auth status', then inspect: $(run_url "$id")"
-    elif (( rc == 3 )); then
-        die "The session run completed before publishing a valid SSH address. Check: $(run_url "$id")"
-    elif (( rc != 0 )) || [[ -z "$addr" ]]; then
-        die "No valid SSH address annotation appeared within 8 min. The job may still be starting, or the image tag '${IMAGE_TAG}' is not published. Check: $(run_url "$id"). End it with: agent-ssh kill"
-    fi
-
-    local target="${addr#ssh }"
+    await_address "$id"
     gum_box_success \
         "Your agent box is ready — a plain terminal inside the image." \
         "" \
-        "  $addr" \
+        "  $ADDR" \
         "" \
         "  Window: ${mins} min (the job self-terminates then)." \
         "  Run:    $(run_url "$id")" \
         "  End early with:  agent-ssh kill"
 
     if gum_confirm "Connect now?"; then
-        exec ssh -o StrictHostKeyChecking=accept-new "$target"
+        exec ssh -o StrictHostKeyChecking=accept-new "${ADDR#ssh }"
     fi
     gum_info "Not connecting. When you are ready:"
-    print -r -- "  $addr"
+    print -r -- "  $ADDR"
+}
+
+# Wait for <run id>'s SSH address; sets ADDR or dies with what to check.
+await_address() {
+    local id="$1" rc why
+    gum_info "Waiting for the SSH address (up to 8 min)…"
+    ADDR="$(wait_for_ssh_address "$id")"
+    rc=$?
+    if (( rc == 2 )); then
+        die "Stopped waiting because GitHub's API could not be read. Check your connection and 'gh auth status', then inspect: $(run_url "$id")"
+    elif (( rc == 3 )); then
+        # The workflow prints its own "FAIL: <reason>" lines; surface them (the
+        # ' FAIL: ' after the log timestamp skips the script text that echoes them).
+        why="$(gh run view "$id" --repo "$REPO" --log-failed 2>/dev/null | grep -oE 'Z FAIL: .*' | sed 's/^Z //' | head -3)"
+        die "The session run completed before publishing a valid SSH address.${why:+ Why: ${why}} Check: $(run_url "$id")"
+    elif (( rc != 0 )) || [[ -z "$ADDR" ]]; then
+        die "No valid SSH address annotation appeared within 8 min. The job may still be starting, or the image tag '${IMAGE_TAG}' is not published. Check: $(run_url "$id"). End it with: agent-ssh kill"
+    fi
+}
+
+# Attaching needs a real terminal; refuse up front rather than after dispatching.
+require_tty() {
+    [[ -t 0 && -t 1 ]] || die "Attaching needs an interactive terminal. Run it from a terminal, or pass --no-attach and connect later with: agent-ssh attach <issue>"
+}
+
+# Menus need gum on a terminal. Without it gum_choose silently returns the first
+# option, which for attach/kill would act on an arbitrary session: refuse instead.
+require_choice_ui() {
+    _gum_check || die "$1 needs an interactive menu, which is off here (no terminal, or NO_GUM is set). $2"
+}
+
+# Drop into the agent's live tmux session (never returns).
+attach_to() {
+    local issue="$1" id="$2"
+    await_address "$id"
+    gum_box_success \
+        "Agent on issue #${issue} is running in tmux — you are about to join it." \
+        "" \
+        "  $ADDR" \
+        "" \
+        "  Run:      $(run_url "$id")" \
+        "  Leave it running:  Ctrl-b d   (the agent keeps working)" \
+        "  Re-attach:         agent-ssh attach ${issue}" \
+        "  End the agent:     agent-ssh kill ${issue}"
+    exec ssh -o StrictHostKeyChecking=accept-new "${ADDR#ssh }"
+}
+
+# One-time checks that hold for every issue in this invocation.
+preflight_agent() {
+    local secrets rc
+    secrets="$(gh secret list --repo "$REPO" --json name --jq '.[].name' 2>&1)"
+    rc=$?
+    if (( rc != 0 )); then
+        die "Cannot read the secrets of ${REPO} to confirm ${AGENT_SECRET} exists: ${secrets}. You need admin access to the repo; check 'gh auth status'."
+    fi
+    print -r -- "$secrets" | grep -qx "$AGENT_SECRET" \
+        || die "${REPO} has no ${AGENT_SECRET} secret, so the agent could not sign in to Claude. Run: claude setup-token, then: gh secret set ${AGENT_SECRET} --repo ${REPO}"
+}
+
+# Per-issue checks: the issue is open and no agent is already on it.
+preflight_issue() {
+    local issue="$1" state active rc
+    state="$(gh issue view "$issue" --repo "$REPO" --json state --jq .state 2>&1)" \
+        || die "Cannot read issue #${issue} in ${REPO}: ${state}"
+    [[ "$state" == OPEN ]] \
+        || die "Issue #${issue} is ${state:l}, not open. Reopen it or pick another issue."
+    active="$(find_active_run "$issue")"
+    rc=$?
+    (( rc == 2 )) && die "Could not check for a running agent on issue #${issue} because GitHub's API failed."
+    [[ -z "$active" ]] \
+        || die "An agent is already running on issue #${issue}: $(run_url "$active"). Join it with: agent-ssh attach ${issue}"
+}
+
+# Dispatch one agent run; sets RUN_ID.
+dispatch_agent() {
+    local ref="$1" issue="$2" mins="$3" model="$4"
+    local since; since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gh workflow run "$SSH_WF" --repo "$REPO" --ref "$ref" \
+        -f issue="$issue" -f minutes="$mins" -f model="$model" -f image_tag="$IMAGE_TAG" \
+        || die "Could not start the agent on issue #${issue}. Run 'gh auth status' and confirm you can dispatch workflows in ${REPO}."
+    RUN_ID="$(find_new_run "$SSH_WF" "$since" "$(agent_title "$issue")")" \
+        || die "The agent for issue #${issue} was dispatched but no run appeared within 60s. Check: https://github.com/${REPO}/actions/workflows/${SSH_WF}"
+}
+
+# agent-ssh <issue>...: dispatch an agent per issue. A single issue attaches to it
+# (unless --no-attach); several just print how to attach to each.
+cmd_agents() {
+    local -a issues=("$@")
+    local n
+    for n in "${issues[@]}"; do
+        is_issue_number "$n" || die "'${n}' is not an issue number. Usage: agent-ssh <issue>... (or a subcommand: agent-ssh help)"
+    done
+    local -a unique=(${(u)issues})   # (not ${#${(u)issues}}: that is a string length for one element)
+    (( ${#unique} == ${#issues} )) || die "The same issue was listed twice: ${issues[*]}"
+
+    local mins="${OPT_MINUTES:-$AGENT_DEFAULT_MINUTES}" model="${OPT_MODEL:-$AGENT_DEFAULT_MODEL}"
+    valid_minutes "$mins" || die "--minutes must be a whole number between 5 and 360 (got '${mins}')."
+
+    local attach=""
+    (( ${#issues} == 1 )) && [[ -z "$OPT_NO_ATTACH" ]] && attach=1
+    [[ -z "$attach" ]] || require_tty
+
+    preflight
+    local ref; ref="$(workflow_ref)" || exit 1
+    preflight_agent
+    for n in "${issues[@]}"; do preflight_issue "$n"; done   # validate all before dispatching any
+
+    for n in "${issues[@]}"; do
+        gum_info "Starting an agent on issue #${n} (${model}, ${mins} min)…"
+        dispatch_agent "$ref" "$n" "$mins" "$model"
+        gum_success "Agent started on #${n}: $(run_url "$RUN_ID")"
+        if [[ -n "$attach" ]]; then
+            attach_to "$n" "$RUN_ID"
+        fi
+        gum_dim "  join it with: agent-ssh attach ${n}"
+    done
+}
+
+# agent-ssh attach [issue]: join a running agent's tmux session.
+cmd_attach() {
+    local issue="${1:-}"
+    [[ -z "$issue" ]] || is_issue_number "$issue" || die "'${issue}' is not an issue number. Usage: agent-ssh attach [issue]"
+    require_tty
+    preflight
+
+    local id
+    if [[ -n "$issue" ]]; then
+        id="$(find_active_run "$issue")"
+        case $? in
+            0) ;;
+            2) die "Could not list running agents because GitHub's API failed. Check 'gh auth status' and your connection." ;;
+            *) die "No agent is running on issue #${issue}. Start one with: agent-ssh ${issue}" ;;
+        esac
+    else
+        local runs rc
+        runs="$(active_agent_runs)"
+        rc=$?
+        (( rc == 0 )) || die "Could not list running agents because GitHub's API failed. Check 'gh auth status' and your connection."
+        [[ -n "$runs" ]] || die "No agents are running. Start one with: agent-ssh <issue>"
+        local -a rows=("${(@f)runs}")
+        if (( ${#rows} == 1 )); then
+            issue="${rows[1]#*$'\t'}"
+        else
+            require_choice_ui "Choosing between several running agents" "Name the issue instead: agent-ssh attach <issue>"
+            local row pick
+            local -a labels=()
+            for row in "${rows[@]}"; do labels+=("issue #${row#*$'\t'}  (run ${row%%$'\t'*})"); done
+            pick="$(gum_choose --header "Which agent?" "${labels[@]}")"
+            [[ -n "$pick" ]] || { gum_info "Nothing selected."; return 0; }
+            issue="${${pick#issue #}%% *}"
+        fi
+        id="$(find_active_run "$issue")" || die "The agent on issue #${issue} finished before you could join it."
+    fi
+    attach_to "$issue" "$id"
 }
 
 cmd_kill() {
+    local issue="${1:-}"
+    [[ -z "$issue" ]] || is_issue_number "$issue" || die "'${issue}' is not an issue number. Usage: agent-ssh kill [issue]"
     preflight
+    if [[ -n "$issue" ]]; then
+        local id
+        id="$(find_active_run "$issue")"
+        case $? in
+            0) ;;
+            2) die "Could not list running agents because GitHub's API failed. Check 'gh auth status' and your connection." ;;
+            *) die "No agent is running on issue #${issue}." ;;
+        esac
+        gh run cancel "$id" --repo "$REPO" \
+            || die "Could not cancel the agent on issue #${issue} ($(run_url "$id")). It may have just finished."
+        gum_success "Ended the agent on issue #${issue}"
+        return 0
+    fi
     local rows
     rows="$(gh run list --repo "$REPO" --workflow "$SSH_WF" --status in_progress \
         --json databaseId,displayTitle,createdAt \
@@ -343,6 +563,7 @@ cmd_kill() {
         gum_info "No SSH sessions are running."
         return 0
     fi
+    require_choice_ui "Choosing which session to end" "Name the agent instead: agent-ssh kill <issue>"
     local -a items; items=("${(@f)rows}")
     local -a chosen
     chosen=("${(@f)$(gum_choose --no-limit --header "Select sessions to end:" "${items[@]}")}")
@@ -364,18 +585,31 @@ cmd_kill() {
 
 cmd_help() {
     cat <<'EOF'
-agent-ssh - SSH into a fresh agent box (a plain terminal inside the image).
+agent-ssh - run Claude Code agents on GitHub issues, and SSH into them.
 
 Usage:
+  agent-ssh 12             Start an agent on issue #12 and join its live session.
+  agent-ssh 12 13 14       Start an agent on each issue (no attach).
+  agent-ssh attach [12]    Join a running agent's session (menu when no issue given).
+  agent-ssh kill [12]      End the agent on issue #12 (menu when no issue given).
   agent-ssh              Open the interactive menu.
-  agent-ssh connect      Start a box, wait for the SSH address, and connect.
+  agent-ssh connect      Start a plain terminal box (no agent) and connect.
   agent-ssh status       Show the latest published images and any running jobs.
   agent-ssh build        Build and publish a fresh image from your dotfiles.
-  agent-ssh kill         End one or more running SSH sessions.
   agent-ssh help         Show this help.
 
-You land in a plain terminal inside the image (rustc, cargo-nextest, just, uv,
-the ctx-* tools). No tmux, no p10k.
+Agent flags (any position):
+  -m, --minutes N      how long the agent box stays up, 5-360 (default 120)
+  --model ID           Claude model the agent uses (default claude-opus-4-8)
+  --no-attach          start the agent but do not join it, even for one issue
+
+An agent works its issue on a branch named issue-<N> and opens a pull request
+into dev. Leave a session running with Ctrl-b d; join it again with
+'agent-ssh attach <N>'. One-time setup: claude setup-token, then
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo <repo>.
+
+'connect' gives you a plain terminal inside the image (rustc, cargo-nextest,
+just, uv, the ctx-* tools) with no agent.
 
 Environment:
   AGENT_SSH_REPO       repo hosting the jobs   (default sophiaconsulting/cartridge)
@@ -385,14 +619,21 @@ EOF
 }
 
 cmd_menu() {
+    # No menu without gum on a terminal (agent sessions, NO_GUM): show the usage.
+    _gum_check || { cmd_help; return; }
     local choice
     choice="$(gum_choose --header "What would you like to do?" \
-        "connect - start a box and SSH in" \
+        "agent   - run an agent on an issue" \
+        "attach  - join a running agent" \
+        "connect - start a plain terminal box and SSH in" \
         "status  - show images and running jobs" \
         "build   - build a fresh image" \
         "kill    - end a running session" \
         "help    - show help")"
     case "$choice" in
+        agent*)   local n; n="$(ask "Issue number:" "")" || return 0
+                  cmd_agents "$n" ;;
+        attach*)  cmd_attach ;;
         connect*) cmd_connect ;;
         status*)  cmd_status ;;
         build*)   cmd_build ;;
@@ -403,22 +644,46 @@ cmd_menu() {
     esac
 }
 
+# Hidden hooks for the hermetic test suite.
+run_hook() {
+    local hook="$1"; shift
+    case "$hook" in
+        __extract-ssh)       extract_ssh_address "$@" ;;
+        __valid-minutes)     valid_minutes "$1" ;;
+        __resolve-ref)       resolve_workflow_ref "$@" ;;
+        __fetch-annotation)  fetch_ssh_annotation "$@" ;;
+        __wait-annotation)   wait_for_ssh_address "$@" ;;
+        __is-issue)          is_issue_number "$1" ;;
+        __agent-title)       agent_title "$1" ;;
+        __find-run)          find_new_run "$@" ;;
+        __active-runs)       active_agent_runs ;;
+        __parse-args)
+            parse_args "$@" || return 1
+            print -r -- "minutes=${OPT_MINUTES} model=${OPT_MODEL} no_attach=${OPT_NO_ATTACH} positional=${(j:,:)POSITIONAL}" ;;
+        *) gum_error "Unknown hook: ${hook}"; return 1 ;;
+    esac
+}
+
 # ── Dispatch ──────────────────────────────────────────────────────────────────
 main() {
-    local cmd="${1:-}"
+    case "${1:-}" in
+        help|-h|--help) cmd_help; return ;;
+        __*)            run_hook "$@"; return ;;
+    esac
+
+    parse_args "$@" || exit 1
+    local cmd="${POSITIONAL[1]:-}"
+    if is_issue_number "$cmd"; then
+        cmd_agents "${POSITIONAL[@]}"
+        return
+    fi
     case "$cmd" in
         ""|menu)      cmd_menu ;;
         connect)      cmd_connect ;;
+        attach)       cmd_attach "${POSITIONAL[2]:-}" ;;
         status)       cmd_status ;;
         build)        cmd_build ;;
-        kill)         cmd_kill ;;
-        help|-h|--help) cmd_help ;;
-        # Hidden hooks for the hermetic test suite.
-        __extract-ssh)       shift; extract_ssh_address "$@" ;;
-        __valid-minutes)     shift; valid_minutes "$1" ;;
-        __resolve-ref)       shift; resolve_workflow_ref "$@" ;;
-        __fetch-annotation)  shift; fetch_ssh_annotation "$@" ;;
-        __wait-annotation)   shift; wait_for_ssh_address "$@" ;;
+        kill)         cmd_kill "${POSITIONAL[2]:-}" ;;
         *)
             gum_error "Unknown command: ${cmd}"
             cmd_help
