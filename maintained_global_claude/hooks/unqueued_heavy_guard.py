@@ -148,6 +148,7 @@ def inspect(command):
 
 _EXACT_TESTS_RE = re.compile(r"\s*test\(=[^()|&!]+\)(?:\s*\|\s*test\(=[^()|&!]+\))*\s*")
 _SEGMENT_END = {"&&", "||", ";", "|", "&"}
+_REDIRECT_RE = re.compile(r"\A\d*(?:>>?|<|>&|&>)")
 # nextest flags that take a separate value (so the value is not a positional filter).
 _NEXTEST_VALUE_FLAGS = {
     "-p", "--package", "-F", "--features", "--profile", "-P", "--cargo-profile",
@@ -170,8 +171,8 @@ def _is_scoped_nextest(tokens, i):
         j += 1
     rest = []
     for tok in tokens[j + 2 :]:  # skip `nextest run`
-        if tok in _SEGMENT_END:
-            break
+        if tok in _SEGMENT_END or _REDIRECT_RE.match(tok):
+            break  # redirections (`> log 2>&1`) end the argument list
         rest.append(tok)
     exprs, k = [], 0
     while k < len(rest):

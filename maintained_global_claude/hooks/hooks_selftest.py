@@ -371,6 +371,11 @@ with tempfile.TemporaryDirectory() as td:
         "allow",
     )
     expect(
+        "issue-1 branch: queue nextest -E test(=a) > log 2>&1 -> allow (redirect is not a filter)",
+        guard_cwd("queue cargo nextest run -p x -E 'test(=a)' > /tmp/x.log 2>&1", str(root)),
+        "allow",
+    )
+    expect(
         "issue-1 branch: nextest -E test(=a) unqueued -> deny (still must queue)",
         guard_cwd("cargo nextest run -p x -E 'test(=a)'", str(root)),
         "deny",
