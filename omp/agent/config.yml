@@ -1,50 +1,72 @@
-providers:
-  webSearchOrder:
-    - codex
-    - perplexity
-    - gemini
-    - anthropic
-    - xai
-    - zai
-    - exa
-    - tinyfish
-    - jina
-    - kagi
-    - tavily
-    - firecrawl
-    - brave
-    - kimi
-    - parallel
-    - synthetic
-    - searxng
-    - startpage
-    - duckduckgo
-    - ecosia
-    - google
-    - mojeek
-    - public
 enabledProviders:
   - claude
 modelRoles:
-  plan: openai-codex/gpt-5.6-sol
+  default: openai-codex/gpt-5.6-terra
+  smol: anthropic/claude-sonnet-4-6
   task: anthropic/claude-opus-4-8
-  default: openai-codex/gpt-5.6-sol
+  web: openai-codex/gpt-5.6-luna
 symbolPreset: nerd
 theme:
-  dark: titanium
+  dark: obsidian
   light: light
 setupVersion: 2
 dev:
   autoqaConsent: granted
 composer:
-  shape: claude
+  shape: borderless
+statusLine:
+  preset: full
+  transparent: false
+display:
+  shimmer: classic
 task:
   agentModelOverrides:
-    task: anthropic/claude-opus-4-8
-    sonic: openai-codex/gpt-5.6-terra
-    scout: anthropic/claude-sonnet-5
-    reviewer: openai-codex/gpt-5.6-terra
-    security-reviewer: openai-codex/gpt-5.6-terra
+    scout: openai-codex/gpt-5.6-terra:high
+    reviewer: openai-codex/gpt-5.6-sol:high
+    security-reviewer: openai-codex/gpt-5.6-terra:high
+    task: openai-codex/gpt-5.6-terra:high
+    sonic: openai-codex/gpt-5.6-terra:high
+    opus48-worker: openai-codex/gpt-5.6-terra:high
+    terra: openai-codex/gpt-5.6-terra:high
 autolearn:
   enabled: true
 defaultThinkingLevel: auto
+modelRoleStorage: global
+extendedContext: true
+github:
+  enabled: true
+astGrep:
+  enabled: true
+hideThinkingBlock: false
+compaction:
+  thresholdPercent: 20
+retry:
+  fallbackChains:
+    web:
+      - web/perplexity
+      - google/gemini-2.5-flash
+      - anthropic/claude-haiku-4-5
+      - xai/grok-4.5
+      - web/zai
+      - web/exa
+      - web/tinyfish
+      - web/jina
+      - web/kagi
+      - web/tavily
+      - web/firecrawl
+      - web/brave
+      - web/kimi
+      - web/parallel
+      - web/synthetic
+      - web/searxng
+      - web/startpage
+      - web/duckduckgo
+      - web/ecosia
+      - web/google
+      - web/mojeek
+      - web/public
+      - google-antigravity/gemini-2.5-flash
+      - openai-codex/gpt-5.6
+      - openai-codex/gpt-5.5
+      - xai-oauth/grok-4.5
+      - web/ollama

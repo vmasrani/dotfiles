@@ -358,6 +358,48 @@ with tempfile.TemporaryDirectory() as td:
         guard_cwd("cargo check", str(root)),
         "allow",
     )
+    # Scoped runs of NAMED tests are not a gate: a worker may verify its own
+    # red/green tests while pre-dev is active (owner rule 2026-09-24).
+    expect(
+        "issue-1 branch: queue nextest -E test(=a) -> allow (named tests only)",
+        guard_cwd("queue cargo nextest run -p x -E 'test(=a::b)'", str(root)),
+        "allow",
+    )
+    expect(
+        "issue-1 branch: queue nextest -E test(=a) | test(=b) -> allow",
+        guard_cwd("queue cargo nextest run -p x --features f -E 'test(=a) | test(=m::b)'", str(root)),
+        "allow",
+    )
+    expect(
+        "issue-1 branch: nextest -E test(=a) unqueued -> deny (still must queue)",
+        guard_cwd("cargo nextest run -p x -E 'test(=a)'", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: queue nextest -E test(/regex/) -> deny (not exact names)",
+        guard_cwd("queue cargo nextest run -p x -E 'test(/a/)'", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: queue nextest -E package(x) -> deny (a whole package is a suite)",
+        guard_cwd("queue cargo nextest run -E 'package(x)'", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: queue nextest (no filter) -> deny",
+        guard_cwd("queue cargo nextest run -p x", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: queue nextest -E test(=a) plus positional filter -> deny",
+        guard_cwd("queue cargo nextest run -p x foo -E 'test(=a)'", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: scoped nextest && just ci-fast -> deny (the gate half)",
+        guard_cwd("queue cargo nextest run -E 'test(=a)' && queue just ci-fast", str(root)),
+        "deny",
+    )
 
     sh("git", "checkout", "-q", "pre-dev")
     expect(

@@ -61,7 +61,7 @@ merge commits are forbidden; never squash) once it is mergeable-green:
 required checks passing, any advisory red verified pre-existing on the base
 branch. All other gates apply unchanged. Full rules:
 `.agent-workflow/AGENT_WORKFLOW.md`.
-Concurrent lane (2+ agents on 2+ issues at once): workers never run `just ci-fast`; see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`.
+Concurrent lane (2+ agents on 2+ issues at once): workers never run `just ci-fast`, only their own tests by exact `test(=…)` name, queued; see the Concurrent lane in `.agent-workflow/AGENT_WORKFLOW.md`.
 
 ## Chore lane
 

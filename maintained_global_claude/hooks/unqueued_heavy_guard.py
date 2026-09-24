@@ -146,23 +146,79 @@ def inspect(command):
     return offender, queued_somewhere
 
 
+_EXACT_TESTS_RE = re.compile(r"\s*test\(=[^()|&!]+\)(?:\s*\|\s*test\(=[^()|&!]+\))*\s*")
+_SEGMENT_END = {"&&", "||", ";", "|", "&"}
+# nextest flags that take a separate value (so the value is not a positional filter).
+_NEXTEST_VALUE_FLAGS = {
+    "-p", "--package", "-F", "--features", "--profile", "-P", "--cargo-profile",
+    "--target", "--target-dir", "--manifest-path", "-j", "--test-threads", "--bin",
+    "--test", "--example", "--bench", "--message-format", "--status-level",
+    "--final-status-level", "--color", "--retries", "--partition", "--run-ignored",
+    "--exclude", "--config", "-Z", "--hide-progress-bar", "--success-output",
+    "--failure-output", "--cargo-message-format", "--nff",
+}
+
+
+def _is_scoped_nextest(tokens, i):
+    """True when the `cargo nextest run` at `i` selects ONLY named tests:
+    every filterset is `test(=name)` terms joined by `|`, there is at least
+    one, and no positional name filter or ignored-test flag widens it. Such a
+    run verifies a worker's own red/green tests -- it is not a gate (owner rule
+    2026-09-24), so the pre-dev guard lets it through (still queued)."""
+    j = i + 1
+    if j < len(tokens) and tokens[j].startswith("+"):
+        j += 1
+    rest = []
+    for tok in tokens[j + 2 :]:  # skip `nextest run`
+        if tok in _SEGMENT_END:
+            break
+        rest.append(tok)
+    exprs, k = [], 0
+    while k < len(rest):
+        tok = rest[k]
+        if tok in ("-E", "--filterset", "--filter-expr"):
+            if k + 1 >= len(rest):
+                return False
+            exprs.append(rest[k + 1])
+            k += 2
+            continue
+        for flag in ("--filterset=", "--filter-expr=", "-E="):
+            if tok.startswith(flag):
+                exprs.append(tok[len(flag):])
+                break
+        else:
+            if tok in ("--ignored", "--run-ignored") or tok.startswith("--run-ignored="):
+                return False
+            if tok in _NEXTEST_VALUE_FLAGS:
+                k += 2
+                continue
+            if tok == "--" or not tok.startswith("-"):
+                return False  # positional name filter or passthrough args
+        k += 1
+    return bool(exprs) and all(_EXACT_TESTS_RE.fullmatch(e) for e in exprs)
+
+
 def _heavy_ignoring_queue(tokens):
     """Like inspect(), but treats a `queue`/`testq` prefix as transparent.
 
     Used only by the pre-dev concurrent-work guard below, where even a
     correctly queued heavy command must be denied off the `pre-dev` branch --
     the queue's job is scheduling, not exemption from "workers never run
-    gates".
+    gates". A queued run of named tests only (see `_is_scoped_nextest`) is
+    not a gate and passes.
     """
     for _sep, head in command_heads(tokens):
         i = skip_env_assigns(tokens, head)
         if i >= len(tokens):
             continue
-        if tokens[i] in QUEUE_CMDS:
+        queued = tokens[i] in QUEUE_CMDS
+        if queued:
             i = skip_env_assigns(tokens, i + 1)
             if i >= len(tokens):
                 continue
         offender = _heavy_at(tokens, i)
+        if offender == "cargo nextest run" and queued and _is_scoped_nextest(tokens, i):
+            continue
         if offender:
             return offender
     return None
@@ -224,7 +280,10 @@ def reason_pre_dev(offender, branches):
         f"Merge into the integration branch and let the orchestrator run the single "
         f"`{offender}` from its worktree -- never from a worker branch. Concurrent waves may "
         f"be numbered (pre-dev, pre-dev2, ...), each with the same rules. See CLAUDE.md: "
-        f'"Concurrent work = pre-dev integration".'
+        f'"Concurrent work = pre-dev integration".\n\n'
+        f"To verify your OWN tests, run only them by exact name -- that is allowed:\n"
+        f"    queue cargo nextest run -p <crate> --features <gate tuple> "
+        f"-E 'test(=mod::name) | test(=mod::other)'"
     )
 
 

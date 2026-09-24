@@ -119,7 +119,13 @@ never one gate per issue.
 2. **Workers** take their issue in their own worktree/branch as usual (branch
    from `dev`), keep instant static checks (`cargo check`/clippy/`just
    lint*`/format), and NEVER run `just ci-fast`, `just ci-deep`, `just test*`,
-   `cargo test`, `cargo nextest run`, or any `queue`d command. They do not open
+   `cargo test`, or an unscoped `cargo nextest run`. The one exception, and
+   the expected practice: a worker runs ITS OWN new or changed tests by exact
+   name, queued — `queue cargo nextest run -p <crate> --features <gate tuple>
+   -E 'test(=mod::name) | test(=mod::other)'` — watching each go red at the
+   test commit and green at the fix, and reports both. A named-test run is
+   not a gate; it catches a broken fixture or a test that never goes red in
+   seconds instead of one gate round later. They do not open
    per-issue PRs and do not merge into `dev`. When done: rebase their branch
    onto current `pre-dev`, resolve conflicts on their branch, merge into
    `pre-dev` with `git merge --no-ff` so per-issue commits survive (merge
@@ -152,7 +158,9 @@ A mechanical guard enforces this: while any local branch matching
 `^pre-dev[0-9]*$` exists, the heavy-guard hook denies `just
 ci-fast`/`ci-deep`/`test*`, `cargo test`, and `cargo nextest run` — even
 correctly `queue`d — from any branch that is not itself an integration
-branch.
+branch. It lets through a `queue`d `cargo nextest run` whose only filters
+are `-E` expressions made purely of `test(=name)` terms joined by `|` (no
+positional filters, regex, package filters, or ignored-test flags).
 
 ## Fast lane: batching pre-triaged mechanical issues
 
