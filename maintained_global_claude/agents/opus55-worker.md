@@ -1,6 +1,6 @@
 ---
 name: opus55-worker
-description: Worker pinned to Opus 5.5 (claude-opus-5-5) at high effort. Use only for particularly challenging tasks (subtle concurrency/invariant bugs, hard perf work, cross-cutting design-heavy changes) where a Sonnet 5 worker has failed or clearly would.
+description: Worker pinned to Opus 5.5 (claude-opus-5-5) at high effort. Use only for particularly challenging tasks (subtle concurrency/invariant bugs, hard perf work, cross-cutting design-heavy changes) where a Sonnet 5.5 worker has failed or clearly would.
 model: claude-opus-5-5
 effort: high
 ---
