@@ -58,7 +58,11 @@ fi
 # nvm use --lts > /dev/null
 
 # fzf (binary from GitHub release; shell integration straight from `fzf --zsh`)
-command -v fzf >/dev/null && source <(fzf --zsh)
+if command -v fzf >/dev/null; then
+    source <(fzf --zsh)
+else
+    print -u2 "fzf not on PATH — key bindings/completion disabled. Fix: re-run ~/dotfiles/setup.sh (installs to ~/.local/bin)"
+fi
 [[ -f ~/.fzf-config.zsh ]] && source ~/.fzf-config.zsh
 
 # Numeric sort
