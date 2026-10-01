@@ -163,9 +163,13 @@
 # HUNG ts CLIENTS
 #   `ts`'s own daemon connection has been observed to never return even after
 #   the daemon marks a job finished, which otherwise hangs this wrapper (and
-#   whatever is reading its output) forever. QUEUE_FOLLOW_HANG_GRACE (default
-#   20s) bounds how long a finished-but-unreturned follow is tolerated before
-#   it is killed and the exit code is read from the daemon directly.
+#   whatever is reading its output) forever. The same hang happens when a
+#   leaked child of the job keeps its output pipe open after the job exits, or
+#   when the daemon forgets the job (its list was cleared). QUEUE_FOLLOW_HANG_GRACE
+#   (default 20s) bounds how long a job that is over (finished, gone from the
+#   daemon, or with its exit code already written) may keep its follow alive
+#   before the follow is killed; the exit code then comes from the job's own .rc
+#   file, else the daemon's E-Level, else the job FAILS with exit 1.
 #   QUEUE_QUERY_TIMEOUT (default 10s) bounds every other `ts -l`/`ts -s`
 #   status query, so one stuck round-trip cannot leak a process forever either.
 #
@@ -371,7 +375,19 @@ ids_in_state() {
   ts_list | tail -n +2 | awk -v s="$1" '$2==s {print $1}'
 }
 
-state_of_id() { timeout "$TS_QUERY_TIMEOUT" ts -s "$1" 2>/dev/null || true }
+# Prints the job's state; "" when the query timed out (unknown, NOT over); and
+# "gone" when the daemon answered but has no such job -- its list was cleared or
+# it restarted. "gone" counts as over: waiting on it would wait forever.
+state_of_id() {
+  local out rc
+  out=$(timeout "$TS_QUERY_TIMEOUT" ts -s "$1" 2>/dev/null)
+  rc=$?
+  case $rc in
+    0)   print -r -- "$out" ;;
+    124) print -r -- "" ;;
+    *)   print -r -- "gone" ;;
+  esac
+}
 
 # Empty means "not enqueued yet" -- NOT "gone". A caller must not treat the two
 # as the same or it will stop watching before the job ever appears.
@@ -391,12 +407,19 @@ id_by_label() {
 # itself never finishing.
 #
 # The daemon's own record is ground truth regardless of whether its OWN client
-# can report it, so: once "finished" has held for FOLLOW_HANG_GRACE seconds
-# while our `ts` client is still alive, kill that client ourselves (SIGKILL --
-# it is stuck in a blocking read, nothing softer reaches it) and read the exit
-# code from `ts -l`'s E-Level column instead of blocking forever. This never
-# fires on a job that is actually still running; it only reaps a client that
-# has outlived the very job it was waiting on.
+# can report it, so: once the job has been over for FOLLOW_HANG_GRACE seconds
+# while our follow is still alive, kill the follow ourselves (SIGKILL -- it is
+# stuck in a blocking read, nothing softer reaches it) instead of blocking
+# forever. "Over" means any of: the daemon says "finished"; the daemon says
+# "gone" (no such job); the job's .rc file already holds its exit code.
+#
+# FOUND LIVE 2026-09-30: job 215 wrote .rc=0 at 22:54, the daemon's job list
+# had been cleared (so `ts -s` failed and the old check, which only knew
+# "finished", kept resetting), and a leaked descendant held the output pipe, so
+# the capture tees -- and the client -- hung for 20+ minutes.
+#
+# This never fires on a job that is actually still running; it only reaps a
+# follow that has outlived the very job it was waiting on.
 readonly FOLLOW_HANG_GRACE="${QUEUE_FOLLOW_HANG_GRACE:-20}"
 
 exit_level_of() {
@@ -405,26 +428,42 @@ exit_level_of() {
 
 # $1: pid to watch for liveness (either the ts client itself, or -- when it
 # sits inside a capture pipeline -- the pipeline's last stage).
-# $2: optional `pgrep -f` pattern identifying the actual ts client to kill,
-#     when that is not $1 (the capture pipeline case). Defaults to killing $1.
-# Sets HANG_DECLARED=1 iff it had to intervene. Reads $RECORD, set by the
-# caller before submission.
-HANG_DECLARED=0
+# $2: optional `pgrep -f` pattern identifying the actual ts client, when that
+#     is not $1 (the capture pipeline case). It is killed along with $1.
+# $3: optional .rc file the job's shell writes its exit code into (capture
+#     path). Non-empty means the job is over. When given, the `tee` writing the
+#     sibling .err file is killed too, since a leaked child holds its pipe as
+#     well.
+# Sets HANG_DECLARED=1 iff it had to intervene, and then HANG_STATE (the
+# daemon's last answer) and HANG_RC (the .rc file's contents at the moment of
+# intervention -- read BEFORE any kill, since a killed ts client's shell then
+# writes 137 into it). Reads $RECORD, set by the caller before submission.
+HANG_DECLARED=0 HANG_STATE="" HANG_RC=""
 guard_follow() {
-  local watch_pid="$1" pattern="${2:-}" id="" hung_since=0 tspid
-  HANG_DECLARED=0
+  local watch_pid="$1" pattern="${2:-}" rcfile="${3:-}" id="" hung_since=0
+  local st rcval tspid errtee
+  HANG_DECLARED=0 HANG_STATE="" HANG_RC=""
   while kill -0 "$watch_pid" 2>/dev/null; do
     sleep 1
     id=$(rec_get "$RECORD" id 2>/dev/null) || id=""
-    if [[ -n "$id" && "$(state_of_id "$id")" == "finished" ]]; then
+    st=""
+    [[ -n "$id" ]] && st=$(state_of_id "$id")
+    rcval=""
+    [[ -n "$rcfile" && -s "$rcfile" ]] && rcval=$(<"$rcfile")
+    if [[ "$st" == "finished" || "$st" == "gone" || -n "$rcval" ]]; then
       (( hung_since == 0 )) && hung_since=$SECONDS
       if (( SECONDS - hung_since >= FOLLOW_HANG_GRACE )); then
+        HANG_STATE="${st:-unknown}" HANG_RC="$rcval" HANG_DECLARED=1
         tspid=""
         [[ -n "$pattern" ]] && tspid=$(pgrep -f -- "$pattern" 2>/dev/null | head -n1)
-        [[ -n "$tspid" ]] || tspid="$watch_pid"
-        print -u2 "$SELF: ts follow for job $id outlived its finish by ${FOLLOW_HANG_GRACE}s -- killing the stuck ts client (pid $tspid) and reading the exit code from the daemon instead of blocking forever"
-        kill -9 "$tspid" 2>/dev/null
-        HANG_DECLARED=1
+        print -u2 "$SELF: job ${id:-?} is over (daemon state: $HANG_STATE; rc file: ${rcval:-empty}) but its follow (pid $watch_pid) was still alive ${FOLLOW_HANG_GRACE}s later -- most likely a leaked child process still holds the job's output pipe open. Killing the follow instead of blocking forever."
+        [[ -n "$tspid" ]] && kill -9 "$tspid" 2>/dev/null
+        kill -9 "$watch_pid" 2>/dev/null
+        if [[ -n "$rcfile" ]]; then
+          for errtee in $(pgrep -f -x -- "tee ${rcfile%.rc}.err" 2>/dev/null); do
+            kill -9 "$errtee" 2>/dev/null
+          done
+        fi
         return 0
       fi
     else
@@ -432,6 +471,24 @@ guard_follow() {
     fi
   done
   return 0
+}
+
+# After guard_follow intervened: print the job's exit code. Truth, in order:
+# the .rc file the job's own shell wrote (HANG_RC), then the daemon's E-Level.
+# Neither means the result is LOST -- fail loudly with exit 1, never pass.
+hung_exit_code() {
+  local id="$1" lvl=""
+  if [[ -n "$HANG_RC" ]]; then
+    print -r -- "$HANG_RC"
+    return 0
+  fi
+  [[ -n "$id" ]] && lvl=$(exit_level_of "$id")
+  if [[ -n "$lvl" ]]; then
+    print -r -- "$lvl"
+    return 0
+  fi
+  print -u2 "$SELF: job ${id:-?} ended (daemon state: ${HANG_STATE:-unknown}) with no exit code on record -- no .rc file and no E-Level in the daemon (its job list was probably cleared). Its result is LOST: reporting exit 1. Rerun it."
+  print 1
 }
 
 # ── looking inside a `zsh -c` wrapper ────────────────────────────────────────
@@ -1071,15 +1128,7 @@ if (( EVENTS )); then
   guard_follow "$WPID"
   wait "$WPID" 2>/dev/null
   rc=$?
-  if (( HANG_DECLARED )); then
-    lvl=$(exit_level_of "$id")
-    if [[ -n "$lvl" ]]; then
-      rc="$lvl"
-    else
-      print -u2 "$SELF: job $id finished with no E-Level on record -- reporting exit 1"
-      rc=1
-    fi
-  fi
+  (( HANG_DECLARED )) && rc=$(hung_exit_code "$id")
   el=$(( $(date +%s) - t1 ))
   rec_put "$RECORD" finished "$(date +%s)"
   rec_put "$RECORD" exit "$rc"
@@ -1139,7 +1188,7 @@ supervise() {
 
   while :; do
     st=$(state_of_id "$id")
-    [[ "$st" == "running" || "$st" == "finished" || -z "$st" ]] && break
+    [[ "$st" == "running" || "$st" == "finished" || "$st" == "gone" || -z "$st" ]] && break
 
     if (( ! promoted )) && { promote_if_unblocked "$id" || promote_if_starved "$id" || promote_if_quick "$id" }; then
       promoted=1
@@ -1311,17 +1360,16 @@ if (( CAPTURE )); then
   } 3>&1 | tee "$JOBS/$LABEL.out" &
   PIPE_PID=$!
   # $1 here is the final `tee`, not the ts client -- find that by label to kill it.
-  guard_follow "$PIPE_PID" "ts -nf -L $LABEL "
+  guard_follow "$PIPE_PID" "ts -nf -L $LABEL " "$JOBS/$LABEL.rc"
   wait "$PIPE_PID" 2>/dev/null
-  rc=$(cat "$JOBS/$LABEL.rc" 2>/dev/null) || rc=1
   if (( HANG_DECLARED )); then
     id=$(rec_get "$RECORD" id 2>/dev/null) || id=""
-    lvl=$([[ -n "$id" ]] && exit_level_of "$id")
-    if [[ -n "$lvl" ]]; then
-      rc="$lvl"
-      print -r -- "$lvl" >"$JOBS/$LABEL.rc"
-    else
-      print -u2 "$SELF: job $id finished with no E-Level on record -- reporting exit 1"
+    rc=$(hung_exit_code "$id")
+    print -r -- "$rc" >"$JOBS/$LABEL.rc"
+  else
+    rc=$(cat "$JOBS/$LABEL.rc" 2>/dev/null)
+    if [[ -z "$rc" ]]; then
+      print -u2 "$SELF: job finished but left no exit code in $JOBS/$LABEL.rc -- reporting exit 1"
       rc=1
     fi
   fi
@@ -1335,13 +1383,7 @@ else
   rc=$?
   if (( HANG_DECLARED )); then
     id=$(rec_get "$RECORD" id 2>/dev/null) || id=""
-    lvl=$([[ -n "$id" ]] && exit_level_of "$id")
-    if [[ -n "$lvl" ]]; then
-      rc="$lvl"
-    else
-      print -u2 "$SELF: job $id finished with no E-Level on record -- reporting exit 1"
-      rc=1
-    fi
+    rc=$(hung_exit_code "$id")
   fi
 fi
 (( SUP_PID > 0 )) && kill "$SUP_PID" 2>/dev/null
