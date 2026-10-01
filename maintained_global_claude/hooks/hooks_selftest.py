@@ -226,6 +226,58 @@ with tempfile.TemporaryDirectory() as td:
         "pass",
     )
 
+print("\n== foreground_wait_guard: waits must run in the background ==")
+
+
+def fg(command, bg=False):
+    ti = {"command": command}
+    if bg:
+        ti["run_in_background"] = True
+    proc = run_hook("foreground_wait_guard.py", {"tool_name": "Bash", "tool_input": ti})
+    if proc.returncode != 0:
+        return f"hook errored: {proc.stderr.strip()[:80]}"
+    if not proc.stdout.strip():
+        return "allow"
+    return json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"]
+
+
+for cmd in [
+    "flock /tmp/lock ./bench.sh",
+    "queue cargo nextest run",
+    "cd /r && queue just test-fast",
+    "FOO=1 queue cargo test",
+    "while [ $(cut -d' ' -f1 /proc/loadavg | cut -d. -f1) -ge 8 ]; do sleep 30; done; ./run.sh",
+    "until test -f done; do sleep 5; done",
+    "sleep 120",
+    "sleep 2m",
+    "tail -f log",
+    "tail -F log",
+    "watch ls",
+    "gh run watch 123",
+    "inotifywait -e modify f",
+]:
+    expect(f"deny: {cmd[:60]}", fg(cmd), "deny")
+
+for cmd in [
+    "queue -l",
+    "queue --exit-code --last",
+    "queue --status --last",
+    "flock -n /tmp/x cmd",
+    "flock -w 5 /tmp/x cmd",
+    "rg -n 'sleep' file",
+    "echo \"flock\"",
+    "cargo check",
+    "cargo build",
+    "sleep 2",
+    "grep -c queue log",
+    "git log --grep=flock",
+    "tail -n 20 log",
+]:
+    expect(f"allow: {cmd[:60]}", fg(cmd), "allow")
+
+expect("allow: queue just ci-fast with run_in_background", fg("queue just ci-fast", bg=True), "allow")
+expect("allow: sleep loop with run_in_background", fg("while true; do sleep 60; done", bg=True), "allow")
+
 print("\n== unqueued_heavy_guard: a forgotten prefix is an error, not a slowdown ==")
 # WHAT REPLACED WHAT: test_queue_guard.py used to REWRITE heavy commands into
 # the queue, and this section used to assert the rewrite came out byte-exact,
