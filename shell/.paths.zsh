@@ -30,6 +30,7 @@ PATH_ADDITIONS=(
     "$HOME/.nvm"                    # nvm installation
     "/opt/homebrew/sbin"            # Homebrew sbin
     "/opt/homebrew/bin"             # Homebrew binaries (before /usr/bin)
+    "/Users/vmasrani/.bun/bin" .    # bun
 )
 
 
