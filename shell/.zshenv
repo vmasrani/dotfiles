@@ -64,9 +64,18 @@ export TS_SOCKET="/tmp/testq-${UID}.sock"
 [[ -d "$HOME/tools/shims" ]] && path=("$HOME/tools/shims" $path)
 export PATH
 
-# Per-machine concurrency for `queue` (see ~/dotfiles/tools/queue). Defaults to 2
-# (one stuck or idle job cannot idle the box); a machine-specific override (e.g. this box's Linux-only config) sets it
-# earlier in the sourcing chain and this default leaves that untouched.
+# Machine-only settings live in the git-ignored ~/dotfiles/local/.zshenv.local
+# (sourced by EVERY zsh, including the non-interactive `zsh -c` agents use --
+# unlike local/.local_env.sh, which only .zshrc reads). Keep secrets out of it.
+[[ -f "$HOME/dotfiles/local/.zshenv.local" ]] && source "$HOME/dotfiles/local/.zshenv.local"
+
+# sccache cache dir/size for every zsh and for tools/sccache-watchdog (see the
+# header of shell/sccache-env.sh for why this cannot live in .zshrc).
+[[ -f "$HOME/dotfiles/shell/sccache-env.sh" ]] && source "$HOME/dotfiles/shell/sccache-env.sh"
+
+# Per-machine concurrency for `queue` (see ~/dotfiles/tools/queue): seeds the
+# machine-wide slot count when /tmp/queue-$UID/slots does not exist yet (first
+# use after a reboot). Defaults to 2; a machine sets its own in .zshenv.local.
 export QUEUE_SLOTS="${QUEUE_SLOTS:-2}"
 
 # nextest defaults to one test process PER LOGICAL CPU, PER RUN -- so
