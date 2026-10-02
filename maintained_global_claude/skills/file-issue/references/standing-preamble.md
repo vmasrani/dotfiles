@@ -14,9 +14,9 @@ Keep it adapted to the box/repo; delete lines that don't apply.
 ## Heavy commands and the shared box
 - Prefix with `queue`: `just ci-fast`, `just test`, `just ci-deep`, any count-matrix / index build / live-scorer / report regeneration — exact form: `queue "just ci-fast > /tmp/cifast.log 2>&1; echo exit=\$?"` (ONE quoted string; the shell splits on `;`/`>` otherwise).
 - `run_in_background: true` is not `queue`. Memory, not cores, is the cliff; N sibling workers share this box.
-- A queued/background task's own "exited 0" is the WRAPPER's exit, not the command's — always `rg -n 'passed|failed|error|exit=' <log>` before calling a gate green. `queue` exit 255 = dropped/cancelled.
+- A queued/background task's own "exited 0" is the WRAPPER's exit, not the command's — always `rg -n 'passed|failed|error|exit=' <log>` before calling a gate green.
 - A SIGTERM/exit 143/OOM mid-run is not the lead killing you and not a stop signal — chunk the work and resubmit through `queue`.
-- Before resubmitting anything heavy (especially after a context compaction), `queue -l` / `queue --triage` — your job may already be running.
+- Before resubmitting anything heavy (especially after a context compaction), `queue -l` — your job may already be running.
 - If the ci-fast aggregate is stuck >2 min behind someone else's job, running its sub-recipes directly is an acceptable substitute — say which you ran.
 - Regenerate expensive artifacts (tens of minutes) exactly once, as the last step, at the final sha; batch content fixes first; reports name their producer sha.
 

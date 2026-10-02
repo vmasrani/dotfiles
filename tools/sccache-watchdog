@@ -1,0 +1,446 @@
+#!/usr/bin/env python3
+# sccache-watchdog -- kill a wedged sccache server and leave evidence. DETECT AND KILL ONLY.
+#
+#   sccache-watchdog run [--interval 10] [--starve-after 20] [--stuck-after 180] [--hung-children-after 120]
+#   sccache-watchdog status        pool, running compiles, waiting clients, recent kills
+#   sccache-watchdog stop          kill the server if idle (the next compile starts a fresh one)
+#
+# NEVER START A SERVER FROM HERE (or from anything launchd runs). macOS TCC makes the
+# *responsible process* of a launchd job the owner of every file access its descendants
+# make. A server started by this job made python3 the responsible process; its rustc
+# children then touched /Volumes/volume, tccd logged
+#   AUTHREQ_PROMPTING service=kTCCServiceSystemPolicyRemovableVolumes subject=python3.14
+# (2026-10-02 01:21:59), a consent dialog nobody can answer on this headless Mac, and every
+# rustc child blocked at 0 CPU in state S (some failed with getcwd EINTR). A server the
+# next `sccache rustc` client starts from an ssh session is attributed to sshd instead,
+# which has the grant. So this script only kills; the client starts the replacement.
+# For the same reason it never runs the `sccache` binary: `sccache --show-stats` starts
+# a server when none is listening.
+#
+# FAULTS it detects, every --interval seconds (kernel view of the server, no sccache calls):
+#   HUNG          jobserver pool short + nothing running for --starve-after s + clients waiting
+#   LEAK          same, no client waiting (the next one would hang) -- a free restart
+#                 Cause: the server's one jobserver pipe holds ncpu tokens shared with every
+#                 rustc; killing a client SIGKILLs its rustc, which takes its tokens with it,
+#                 and the pool drains for good (mozilla/sccache#2874, reproduced 2026-10-02).
+#   HUNG-CHILDREN every server child (and its descendants) has made no CPU progress for
+#                 --hung-children-after s while clients wait. Blocked rustc: TCC prompt,
+#                 stalled volume, ... The evidence says what they are blocked on.
+#   STUCK         clients waiting but the server spawned nothing for --stuck-after s
+# Pool short is read from the jobserver pipe's byte count (libproc PROC_PIDFDPIPEINFO): a
+# token is held only while a server child runs, so "no children but pool < ncpu" = lost.
+#
+# On a fault it writes <state>/hang-<ts>/ (ps of the server tree, `sample` of up to 3 silent
+# children and of the server, lsof, client list, server-log tail, pool, TCC prompts logged
+# in the last 15 min), logs ERROR with the waiting-client count, SIGKILLs the server and its
+# children, and waits. Clients that were waiting see EOF and compile locally
+# ("server looks like it shut down unexpectedly"): a cold cache for those units, no failure.
+#
+# Server-side logging comes from the CLIENTS' environment (shell/sccache-env.sh): the
+# server is whichever `sccache` started it. State: $SCCACHE_WATCHDOG_DIR
+# (default ~/.cache/sccache-watchdog). Run under launchd:
+#   launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.vmasrani.sccache-watchdog.plist
+#   launchctl bootout   gui/$UID/com.vmasrani.sccache-watchdog
+# macOS only: the pool is read via libproc.
+import argparse
+import ctypes
+import dataclasses
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import NoReturn
+
+STATE = Path(os.environ.get("SCCACHE_WATCHDOG_DIR", Path.home() / ".cache/sccache-watchdog"))
+PORT = os.environ.get("SCCACHE_SERVER_PORT", "4226")
+SERVER_LOG = Path(os.environ.get("SCCACHE_ERROR_LOG", STATE / "sccache-server.log"))
+SERVER_LOG_MAX = 64 * 2**20
+HEARTBEAT_EVERY = 1800
+KILL_COOLDOWN = 30
+MAX_SAMPLED_CHILDREN = 3
+
+
+def die(msg: str) -> NoReturn:
+    print(f"sccache-watchdog: {msg}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+if sys.platform != "darwin":
+    die("macOS only: the jobserver pool is read through libproc")
+
+# --- logging ---------------------------------------------------------------
+
+
+def log(level: str, msg: str) -> None:
+    line = f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {level} {msg}"
+    STATE.mkdir(parents=True, exist_ok=True)
+    with (STATE / "watchdog.log").open("a") as f:
+        f.write(line + "\n")
+    if sys.stderr.isatty():
+        print(line, file=sys.stderr)
+    if level in ("ERROR", "WARN"):
+        subprocess.run(["logger", "-t", "sccache-watchdog", f"{level} {msg}"], check=False)
+
+
+# --- kernel view of the jobserver pipe -------------------------------------
+
+_libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+PROC_PIDLISTFDS, PROC_PIDFDPIPEINFO, PROX_FDTYPE_PIPE = 1, 6, 6
+
+
+class _VStat(ctypes.Structure):  # struct vinfo_stat
+    _fields_ = [
+        ("dev", ctypes.c_uint32), ("mode", ctypes.c_uint16), ("nlink", ctypes.c_uint16),
+        ("ino", ctypes.c_uint64), ("uid", ctypes.c_uint32), ("gid", ctypes.c_uint32),
+        ("atime", ctypes.c_int64), ("atimensec", ctypes.c_int64),
+        ("mtime", ctypes.c_int64), ("mtimensec", ctypes.c_int64),
+        ("ctime", ctypes.c_int64), ("ctimensec", ctypes.c_int64),
+        ("birthtime", ctypes.c_int64), ("birthtimensec", ctypes.c_int64),
+        ("size", ctypes.c_int64), ("blocks", ctypes.c_int64),
+        ("blksize", ctypes.c_int32), ("flags", ctypes.c_uint32),
+        ("gen", ctypes.c_uint32), ("rdev", ctypes.c_uint32), ("qspare", ctypes.c_int64 * 2),
+    ]
+
+
+class _FileInfo(ctypes.Structure):  # struct proc_fileinfo
+    _fields_ = [
+        ("openflags", ctypes.c_uint32), ("status", ctypes.c_uint32),
+        ("offset", ctypes.c_int64), ("type", ctypes.c_int32), ("guardflags", ctypes.c_uint32),
+    ]
+
+
+class _PipeFdInfo(ctypes.Structure):  # struct pipe_fdinfo
+    _fields_ = [
+        ("pfi", _FileInfo), ("stat", _VStat), ("handle", ctypes.c_uint64),
+        ("peer", ctypes.c_uint64), ("status", ctypes.c_int32), ("rfu", ctypes.c_int32),
+    ]
+
+
+def _pipe_fds(pid: int) -> list[int]:
+    size = _libproc.proc_pidinfo(pid, PROC_PIDLISTFDS, 0, None, 0)
+    if size <= 0:
+        return []
+    buf = (ctypes.c_int32 * (size // 4 + 8))()  # struct proc_fdinfo { int32 fd; uint32 type; }
+    got = _libproc.proc_pidinfo(pid, PROC_PIDLISTFDS, 0, buf, ctypes.sizeof(buf))
+    return [buf[i] for i in range(0, got // 4, 2) if buf[i + 1] == PROX_FDTYPE_PIPE]
+
+
+def jobserver_tokens(pid: int) -> int | None:
+    """Bytes sitting in the server's jobserver pipe = free tokens. None if no such pipe.
+
+    The jobserver is the only pipe whose BOTH ends live in the server (child stdio
+    pipes keep one end in the child).
+    """
+    infos = {}
+    for fd in _pipe_fds(pid):
+        info = _PipeFdInfo()
+        if _libproc.proc_pidfdinfo(pid, fd, PROC_PIDFDPIPEINFO, ctypes.byref(info), ctypes.sizeof(info)) > 0:
+            infos[fd] = info
+    handles = {i.handle for i in infos.values()}
+    pairs = [fd for fd, i in sorted(infos.items()) if i.peer in handles]
+    return infos[pairs[0]].stat.size if pairs else None
+
+
+# --- process table ----------------------------------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class Proc:
+    pid: int
+    ppid: int
+    stat: str
+    age: int  # seconds since start
+    cpu: float  # CPU seconds consumed (user+system)
+    command: str
+
+
+def _secs(t: str) -> float:  # [[dd-]hh:]mm:ss[.cc]
+    days, _, rest = t.rpartition("-")
+    parts = [float(x) for x in rest.split(":")]
+    secs = sum(v * m for v, m in zip(reversed(parts), (1, 60, 3600)))
+    return secs + (int(days) * 86400 if days else 0)
+
+
+def run(cmd: list[str], timeout: float = 60) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def processes() -> list[Proc]:
+    out = run(["ps", "-axo", "pid=,ppid=,stat=,etime=,time=,command="]).stdout
+    rows = (line.split(None, 5) for line in out.splitlines() if line.strip())
+    return [Proc(int(p), int(pp), st, int(_secs(et)), _secs(cpu), cmd) for p, pp, st, et, cpu, cmd in rows]
+
+
+def server_pid() -> int | None:
+    out = run(["lsof", "-nP", f"-iTCP:{PORT}", "-sTCP:LISTEN", "-t"]).stdout.split()
+    return int(out[0]) if out else None
+
+
+def is_client(p: Proc, server: int) -> bool:
+    argv = p.command.split()
+    return (
+        p.pid != server and p.ppid != server and os.path.basename(argv[0]) == "sccache"
+        and len(argv) > 1 and not argv[1].startswith("-")
+    )
+
+
+def subtree(root: int, by_parent: dict[int, list[Proc]]) -> list[Proc]:
+    out, todo = [], list(by_parent.get(root, []))
+    while todo:
+        p = todo.pop()
+        out.append(p)
+        todo.extend(by_parent.get(p.pid, []))
+    return out
+
+
+@dataclasses.dataclass(frozen=True)
+class Probe:
+    pid: int
+    age: int
+    tokens: int | None
+    children: tuple[Proc, ...]
+    clients: tuple[Proc, ...]
+    # per server child: (pid, cpu) of itself and every descendant. A rustc waiting on its
+    # linker burns no CPU itself but its descendant does, so it still counts as progress.
+    activity: dict[int, tuple]
+    procs: tuple[Proc, ...]
+
+
+def probe(pid: int) -> Probe | None:
+    """One look at the server; None if it exited between lsof and ps."""
+    procs = processes()
+    me = next((p for p in procs if p.pid == pid), None)
+    if me is None:
+        return None
+    by_parent: dict[int, list[Proc]] = {}
+    for p in procs:
+        by_parent.setdefault(p.ppid, []).append(p)
+    children = tuple(p for p in by_parent.get(pid, []) if "Z" not in p.stat)
+    activity = {c.pid: tuple(sorted((d.pid, d.cpu) for d in [c, *subtree(c.pid, by_parent)])) for c in children}
+    clients = tuple(p for p in procs if is_client(p, pid))
+    return Probe(pid, me.age, jobserver_tokens(pid), children, clients, activity, tuple(procs))
+
+
+# --- killing and evidence ---------------------------------------------------
+
+
+def kill_server(p: Probe) -> None:
+    by_parent: dict[int, list[Proc]] = {}
+    for q in p.procs:
+        by_parent.setdefault(q.ppid, []).append(q)
+    victims = [d.pid for d in subtree(p.pid, by_parent)]
+    for pid in [p.pid, *victims]:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    for _ in range(50):
+        time.sleep(0.1)
+        if server_pid() is None:
+            return
+    log("ERROR", f"server {p.pid} still listening on :{PORT} 5 s after SIGKILL")
+
+
+def rotate_server_log() -> None:
+    if SERVER_LOG.exists() and SERVER_LOG.stat().st_size > SERVER_LOG_MAX:
+        shutil.copyfile(SERVER_LOG, f"{SERVER_LOG}.1")
+        os.truncate(SERVER_LOG, 0)  # the server holds it O_APPEND, so it keeps writing at the new end
+        log("INFO", f"rotated {SERVER_LOG} (> {SERVER_LOG_MAX >> 20} MiB) to {SERVER_LOG}.1")
+
+
+def tail(path: Path, lines: int = 400, chunk: int = 1 << 20) -> str:
+    if not path.exists():
+        return f"(no {path})\n"
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        f.seek(max(0, f.tell() - chunk))
+        return b"\n".join(f.read().splitlines()[-lines:]).decode(errors="replace") + "\n"
+
+
+def tcc_prompts() -> str:
+    """Consent prompts macOS raised in the last 15 min: a pending one blocks the process that triggered it."""
+    pred = 'process == "tccd" AND eventMessage CONTAINS "AUTHREQ_PROMPTING"'
+    try:
+        return run(["log", "show", "--last", "15m", "--style", "compact", "--predicate", pred], timeout=90).stdout
+    except subprocess.TimeoutExpired:
+        return "(log show timed out after 90 s)\n"
+
+
+def capture_evidence(p: Probe, reason: str, nominal: int, silent: dict[int, float]) -> Path:
+    out = STATE / f"hang-{time.strftime('%Y%m%dT%H%M%S')}"
+    out.mkdir(parents=True, exist_ok=True)
+    sh = lambda cmd, t=30: run(cmd, timeout=t).stdout  # noqa: E731 -- one-line helper
+    prompts = tcc_prompts()
+    by_parent: dict[int, list[Proc]] = {}
+    for q in p.procs:
+        by_parent.setdefault(q.ppid, []).append(q)
+    tree = [next(q for q in p.procs if q.pid == p.pid), *subtree(p.pid, by_parent)]
+    (out / "summary.json").write_text(json.dumps({
+        "reason": reason, "server_pid": p.pid, "server_age_s": p.age, "pool": p.tokens, "nominal": nominal,
+        "children": [{"pid": c.pid, "age_s": c.age, "cpu_s": c.cpu, "stat": c.stat, "silent_s": silent.get(c.pid), "cmd": c.command[:200]}
+                     for c in p.children],
+        "clients": len(p.clients), "oldest_client_age_s": max((c.age for c in p.clients), default=0),
+        "tcc_prompts_last_15m": prompts.count("AUTHREQ_PROMPTING"),
+    }, indent=2) + "\n")
+    (out / "tree.txt").write_text("\n".join(
+        f"{q.pid} ppid={q.ppid} stat={q.stat} age={q.age}s cpu={q.cpu}s {q.command[:240]}" for q in tree) + "\n")
+    (out / "clients.txt").write_text("\n".join(f"{c.pid} ppid={c.ppid} age={c.age}s {c.command[:240]}" for c in p.clients) + "\n")
+    (out / "tcc-prompts.txt").write_text(prompts or "(none)\n")
+    (out / "server-log-tail.txt").write_text(tail(SERVER_LOG))
+    (out / "system.txt").write_text(sh(["uptime"]) + sh(["sysctl", "vm.loadavg"]) + sh(["vm_stat"]))
+    (out / "lsof-server.txt").write_text(sh(["lsof", "-nP", "-p", str(p.pid)]))
+    # The children are what is blocked: sample the longest-silent ones, then the server.
+    for c in sorted(p.children, key=lambda c: -silent.get(c.pid, 0))[:MAX_SAMPLED_CHILDREN]:
+        sh(["sample", str(c.pid), "3", "-file", str(out / f"sample-child-{c.pid}.txt")], 40)
+        (out / f"lsof-child-{c.pid}.txt").write_text(sh(["lsof", "-nP", "-p", str(c.pid)]))
+    sh(["sample", str(p.pid), "3", "-file", str(out / "sample-server.txt")], 40)
+    return out
+
+
+def kill_with_evidence(p: Probe, reason: str, nominal: int, kind: str, silent: dict[int, float]) -> None:
+    waiting = len(p.clients)
+    old = sum(1 for c in p.clients if c.age >= 60)
+    evidence = capture_evidence(p, reason, nominal, silent)
+    log("ERROR", f"{kind}: killing sccache server pid={p.pid} age={p.age}s pool={p.tokens}/{nominal} "
+                 f"children={len(p.children)} clients_waiting={waiting} (older than 60 s: {old}) -- {reason}; evidence: {evidence}")
+    kill_server(p)
+    log("INFO", f"killed pid={p.pid}; the next `sccache rustc` client starts a fresh server (never started from here: see header)")
+    with (STATE / "kills.jsonl").open("a") as f:
+        f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "kind": kind, "reason": reason, "pid": p.pid,
+                            "pool": p.tokens, "nominal": nominal, "clients_waiting": waiting, "evidence": str(evidence)}) + "\n")
+
+
+# --- detection --------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class Watch:
+    pid: int | None = None
+    nominal: int = os.cpu_count() or 1
+    starved_since: float | None = None
+    stuck_since: float | None = None
+    child_seen: dict[int, tuple] = dataclasses.field(default_factory=dict)  # child pid -> (activity, since)
+    last_kill: float = 0.0
+    last_beat: float = 0.0
+    pipe_warned: int | None = None
+    cooldown_logged: bool = False
+
+    def silent_for(self, p: Probe, now: float) -> dict[int, float]:
+        """Seconds each current server child has shown no CPU/descendant change; updates the memory."""
+        seen = {}
+        for pid, act in p.activity.items():
+            prev = self.child_seen.get(pid)
+            seen[pid] = prev if prev and prev[0] == act else (act, now)
+        self.child_seen = seen
+        return {pid: now - since for pid, (_, since) in seen.items()}
+
+
+def judge(w: Watch, p: Probe, now: float, a: argparse.Namespace) -> tuple[str, str, dict[int, float]] | None:
+    """Update `w` from probe `p`; return (kind, reason, silent-seconds-per-child) when the server must die."""
+    if w.pid != p.pid:
+        w.pid, w.starved_since, w.stuck_since, w.child_seen = p.pid, None, None, {}
+    silent = w.silent_for(p, now)
+    if p.tokens is not None:
+        w.nominal = max(w.nominal, p.tokens)
+    short = p.tokens is not None and p.tokens < w.nominal and not p.children
+    stuck = bool(p.clients) and not p.children
+    w.starved_since = (w.starved_since or now) if short else None
+    w.stuck_since = (w.stuck_since or now) if stuck else None
+
+    if short and w.starved_since == now:
+        log("WARN", f"pool short while nothing is running: {p.tokens}/{w.nominal} tokens, {len(p.clients)} clients waiting (watching)")
+    if w.starved_since and now - w.starved_since >= a.starve_after:
+        what = f"pool {p.tokens}/{w.nominal} with no compile running for {now - w.starved_since:.0f} s"
+        return ("HUNG", f"jobserver starved: {what}", silent) if p.clients else ("LEAK", f"jobserver tokens lost: {what}", silent)
+    if p.clients and silent and min(silent.values()) >= a.hung_children_after:
+        return ("HUNG-CHILDREN", f"all {len(silent)} server children silent (no CPU change in their process trees) for "
+                                 f"{min(silent.values()):.0f}+ s while {len(p.clients)} clients wait", silent)
+    if w.stuck_since and now - w.stuck_since >= a.stuck_after:
+        return "STUCK", f"{len(p.clients)} clients waiting, server spawned nothing for {now - w.stuck_since:.0f} s", silent
+    return None
+
+
+def cmd_run(a: argparse.Namespace) -> None:
+    w = Watch()
+    log("INFO", f"watchdog up (detect-and-kill only): port={a.port} interval={a.interval}s starve_after={a.starve_after}s "
+                f"stuck_after={a.stuck_after}s hung_children_after={a.hung_children_after}s nominal_pool={w.nominal} state={STATE}")
+    while True:
+        now = time.time()
+        pid = server_pid()
+        p = probe(pid) if pid else None
+        if p is None:
+            w.pid = None
+            time.sleep(a.interval)
+            continue
+        if p.tokens is None and w.pipe_warned != pid:
+            w.pipe_warned = pid
+            log("ERROR", f"server pid={pid} has no jobserver pipe -- cannot read the pool; token-loss detection is OFF for this server")
+        verdict = judge(w, p, now, a)
+        if verdict and now - w.last_kill < KILL_COOLDOWN:
+            if not w.cooldown_logged:
+                w.cooldown_logged = True
+                log("WARN", f"{verdict[0]} again within {KILL_COOLDOWN} s of the last kill; waiting ({verdict[1]})")
+        elif verdict:
+            w.last_kill, w.cooldown_logged = now, False
+            kill_with_evidence(p, verdict[1], w.nominal, verdict[0], verdict[2])
+            w.pid = None
+        if now - w.last_beat >= HEARTBEAT_EVERY:
+            w.last_beat = now
+            log("INFO", f"healthy: server pid={pid} age={p.age}s pool={p.tokens}/{w.nominal} "
+                        f"children={len(p.children)} clients={len(p.clients)}")
+        rotate_server_log()
+        time.sleep(a.interval)
+
+
+def cmd_status(_: argparse.Namespace) -> None:
+    pid = server_pid()
+    if pid is None:
+        die(f"no sccache server listening on :{PORT}")
+    p = probe(pid) or die(f"server pid {pid} exited while probing")
+    oldest = max((c.age for c in p.clients), default=0)
+    print(f"server pid={p.pid} up {p.age}s  pool={p.tokens}/{max(os.cpu_count() or 1, p.tokens or 0)}  "
+          f"children={len(p.children)}  clients={len(p.clients)} (oldest {oldest}s)  "
+          f"error-log={'yes' if str(SERVER_LOG.resolve()) in run(['lsof', '-nP', '-p', str(pid), '-Fn']).stdout else 'NO'}")
+    kills = STATE / "kills.jsonl"
+    if kills.exists():
+        print("recent kills:")
+        for line in kills.read_text().splitlines()[-5:]:
+            r = json.loads(line)
+            print(f"  {r['ts']} {r['kind']:13} pool={r['pool']}/{r['nominal']} clients_waiting={r['clients_waiting']}  {r['evidence']}")
+    else:
+        print("no kills recorded")
+
+
+def cmd_stop(_: argparse.Namespace) -> None:
+    pid = server_pid()
+    if pid is None:
+        die(f"no sccache server listening on :{PORT}")
+    p = probe(pid) or die(f"server pid {pid} exited while probing")
+    if p.children or p.clients:
+        die(f"refusing to stop: {len(p.children)} compiles running, {len(p.clients)} clients connected. Wait for idle.")
+    os.kill(pid, signal.SIGTERM)
+    log("INFO", f"stopped idle server pid={pid}; the next compile starts a fresh one")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Kill a wedged sccache server and leave evidence (detect-and-kill only).")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run", help="watch the server forever")
+    r.add_argument("--port", default=PORT, help=argparse.SUPPRESS)
+    r.add_argument("--interval", type=float, default=10)
+    r.add_argument("--starve-after", type=float, default=20, help="seconds of pool-short-and-idle before kill")
+    r.add_argument("--stuck-after", type=float, default=180, help="seconds of clients-waiting-and-nothing-spawned before kill")
+    r.add_argument("--hung-children-after", type=float, default=120, help="seconds every child shows no CPU progress before kill")
+    r.set_defaults(fn=cmd_run)
+    sub.add_parser("status", help="show server health").set_defaults(fn=cmd_status)
+    sub.add_parser("stop", help="stop the server if idle").set_defaults(fn=cmd_stop)
+    args = ap.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()

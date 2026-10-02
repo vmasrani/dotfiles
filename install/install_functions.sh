@@ -1094,6 +1094,23 @@ install_tpm() {
 	gum_success "tmux plugin manager installed successfully."
 }
 
+# tmux-powerkit (the tmux theme) requires bash 5+; macOS ships 3.2. Install
+# Homebrew bash on mac and fail loudly if the resulting bash is still too old.
+install_modern_bash() {
+	local bash_bin="bash"
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		[[ -x /opt/homebrew/bin/bash ]] || brew install bash
+		bash_bin=/opt/homebrew/bin/bash
+	fi
+	local major
+	major=$("$bash_bin" -c 'echo "${BASH_VERSINFO[0]}"')
+	if ((major < 5)); then
+		gum_error "install_modern_bash: $bash_bin is bash $major; tmux-powerkit needs bash 5+ (brew install bash / apt install bash)"
+		return 1
+	fi
+	gum_success "bash $major available for tmux-powerkit."
+}
+
 # Install every tmux plugin declared in ~/.tmux.conf via tpm, then VERIFY each
 # one landed as a git checkout. The old inline `install_plugins >/dev/null ||
 # warn` swallowed failures, so a transient clone error (or a headless tmux
