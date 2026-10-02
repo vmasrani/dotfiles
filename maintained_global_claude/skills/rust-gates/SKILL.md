@@ -9,14 +9,14 @@ Binding for any Rust repo or queued build/test/bench gate. Kept out of the alway
 
 ## The job queue (`queue`)
 
-**Add the `queue` prefix yourself** on `cargo test|nextest|bench|miri` and `just test*|bench*|ci-fast|ci-deep` — nothing rewrites your command; a PreToolUse hook only DENIES unqueued ones. `queue X` behaves exactly like `X` (waits for a free slot, streams live output, returns X's own exit code). Leave `cargo check|clippy|build` and `just lint*` unqueued — that's what keeps them instant.
+**Add the `queue` prefix yourself** on every compile and every test run — `cargo build|check|clippy|install|doc|run`, `cargo test|nextest|bench|miri`, `just test*|bench*|ci-fast|ci-deep|build*|lint*|check*|clippy*|install*|*-release`, `maturin build|develop` — nothing rewrites your command; a PreToolUse hook only DENIES unqueued ones. `queue X` behaves exactly like `X` (waits for a free slot, streams live output, returns X's own exit code). Builds and tests share the slots (the unqueued builds of 2026-10-01 stalled the external volume); the express pool keeps short incremental checks fast. Pass compounds as one quoted string: `queue 'cd <wt> && cargo build ...'`.
 
 - Compound commands go as ONE quoted string — `queue 'cd /repo && cargo test'`, never `queue cd /repo && cargo test` (the shell splits on `&&` first).
 - A pause before output is the QUEUE, not a hang — check `queue -l`, never re-run. Run long suites detached (`run_in_background`).
 - `| tail` destroys the exit code — read `queue --exit-code --last` before claiming a pass.
 - Agents write, the lead builds — ONE process compiles and runs the suite.
-- Everything else — cancel/`--triage` semantics, SJF jumping, `--solo`, slots, coalescing, the settled don't-re-investigate list: `~/dotfiles/maintained_global_claude/queue-reference.md`.
-- **Prefer `queue cargo nextest run --workspace` over `cargo test`.** Fail-fast is off via the seeded `.config/nextest.toml` (sweep-then-assert); per-job parallelism is capped by `NEXTEST_TEST_THREADS` (cpus/`QUEUE_SLOTS` from `.zshenv`) — never pass `-j`/`--test-threads` ad hoc. Reconcile counts from nextest's `Summary [ … ] N tests run: N passed` line. `cargo nextest list|--version|show-config` and `cargo test --list` are read-only and run unqueued.
+- Everything else — `--solo`, `--priority`, slots, how the gate works, the settled don't-re-investigate list: `~/dotfiles/maintained_global_claude/queue-reference.md`.
+- **Prefer `queue cargo nextest run --workspace` over `cargo test`.** Fail-fast is off via the seeded `.config/nextest.toml` (sweep-then-assert); per-job parallelism is capped by `NEXTEST_TEST_THREADS` (cpus/`QUEUE_SLOTS` from `.zshenv`) — never pass `-j`/`--test-threads` ad hoc. Reconcile counts from nextest's `Summary [ … ] N tests run: N passed` line. `cargo nextest --version|show-config|self`, `cargo fmt|metadata|tree|update|add|search` do not compile or run tests and stay unqueued; `cargo nextest list|archive` and `cargo test --list|--no-run` compile, so they are queued.
 
 ## Cargo — never compile the same dependency twice
 
@@ -26,7 +26,7 @@ sccache is wired machine-wide (`~/.cargo/config.toml` → `rustc-wrapper`): it d
 - **Never `cargo clean` to "fix" a problem** — it discards hours of workspace compilation on a hunch. The sanctioned forced rebuild (test count went DOWN → binary lacks your code) is `cargo clean -p <crate>` scoped to the suspect crate, never a full wipe.
 - **Keep flags stable.** Ad-hoc `RUSTFLAGS`, feature-set changes, and profile edits invalidate caches tree-wide; flags live in `.cargo/config.toml`/justfile, never per-command env vars.
 - **Pin the toolchain** (`rust-toolchain.toml`) so sibling worktrees don't silently rebuild the world on rustc drift.
-- **Settled — don't re-investigate a shared `CARGO_TARGET_DIR` across worktrees:** cargo's target-dir lock would serialize the unqueued `check`/`clippy` calls that are kept instant on purpose; sccache already de-dupes the expensive part without lock contention.
+- **Settled — don't re-investigate a shared `CARGO_TARGET_DIR` across worktrees:** cargo's target-dir lock would serialize the queued `check`/`clippy` calls that the express pool keeps fast; sccache already de-dupes the expensive part without lock contention.
 
 ## Test-binary layout — one integration harness per crate
 

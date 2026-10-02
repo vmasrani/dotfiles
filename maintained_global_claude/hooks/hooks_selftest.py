@@ -300,6 +300,7 @@ def guard(command):
 
 
 for cmd in [
+    # tests / benchmarks
     "cargo nextest run --workspace",
     "cargo nextest r --workspace",
     "cargo test",
@@ -316,48 +317,76 @@ for cmd in [
     "cargo build && cargo nextest run",
     "just ci-fast > /tmp/x.log 2>&1",
     "cargo nextest run 2>&1 | tail -20",
+    # 2026-10-01: every COMPILE holds a slot too. Builds outside the queue
+    # stalled the 4 TB volume (451 ms median file create under ~23 concurrent
+    # compilers vs 2 ms drained).
+    "cargo build",
+    "cargo build --workspace",
+    "cargo build --release",
+    "cargo check --workspace",
+    "cargo clippy --all-targets -- -D warnings",
+    "cargo install --path .",
+    "cargo install --release --path .",
+    "cargo doc --no-deps",
+    "cargo rustc -- --emit asm",
+    "cargo run --bin x",
+    "cargo +nightly build",
+    "cargo b",
+    "cargo nextest run --no-run -p x",
+    "cargo nextest list",
+    "cargo nextest archive --archive-file a.tar.zst",
+    "cargo test --no-run",
+    "cargo test --list",
+    "just lint",
+    "just install",
+    "just check",
+    "just clippy",
+    "just fastdev",
+    "just build-linux",
+    "just build-cartridge-release",
+    "just publish-release",
+    "maturin build --release",
+    "maturin develop",
+    "cd /x && cargo build",
     # The `&&` trap: `queue` received only the `cd` and the suite ran loose.
     # This is the one mistake a command prefix cannot detect for itself, since
     # the shell consumes the operator before `queue` is exec'd -- the hook sees
     # the raw string, so it is the only component that can catch it at all.
     "queue cd /repo && cargo nextest run",
-    # Full optimized builds/installs cost as much as a suite -- see the guard's
-    # own comment and commit f99394d (2026-08-14): an unqueued release compile
-    # was caught running loose.
-    "cargo build --release",
-    "cargo install --release --path .",
+    "queue cd /x && cargo build",
 ]:
     expect(cmd, guard(cmd), "deny")
 
 print("\n== unqueued_heavy_guard: what must NEVER be denied ==")
-# THE INVARIANT THAT REPLACED THE WEIGHT TABLE. `cargo check` and friends are
-# absent from the guard ON PURPOSE, and re-adding them would be silently
-# expensive: a flat one-slot queue put a check 9 minutes behind a suite instead
-# of 30 seconds, which is the whole reason the old model needed weights at all.
-# Under explicit queueing the fix is that these never enter the queue -- so the
-# guard demanding they be queued would reintroduce the exact regression the
-# weights were invented to solve, and nothing would look broken.
 for cmd in [
-    "cargo check --workspace",
-    "cargo clippy --all-targets -- -D warnings",
-    "cargo build",
-    "cargo build --workspace",
-    "cargo install --path .",
-    "just lint",
+    # no compile, no test run
     "cargo fmt",
-    # `cargo nextest`/`cargo test` read-only subcommands never run tests, so
-    # they never saturate the box -- must stay unqueued and instant.
+    "cargo metadata --format-version 1",
+    "cargo tree",
+    "cargo update",
+    "cargo add serde",
+    "cargo search serde",
+    "cargo --version",
     "cargo nextest --version",
-    "cargo nextest list",
     "cargo nextest show-config",
-    "cargo test --list",
+    "cargo nextest self update",
+    "just --list",
     # already queued -- must never be double-flagged
     "queue cargo nextest run --workspace",
     "queue --solo cargo bench",
     "QUEUE_QUIET=1 queue just ci-fast",
     "queue 'cd /repo && cargo nextest run'",
+    "queue cargo build",
+    "queue 'cd /x && cargo build'",
+    "queue 'cargo check --workspace'",
+    "queue 'cd /x && cargo clippy --all-targets -- -D warnings'",
+    "queue 'cd /x && cargo install --path .'",
+    "queue 'cd /x && cargo test --no-run'",
+    "queue just lint",
+    "queue 'maturin develop'",
     # not a command in head position -- quoted text is data, not a suite
     'rg -n "a|cargo test" justfile',
+    'rg -n "cargo build" justfile',
     "git status",
 ]:
     expect(cmd, guard(cmd), "allow")
@@ -405,10 +434,26 @@ with tempfile.TemporaryDirectory() as td:
         guard_cwd("just ci-fast", str(root)),
         "deny",
     )
+    # Builds are not gates: a worker still builds on its own branch, queued.
     expect(
-        "issue-1 branch: cargo check -> allow (never a heavy target)",
-        guard_cwd("cargo check", str(root)),
+        "issue-1 branch: queue cargo build -> allow (builds are not gated by pre-dev)",
+        guard_cwd("queue cargo build", str(root)),
         "allow",
+    )
+    expect(
+        "issue-1 branch: queue cargo nextest run --no-run -> allow (compile only)",
+        guard_cwd("queue cargo nextest run --no-run", str(root)),
+        "allow",
+    )
+    expect(
+        "issue-1 branch: queue cargo nextest run -> deny (test, pre-dev active)",
+        guard_cwd("queue cargo nextest run", str(root)),
+        "deny",
+    )
+    expect(
+        "issue-1 branch: cargo build unqueued -> deny (queue rule, not pre-dev)",
+        guard_cwd("cargo build", str(root)),
+        "deny",
     )
 
     sh("git", "checkout", "-q", "pre-dev")

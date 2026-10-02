@@ -16,7 +16,7 @@ WHY
 WHAT IS A WAIT (command position only, via utils/shell_tokens.py)
     - `flock` without -n/--nonblock/-w/--timeout/--wait
     - `queue`/`testq` unless its args are read-only (-l, --list, --status,
-      --exit-code, --last, -h, --help, --ahead, --triage)
+      --exit-code, --last, -h, --help)
     - a `while`/`until` loop whose body runs `sleep` (a polling loop)
     - `sleep N` with N >= 30 s (or any m/h/d suffix that reaches 30 s)
     - `tail -f/-F`, `watch`, `gh run watch`, `inotifywait`
@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "utils"))
 from shell_tokens import args_until_operator, command_heads, skip_env_assigns, tokenize  # noqa: E402
 
 QUEUE_CMDS = {"queue", "testq"}
-QUEUE_READONLY = {"-l", "--list", "--exit-code", "--last", "-h", "--help", "--status", "--ahead", "--triage"}
+QUEUE_READONLY = {"-l", "--list", "--exit-code", "--last", "-h", "--help", "--status"}
 FLOCK_NONBLOCKING_LONG = {"--nonblock", "--timeout", "--wait"}
 FLOCK_VALUE_FLAGS = {"-w", "--timeout", "--wait", "-E", "--conflict-exit-code"}
 LOOP_KEYWORDS = {"while", "until"}
