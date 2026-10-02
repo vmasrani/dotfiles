@@ -96,6 +96,7 @@
     midnight_commander      # midnight commander shell (https://midnight-commander.org/)
     nix_shell               # nix shell (https://nixos.org/nixos/nix-pills/developing-with-nix-shell.html)
     # vpn_ip                # virtual private network indicator
+    machine                 # which computer am I on (M5 / M4 / MBP / Linux)
     load                  # CPU load
     disk_usage            # disk usage
     # ram                   # free RAM
@@ -185,13 +186,32 @@
     typeset -g POWERLEVEL9K_EMPTY_LINE_RIGHT_PROMPT_FIRST_SEGMENT_START_SYMBOL='%{%}'
   fi
 
-  #################################[ os_icon: os identifier ]##################################
-  # OS identifier color.
-  typeset -g POWERLEVEL9K_OS_ICON_FOREGROUND=
-  # Show home icon on Mac Mini, default Apple logo elsewhere.
-  if [[ "$(hostname)" == *mac-mini* ]]; then
-    typeset -g POWERLEVEL9K_OS_ICON_CONTENT_EXPANSION='󰋜'
+  ################################[ machine: which computer ]################################
+  # Mac identity is looked up by this machine's LAN IP. Fill in the M4 and MacBook Pro IPs.
+  # Format: [ip]='LABEL|256-color'. Linux is detected by uname and needs no IP.
+  typeset -gA _P9K_MACHINES=(
+    [192.168.86.26]='M5|201'     # Mac mini M5   (magenta)
+    # [192.168.86.XX]='M4|45'    # Mac mini M4   (cyan)      <- put its IP here
+    # [192.168.86.YY]='MBP|208'  # MacBook Pro   (orange)    <- put its IP here
+  )
+  typeset -g _P9K_MACHINE_SEGMENT
+  if [[ $OSTYPE == linux* ]]; then
+    _P9K_MACHINE_SEGMENT=$'%F{220}\uF17C linux%f'
+  else
+    local _ip _ifc _entry
+    for _ifc in en0 en1 en2 en3; do
+      _ip=$(ipconfig getifaddr $_ifc 2>/dev/null) && [[ -n $_ip ]] && break
+    done
+    _entry=${_P9K_MACHINES[$_ip]}
+    if [[ -n $_entry ]]; then
+      _P9K_MACHINE_SEGMENT=$'%F{'"${_entry#*|}"$'}\uF179 '"${_entry%%|*}%f"
+    else
+      _P9K_MACHINE_SEGMENT="%F{196}?? ${_ip:-no-ip}%f"   # unknown machine: add its IP above
+    fi
   fi
+  function prompt_machine() {
+    p10k segment -t "$_P9K_MACHINE_SEGMENT"
+  }
 
   ################################[ prompt_char: prompt symbol ]################################
   # Green prompt symbol if the last command succeeded.

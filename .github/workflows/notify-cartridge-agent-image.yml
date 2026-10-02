@@ -1,22 +1,24 @@
 name: Notify cartridge agent image
 
 # Tells sophiaconsulting/cartridge to rebuild its CI/agent Docker image
-# (ghcr.io/sophiaconsulting/cartridge-agent) whenever the pieces of this repo
-# baked into that image change: Claude Code's skills/commands/hooks config
-# and the ctx-* navigation tools. See cartridge's Dockerfile and
-# .github/workflows/build-agent-image.yml for the consuming side.
+# (ghcr.io/sophiaconsulting/cartridge-agent) whenever the dotfiles change.
+# The image runs setup.sh at build time, so any change to what setup.sh
+# installs or symlinks must trigger a rebuild. See cartridge's Dockerfile
+# and .github/workflows/build-agent-image.yml for the consuming side.
 
 on:
   push:
     branches: [main]
     paths:
+      - setup.sh
+      - install/**
+      - shell/**
+      - tmux/**
+      - fzf/**
+      - editors/**
+      - tools/**
       - maintained_global_claude/**
-      - tools/ctx-index
-      - tools/ctx-peek
-      - tools/ctx-tree
-      - tools/ctx-stale
-      - tools/ctx-reset
-      - tools/ctx-skip
+      - .github/workflows/notify-cartridge-agent-image.yml
   workflow_dispatch: {} # manual trigger for testing the dispatch chain
 
 jobs:

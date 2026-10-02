@@ -81,3 +81,4 @@ PS1='\u@\h:\w\$ '
 
 # Added by Antigravity CLI installer
 export PATH="/Users/vmasrani/.local/bin:$PATH"
+. "$HOME/.cargo/env"

@@ -50,6 +50,7 @@ FAILURE POSTURE
 
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -60,71 +61,97 @@ from shell_tokens import command_heads, skip_env_assigns, tokenize  # noqa: E402
 
 QUEUE_CMDS = {"queue", "testq"}
 
-# ONLY things that must not overlap each other. This list is deliberately
-# SHORTER than the old hook's, and the omissions are the entire point.
+# THE RULE (2026-10-01): every compile and every test run holds a queue slot.
 #
-# `check`, `clippy`, `build` and `install` are absent ON PURPOSE. The old model
-# had to let them overlap a suite -- that is what the whole 12-unit weighted
-# budget existed to express, after a flat 2-slot queue made a `cargo check`
-# someone was waiting on sit 9 minutes behind a suite instead of 30 seconds
-# (see the TESTQ_SLOTS note this replaced). Under an explicit prefix that
-# machinery is unnecessary rather than merely simplified: a command nobody is
-# required to queue cannot suffer head-of-line blocking, because it never
-# enters the queue at all. Deny only the jobs that genuinely saturate the box,
-# and the latency win the weight table bought comes free.
+# Why: the 4 TB external volume stalls under builds that bypass the queue. With
+# ~23 concurrent compilers/linkers from three epics, a small file create+unlink
+# there took a 451 ms median (max 3 s); with the builds drained it was a 2 ms
+# median. Builds ran outside the queue because the old rule (2026-08-14) said
+# compiles idled an 18-core Mac while ~10 jobs waited. The express pool answers
+# that: a command that keeps finishing in under 30 s auto-joins a separate
+# 2-slot pool, so a quick incremental `cargo check` never waits behind a suite
+# -- which is also the old "check waits behind a suite" concern, solved without
+# leaving builds unqueued.
 #
-# Metadata verbs (fmt, tree, add, metadata, update, search) are absent for the
-# same reason, one step further out: nothing needs to classify them as cheap.
-HEAVY_CARGO_VERBS = {"nextest", "test", "bench", "miri"}
+# Two KINDS, because the pre-dev integration guard below only forbids workers
+# from running TESTS/GATES off the integration branch -- workers still build on
+# their own branches (queued):
+#   "build" -- compiles, runs nothing: cargo build|check|clippy|install|doc|
+#              rustc|run, `cargo test|nextest run --no-run`, `cargo test --list`,
+#              `cargo nextest list|archive` (these compile the test binaries),
+#              maturin build|develop, and the build-shaped just recipes.
+#   "test"  -- runs tests or benchmarks: cargo test|bench|miri, `cargo nextest
+#              run`, and just test*/bench*/ci-fast*/ci-deep*.
+#
+# NOT heavy (no compile, no test run): cargo fmt|metadata|tree|update|add|
+# search|--version, `cargo nextest --version|show-config|self`.
+CARGO_BUILD_VERBS = {"build", "check", "clippy", "install", "doc", "rustc", "run"}
+CARGO_TEST_VERBS = {"test", "bench", "miri"}
+# cargo's built-in short aliases (b, c, d, r, t) resolve to the verbs above.
+CARGO_ALIASES = {"b": "build", "c": "check", "d": "doc", "r": "run", "t": "test"}
+NEXTEST_BUILD_VERBS = {"list", "archive"}
+MATURIN_BUILD_VERBS = {"build", "develop"}
 
 # The CI contract every kitted project carries. `ci-fast` is the aggregate gate
 # every agent runs before opening a PR; in a python project it fans out to a
-# full pytest suite, so no cargo-shaped rule would ever catch it. `lint*` is
-# omitted alongside `cargo clippy`, per the note above.
-#
-# `-release`-suffixed and `build-{linux,mac,windows}` recipes are ALSO heavy on
-# purpose, despite the "build is cheap" rule above: those are full optimized
-# workspace/cross-compile builds (`build-cartridge-release`, `test-release`,
-# `build-linux`, ...), not the fast incremental `cargo build`/`cargo check`
-# the exclusion was written for. Caught a `just build-cartridge-release` full
-# release compile running unqueued on an already-oversubscribed box (2026-08-14).
-JUST_HEAVY_RE = re.compile(
-    r"\A(?:test|bench|ci-fast|ci-deep)[a-z0-9-]*\Z"
-    r"|\A[a-z0-9-]*-release\Z"
-    r"|\Abuild-(?:linux|mac|windows)\Z"
+# full pytest suite, so no cargo-shaped rule would ever catch it.
+JUST_TEST_RE = re.compile(r"\A(?:test|bench|ci-fast|ci-deep)[a-z0-9-]*\Z")
+JUST_BUILD_RE = re.compile(
+    r"\A(?:(?:build|install|lint|check|clippy|fastdev)[a-z0-9-]*|[a-z0-9-]*-release)\Z"
 )
 
+ALL_KINDS = ("build", "test")
 
-def _heavy_at(tokens, i):
-    """Name the heavy command starting at index `i`, or None."""
+
+def _classify_cargo(tokens, i):
+    """(label, kind) for the `cargo` at index `i`, or None."""
+    j = i + 1
+    if j < len(tokens) and tokens[j].startswith("+"):  # +nightly toolchain selector
+        j += 1
+    if j >= len(tokens):
+        return None
+    verb = CARGO_ALIASES.get(tokens[j], tokens[j])
+    rest = tokens[j + 1 :]
+    if verb in CARGO_BUILD_VERBS:
+        return f"cargo {verb}", "build"
+    if verb == "nextest":
+        if not rest:
+            return None
+        sub = rest[0]
+        if sub in ("run", "r"):
+            # `--no-run` only compiles the test binaries.
+            return ("cargo nextest run --no-run", "build") if "--no-run" in rest else ("cargo nextest run", "test")
+        if sub in NEXTEST_BUILD_VERBS:
+            return f"cargo nextest {sub}", "build"
+        return None  # --version, show-config, self, ...: no compile
+    if verb in CARGO_TEST_VERBS:
+        # `cargo test --no-run|--list` still compiles the test binaries but runs no tests.
+        if verb == "test" and ("--no-run" in rest or "--list" in rest):
+            return "cargo test --no-run", "build"
+        return f"cargo {verb}", "test"
+    return None
+
+
+def _classify_at(tokens, i):
+    """(label, kind) of the heavy command starting at index `i`, or None."""
     tok = tokens[i]
     if tok == "cargo":
-        j = i + 1
-        if j < len(tokens) and tokens[j].startswith("+"):  # +nightly toolchain selector
-            j += 1
-        if j < len(tokens) and tokens[j] in HEAVY_CARGO_VERBS:
-            verb = tokens[j]
-            rest = tokens[j + 1 :]
-            # `cargo nextest` is only heavy when it actually RUNS tests. Every
-            # other subcommand (--version, list, show-config, archive, self,
-            # ...) is a read-only enumeration/introspection call and must stay
-            # unqueued -- denying those trains agents to stop trusting the hook.
-            if verb == "nextest":
-                if rest and rest[0] in ("run", "r"):
-                    return "cargo nextest run"
-                return None
-            # `cargo test --list` enumerates tests without running them --
-            # the same no-run case as `cargo nextest list`.
-            if verb == "test" and "--list" in rest:
-                return None
-            return f"cargo {verb}"
-        # `cargo build`/`install` are cheap in debug but a full optimized
-        # `--release` workspace build is exactly as heavy as a test suite.
-        if j < len(tokens) and tokens[j] in ("build", "install") and "--release" in tokens[j + 1 :]:
-            return f"cargo {tokens[j]} --release"
-    if tok == "just" and i + 1 < len(tokens) and JUST_HEAVY_RE.match(tokens[i + 1]):
-        return f"just {tokens[i + 1]}"
+        return _classify_cargo(tokens, i)
+    if tok == "maturin" and i + 1 < len(tokens) and tokens[i + 1] in MATURIN_BUILD_VERBS:
+        return f"maturin {tokens[i + 1]}", "build"
+    if tok == "just" and i + 1 < len(tokens):
+        recipe = tokens[i + 1]
+        if JUST_TEST_RE.match(recipe):
+            return f"just {recipe}", "test"
+        if JUST_BUILD_RE.match(recipe):
+            return f"just {recipe}", "build"
     return None
+
+
+def _heavy_at(tokens, i, kinds=ALL_KINDS):
+    """Name the heavy command of one of `kinds` starting at index `i`, or None."""
+    hit = _classify_at(tokens, i)
+    return hit[0] if hit and hit[1] in kinds else None
 
 
 def inspect(command):
@@ -200,13 +227,16 @@ def _is_scoped_nextest(tokens, i):
 
 
 def _heavy_ignoring_queue(tokens):
-    """Like inspect(), but treats a `queue`/`testq` prefix as transparent.
+    """Like inspect(), but treats a `queue`/`testq` prefix as transparent and
+    counts only TEST/GATE commands (kind "test"), never builds.
 
     Used only by the pre-dev concurrent-work guard below, where even a
-    correctly queued heavy command must be denied off the `pre-dev` branch --
+    correctly queued test/gate must be denied off the `pre-dev` branch --
     the queue's job is scheduling, not exemption from "workers never run
     gates". A queued run of named tests only (see `_is_scoped_nextest`) is
     not a gate and passes.
+    gates". Workers still build on their own branches (queued), so builds are
+    deliberately invisible here.
     """
     for _sep, head in command_heads(tokens):
         i = skip_env_assigns(tokens, head)
@@ -217,7 +247,7 @@ def _heavy_ignoring_queue(tokens):
             i = skip_env_assigns(tokens, i + 1)
             if i >= len(tokens):
                 continue
-        offender = _heavy_at(tokens, i)
+        offender = _heavy_at(tokens, i, kinds=("test",))
         if offender == "cargo nextest run" and queued and _is_scoped_nextest(tokens, i):
             continue
         if offender:
@@ -305,10 +335,10 @@ def reason(command, offender, queued_somewhere):
             f"    queue '{inner}'"
         )
     return (
-        f"`{offender}` is heavy and was not sent to the queue. Several of these at once "
-        f"on this box thrash rather than finish -- memory is the cliff, not cores.\n\n"
+        f"`{offender}` compiles or runs tests and was not sent to the queue. Many of these at "
+        f"once starve the box (and the external volume's file I/O) rather than finish.\n\n"
         f"Run it as:\n"
-        f"    queue {command.strip()[:200]}\n\n"
+        f"    queue {shlex.quote(command.strip()[:200])}\n\n"
         f"`queue X` behaves exactly like `X` -- it waits for a free slot, then streams "
         f"live output and returns the command's own exit code. Check the queue with "
         f"`queue -l`. For long suites prefer run_in_background, since queue wait + suite "

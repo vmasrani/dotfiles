@@ -64,19 +64,25 @@ export TS_SOCKET="/tmp/testq-${UID}.sock"
 [[ -d "$HOME/tools/shims" ]] && path=("$HOME/tools/shims" $path)
 export PATH
 
-# Machine-local overrides (QUEUE_SLOTS etc.) live in ~/.zshenv.local, which is
-# NOT tracked in dotfiles. Source it here so a box can set QUEUE_SLOTS before
-# the default and the NEXTEST_TEST_THREADS derivation below pick it up.
+# Machine-only settings: the git-ignored ~/dotfiles/local/.zshenv.local, or
+# ~/.zshenv.local (older boxes). Sourced by EVERY zsh, including the
+# non-interactive `zsh -c` agents use. Keep secrets out of them.
+[[ -f "$HOME/dotfiles/local/.zshenv.local" ]] && source "$HOME/dotfiles/local/.zshenv.local"
 [[ -f "$HOME/.zshenv.local" ]] && source "$HOME/.zshenv.local"
 
-# Per-machine concurrency for `queue` (see ~/dotfiles/tools/queue). Defaults to
-# 1; a machine-specific override in ~/.zshenv.local (sourced just above) sets it
-# earlier and this default leaves that untouched.
-export QUEUE_SLOTS="${QUEUE_SLOTS:-1}"
+# sccache cache dir/size for every zsh and for tools/sccache-watchdog (see the
+# header of shell/sccache-env.sh for why this cannot live in .zshrc).
+[[ -f "$HOME/dotfiles/shell/sccache-env.sh" ]] && source "$HOME/dotfiles/shell/sccache-env.sh"
+
+# Per-machine concurrency for `queue` (see ~/dotfiles/tools/queue): seeds the
+# machine-wide slot count when /tmp/queue-$UID/slots does not exist yet (first
+# use after a reboot). Defaults to 2; a machine sets its own in .zshenv.local.
+export QUEUE_SLOTS="${QUEUE_SLOTS:-2}"
 
 # nextest defaults to one test process PER LOGICAL CPU, PER RUN -- so
 # QUEUE_SLOTS concurrent jobs oversubscribe (e.g. 64 cpus x 3 slots = 192 test
-# processes). Cap per-job threads at cpus/slots, floored at 1; an explicit
+# processes). Give each job every cpu anyway: a lone job then gets the whole box,
+# and concurrent jobs share it (timed runs use `queue --solo`). An explicit
 # NEXTEST_TEST_THREADS already in the environment always wins.
 if command -v nproc >/dev/null 2>&1; then
   _dotfiles_cpus="$(nproc)"
@@ -84,10 +90,17 @@ elif command -v sysctl >/dev/null 2>&1; then
   _dotfiles_cpus="$(sysctl -n hw.logicalcpu 2>/dev/null)"
 fi
 if [[ -n "${_dotfiles_cpus:-}" ]]; then
-  _dotfiles_threads=$(( _dotfiles_cpus / QUEUE_SLOTS ))
+  _dotfiles_threads=$_dotfiles_cpus
   (( _dotfiles_threads < 1 )) && _dotfiles_threads=1
   export NEXTEST_TEST_THREADS="${NEXTEST_TEST_THREADS:-$_dotfiles_threads}"
+  # Repo .cargo/config.toml files may pin a small `[build] jobs` sized for another
+  # box (cartridge: 3, for a 10-core workstation); CARGO_BUILD_JOBS overrides it.
+  # Use 3/4 of the cpus so unqueued check/clippy keep headroom. Stable per machine,
+  # so sccache keys don't churn. An explicit CARGO_BUILD_JOBS always wins.
+  _dotfiles_jobs=$(( _dotfiles_cpus * 3 / 4 ))
+  (( _dotfiles_jobs < 1 )) && _dotfiles_jobs=1
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$_dotfiles_jobs}"
 else
-  print -u2 "zshenv: neither nproc nor sysctl -n hw.logicalcpu found -- leaving NEXTEST_TEST_THREADS unset"
+  print -u2 "zshenv: neither nproc nor sysctl -n hw.logicalcpu found -- leaving NEXTEST_TEST_THREADS and CARGO_BUILD_JOBS unset"
 fi
-unset _dotfiles_cpus _dotfiles_threads
+unset _dotfiles_cpus _dotfiles_threads _dotfiles_jobs
