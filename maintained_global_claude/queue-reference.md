@@ -1,27 +1,25 @@
 # queue — full reference
 
 Split out of the global `CLAUDE.md` (2026-07-27) so the Rust-only queue manual stops
-riding along on every Python/frontend session; rewritten for the `testq` → `queue` rename
-(2026-08-03). The four rules that prevent real mistakes stayed in `CLAUDE.md`; everything
+riding along on every Python/frontend session; rewritten 2026-10-01 for the flock slot gate. The four rules that prevent real mistakes stayed in `CLAUDE.md`; everything
 below is lookup material — read it when you actually need it.
 
 ## This machine (Linux VM — verified 2026-07-24)
 
 64 threads (2×16-core Xeon Platinum 8280L, 2 threads/core), **503 GB RAM**, ext4 on `/` (497 G)
 and `/data` (1 T). Present: `cargo`, `clippy`, `miri`, `rustfmt`, `rust-analyzer`, `just`,
-`tsp`/`queue`, `cargo-nextest` (0.9.143) and `sccache` (wired as `rustc-wrapper`) — both verified
+`queue`, `cargo-nextest` (0.9.143) and `sccache` (wired as `rustc-wrapper`) — both verified
 2026-09-03; earlier notes saying they were missing are obsolete. Everything below marked *M4* was
 measured on the macOS laptop and has **not** been reproduced here — the hardware gap is large
 enough to invalidate the reasoning, not just the constants.
 
 - **nextest is the runner here.** `queue cargo nextest run --workspace`; fail-fast is off via the
-  seeded `.config/nextest.toml`; `NEXTEST_TEST_THREADS` = cpus / `QUEUE_SLOTS` (64 / 3 = 21, from
-  `.zshenv`) caps each job so three slots never oversubscribe the box. `cargo nextest
-  list|--version|show-config` and `cargo test --list` are read-only and run unqueued.
+  seeded `.config/nextest.toml`; `NEXTEST_TEST_THREADS` = cpus / the slot count caps each job so three slots never oversubscribe the box. `cargo nextest
+  --version|show-config|self` are read-only and run unqueued; `cargo nextest list|archive` and `cargo test --list|--no-run` compile, so they are queued.
 - **sccache is live, so the M4 sccache bullets apply.** It still never shares across worktrees:
   sccache hashes the compile's `cwd` (`SCCACHE_BASEDIRS` covers only the C/C++ path, issue #2652,
   Rust fix unmerged, PR #2678). `SCCACHE_DIR` falls back to `~/.cache/sccache` on Linux
-  (`.aliases-and-envs.zsh`).
+  (`shell/sccache-env.sh`, sourced from `.zshenv`).
 - **No copy-on-write.** `/`, `/home` and `/data` are ext4; `cp --reflink=always` fails with
   `Operation not supported`, and macOS `cp -c -R` doesn't exist in GNU coreutils. Seeding a slot
   from a warm `target/` is a full multi-GB byte copy here, not 0.59 s at zero bytes — let slots
@@ -42,65 +40,87 @@ enough to invalidate the reasoning, not just the constants.
   keeps 3 slots inside 64 threads. That doesn't make raising it further safe: suite peak RSS has
   never been recorded on *either* machine. Don't change it without measuring.
 
+## Usage
+
+    queue <cmd> [args...]        wait for a free slot, then run cmd HERE, as your child
+    queue 'cd /repo && cmd'      ONE argument = run with `zsh -c` (keeps the && inside the gate)
+    queue --priority <cmd...>    skip the waiting line; take the next free slot
+    queue --solo <cmd...>        take EVERY slot; the job has the box to itself
+    queue --slots [N]            show, or set, the machine-wide slot count (live)
+    queue -l | --list            who holds which slot, and who is waiting
+    queue --exit-code --last     exit code of this session's last queued job
+    queue --status --last        that job's record (cmd, cwd, times, rc)
+
+Env: `QUEUE_SLOTS` (seeds the slots file on first use only), `QUEUE_SESSION` (keys `--last`; agents
+set it, humans fall back to tty/pgid), `QUEUE_QUIET=1` (silence the wait heartbeat),
+`QUEUE_HEARTBEAT` (seconds, default 30), `QUEUE_DIR` (default `/tmp/queue-$UID`), `QUEUE_STATE_DIR`
+(default `~/.cache/queue`). Needs `flock(1)` (macOS: `brew install flock`).
+
+Removed, and they exit 2 with a message: `--cancel`, `--triage`, `--ahead`, `--depth`, `--budget`,
+`-C`. There is no task-spooler, no `QUEUE_SOCKET`, no coalescing, no shortest-job-first jumping.
+
 ## Semantics
 
-`queue X` behaves exactly like `X` — it blocks until a slot frees, then runs in-process: live streamed stdout/stderr (kept separate), the command's own exit code, inherited cwd/env/stdin. It is a queue, not a sandbox. While waiting, a heartbeat line on stderr (every `QUEUE_HEARTBEAT` seconds, default 30) names the job blocking you and estimates the remaining wait from that command's median runtime — without it the wrapper goes silent for the length of the queue, which reads as a hang and provokes callers into re-running the job.
+- **The job is your child.** Live stdout/stderr (kept separate), the command's own exit code, your
+  cwd, env and stdin. Nothing is spooled or tee'd. Exit codes are never lost.
+- **A slot is a lock file** (`$QUEUE_DIR/slot.1..N`) held with `flock` on an fd of the `queue` process.
+  Free slot = unlocked file. The kernel releases the lock when the holder dies, including `kill -9`,
+  so there is no stale slot to clean up.
+- **Leaked children can't pin a slot.** The lock fds are closed in the job's process, so a server or
+  watcher the job leaves running does not hold the slot after the job exits.
+- **Where the slot count comes from.** Machine-only settings live in the git-ignored
+  `~/dotfiles/local/.zshenv.local`, sourced by `~/dotfiles/shell/.zshenv` for every zsh. The Mac sets
+  `QUEUE_SLOTS=4` there; the shared default is 2. `QUEUE_SLOTS` only seeds `/tmp/queue-$UID/slots` on
+  first use after a reboot; `queue --slots N` changes the live value.
+- **Gates use `queue --solo`** (`ci-fast`, `test-fast`): the gate gets the whole box.
+- **Fairness: a turnstile.** Waiters take `$QUEUE_DIR/turnstile` one at a time and only the holder
+  may claim a slot, so normal jobs start roughly in arrival order. `--solo` holds the turnstile while
+  it collects every slot (in order, so two solos can't deadlock): it waits for running jobs to
+  finish, blocks new ones from starting while it waits and runs, and cannot be starved.
+  `--priority` skips the turnstile and takes the next free slot.
+- **Slots file:** `$QUEUE_DIR/slots`, machine-wide and live. Seeded from `QUEUE_SLOTS` once, then
+  changed only by `queue --slots N`. Raising it lets waiters start at once; lowering it never stops a
+  running job.
+- **`QUEUE_ACTIVE=1`** is set inside every queued job; a nested `queue` (a just recipe that queues)
+  sees it and runs its command directly instead of waiting on a slot its parent holds.
+- **A pause before output is the wait.** A heartbeat line on stderr every 30 s says so. Don't re-run.
 
-You type the prefix yourself; nothing rewrites your command. `unqueued_heavy_guard.py` (PreToolUse) **denies** — never rewrites — an unqueued `cargo test|nextest|bench|miri` or `just test*|bench*|ci-fast|ci-deep`, and names the corrected form. It deliberately does NOT flag `cargo check|clippy|build|install` or `just lint*` for debug builds: those are meant to stay unqueued and instant. `--release` builds/installs (`cargo build --release`, `cargo install --release --path .`) and `-release`-suffixed / `build-{linux,mac,windows}` just recipes ARE flagged — a full optimized build costs as much as a suite (incident 2026-08-14). A denier is allowed to be an imperfect keyword table because both of its error directions are cheap — a miss is just "no hook", an over-match costs one retype and shows its reasoning. The old rewriter was not allowed to be imperfect, which is why it grew a classifier that had to stay in sync with a second one inside the queue.
+### See and stop waiters
 
-A queued job runs with `QUEUE_ACTIVE=1`; `queue` seeing that set runs the command directly instead of enqueuing, so a queued `just test` whose recipe itself calls `queue` can't deadlock waiting on capacity its own parent holds.
+`queue -l` lists slot holders (pid, since, cwd, cmd) and waiters. A waiter is an ordinary process:
+Ctrl-C it or `kill <pid>` (the pid is in `queue -l`). Killing a *holder's* `queue` pid frees its slot
+at once. There is nothing else to cancel.
 
-The heavy-guard hook denies only `cargo nextest run|r` and `cargo test` (without `--list`); `cargo nextest list|--version|show-config` and `cargo test --list` are read-only and stay unqueued. `.zshenv` exports `NEXTEST_TEST_THREADS = cpus / QUEUE_SLOTS` so slots × threads never exceeds the box.
+### Why not a daemon (2026-10-01)
+
+The task-spooler wrapper (1,430 lines, in git history) failed in ways a daemon makes inevitable:
+slots re-pinned to stale jobs after crashes; one `ts -u` crash wiped every queued job; exit codes
+were lost between the daemon and the caller. Locks held by the kernel on behalf of live processes
+cannot go stale, and there is no job list to lose.
 
 ## The `&&` trap
 
     queue cd /repo && cargo nextest run     # WRONG
 
-The shell splits on `&&` before `queue` is ever exec'd, so `queue` receives only `cd /repo`, queues that, exits — and the suite then runs completely unqueued. `queue` is structurally blind to this; the operator never reaches it. Pass the whole thing as ONE quoted argument instead — a single argument containing whitespace or shell metacharacters is run via `zsh -c`:
-
-    queue 'cd /repo && cargo nextest run'
-
-The same applies to `|`, `;` and `>`. A leading `FOO=bar` is fine either way, since the assignment is exported into the queue process and inherited by the job. The hook is the second defence: it sees the raw command string, the only vantage point from which "you queued the wrong half" is visible at all.
-
-## Flags
-
-- `queue -l` (or `--watch` for live view) — show waiting / running / finished jobs
-- `queue --status --last` — full record of your own most recent job: command, cwd, slot cost, timings, exit code
-- `queue --exit-code --last` — ground-truth exit code (use after any piped output)
-- `queue --ahead` — how many jobs a new submission would wait behind
-- `queue --solo <cmd>` — take every slot and run alone; `queue --priority <cmd>` — jump the queue (for work a human is waiting on)
-- `queue --events <cmd>` — detached mode emitting machine-readable `QUEUED`/`RUNNING`/`DONE` lines (pairs with Monitor); output goes to the `out=` file instead of streaming — notifications or streaming, not both
-- `queue --cancel <id|label|--last>` — drop a **queued** job. Always use this rather than a bare `ts -r <id>`: `ts` on its own talks to task-spooler's *default* socket, not the queue's, so the removal is addressed to a daemon that never heard of the job and fails with "The job cannot be removed" — which reads as a stuck job rather than a misaddressed one. It refuses a job that is already **running** and prints the exact `TS_SOCKET=… ts -k <id>` to run instead; it never kills anything itself. A foreign job with no queue record is still cancellable by id.
-- `queue --triage` — **report only**, exits 0, cancels nothing. Walks the queued+running jobs and flags three things: *duplicates* (same effective cwd and same command, normalised for a trailing `2>&1`) with the `queue --cancel` line for the later ones; *same target dir* (distinct jobs contending for one `target/` — overlap, reviewed by a human, since true subset detection would need test-filter semantics); and *needn't be queued* (`cargo clippy|check|build`, `just lint*` — the keep-instant category). A job with no record is listed as unidentifiable, never guessed at. A clean queue prints an explicit "nothing to flag" line.
-- `queue --slots [N]` shows, or sets for this session, how many jobs may run at once; `queue -- <cmd>` if the command starts with a flag; `--clear` forgets finished jobs; `--kill` stops the daemon (not a running job)
-- Env knobs: `QUEUE_SLOTS` (default 1), `QUEUE_NO_DEDUP=1` opts out of coalescing, `QUEUE_QUIET=1` silences the heartbeat, `QUEUE_QUICK_RATIO` (default 3) is the shortest-job-first threshold below
-- Obsolete: `queue --budget` errors outright; `QUEUE_BUDGET`/`TESTQ_BUDGET` and `QUEUE_WEIGHT`/`TESTQ_WEIGHT` are ignored with a loud warning rather than honoured — a `12` that meant twelve weight units would now mean twelve concurrent suites. `testq` itself is a gravestone script that exits 127 pointing at `queue`.
-
-## Slots — the whole scheduling model
-
-`QUEUE_SLOTS` (default 1) jobs run at once. Every job costs exactly one slot; `--solo` costs all of them, so it runs with the machine to itself. That is the entire policy — there is no weight table and nothing inspects your command to decide what it is.
-
-The weighted budget it replaced existed only because the old PreToolUse hook FORCED `cargo check` into the queue, where a flat FIFO could park it 9 minutes behind a suite; weights (check 3, suite 9, bench 12, against a 12-unit budget) plus a classifier were the fix for that. Queueing is now explicit, and nobody types `queue cargo check` — it never enters the queue, so it cannot queue behind anything. The latency the weights bought is recovered by NOT queueing rather than by weighing, and both classifiers became answers to a question no longer asked.
-
-The default is 1, not 2, because a single suite already runs at ~9x parallelism on 10 cores (MEASURED 2026-07-20: 2,930 s CPU / 323 s wall) and memory is the real cliff — the 1 GB bench peaks near 7.5 GB RSS against ~13 GB usable, so two heavy jobs mean swap, and swap means suites that never finish. With nothing classifying commands, a slot count of 2 means "two SUITES may overlap", precisely the collision this tool exists to prevent. Raise it only after measuring peak RSS, and prefer `--solo` over lowering it again.
-
-An empty queue is deliberately not fast-pathed: "nothing is running, so exec directly" is a check-then-act race where two agents both observe an empty queue and both start heavy jobs, unaccounted — and it would save milliseconds of socket round-trip against jobs measured in minutes.
-
-Byte-identical commands in an unchanged tree coalesce: followers attach to the leader's output and exit code instead of re-running. The key includes HEAD plus a dirty-file fingerprint, so a tree that has moved never coalesces. A **trailing `2>&1` is normalised away** before hashing — merging the streams changes what the caller sees, never what the run produces, and the follower is replayed the leader's separately-captured stdout and stderr either way. Nothing else is normalised: `> file` and `2>/dev/null` are genuinely different work. Scheduling round-robins across sessions, so one agent's fan-out can't starve others.
-
-### Shortest-job-first promotion, and what the duration history is keyed on
-
-A queued job may jump the jobs ahead of it when **every** queued job ahead has a measured median at least `QUEUE_QUICK_RATIO` (default 3) times its own, and its `target/` is not already locked by something running. It is the third promotion rule, after anti-affinity and fair-share, and all three share one flag: **at most one promotion per job, ever**, whichever rule fires. That single-shot budget is what bounds starvation — a suite can be jumped once, not repeatedly by a stream of quick jobs.
-
-This is not the deleted weight classifier returning. The classifier read the command *text* and decided what it must be; this reads `history_median` for the exact keys involved and nothing else. A command the queue has never run has **no** median, and an unknown median blocks the promotion rather than defaulting — an unseen command is far likelier to be a suite than a one-liner.
-
-Which means the history has to actually accumulate, so a job's duration key is `<repo> <display command>`: the repo is git's *common* dir (shared by every worktree of one repo), and the command is the unwrapped, `cd`-stripped form. Worktrees here are created per issue and deleted with it, and the old key — the submitter's `$PWD` plus the raw argv — gave every fresh worktree an empty history for a command that had run twenty times next door, and keyed `queue 'cd /wt-9 && just ci-fast'` apart from `just ci-fast` on top of that. Rows written under the old key simply orphan and age out with the weekly prune.
+The shell splits on `&&` before `queue` runs, so `queue` gets only `cd /repo` and the suite runs
+unqueued. Pass ONE quoted string: `queue 'cd /repo && cargo nextest run'`. Same for `|`, `;`, `>`.
+`unqueued_heavy_guard.py` (PreToolUse; omp: `~/.omp/agent/hooks/pre/queue_guard.ts`, which pipes into the same Python guard) denies — never rewrites — every unqueued compile and test run, and names the corrected form.
+The rule (2026-10-01): every compile and every test run holds a slot. Heavy = `cargo build|check|clippy|install|doc|rustc|run`,
+`cargo test|nextest run|bench|miri` (`--no-run` included), `cargo nextest list|archive`, `cargo test --list`, `maturin build|develop`, and `just`
+recipes `test*|bench*|ci-fast*|ci-deep*|build*|install*|lint*|check*|clippy*|fastdev*|*-release`. Not heavy: `cargo fmt|metadata|tree|update|add|search|--version`,
+`cargo nextest --version|show-config|self`. Why: ~23 unqueued concurrent compilers made a small file create on the 4 TB volume take a 451 ms median
+(vs 2 ms drained, 2026-10-01). Quick incremental checks auto-join the express pool, so they do not wait behind a suite. The pre-dev integration guard
+still denies only TEST/GATE commands off the integration branch — workers build (queued) on their own branches.
 
 ## Settled — don't re-investigate
 
-Measured, closed questions:
-
 - clippy does NOT thrash build artifacts
-- sccache never shares across worktrees (upstream gap) — *moot on this box, sccache isn't installed*
-- CoW-seeding a target dir saves only ~12 s — not worth orchestration; *and it is impossible on this box, ext4 has no reflink*
-- Agents share one warm `target/` per worktree — `cargo-slot` only matters if you raise the slot count
+- sccache never shares across worktrees (upstream gap)
+- sccache server hang (macOS, 2026-10-02, root cause reproduced): the server's one shared jobserver pool (`ncpu`
+  tokens) is drained for good when clients are killed mid-build — a killed rustc takes its tokens with it — so every
+  later compile blocks forever (clients at 0% CPU, no rustc child; upstream mozilla/sccache#2874, no fix in 0.18.0).
+  `tools/sccache-watchdog` (LaunchAgent `com.vmasrani.sccache-watchdog`) detects it (also all-children-silent), saves
+  evidence to `~/.cache/sccache-watchdog/hang-*` and kills the server; it never starts one (launchd-started servers hit
+  a TCC prompt). `sccache-watchdog status` shows pool/clients.
+- CoW-seeding a target dir saves only ~12 s — not worth orchestration (and impossible on ext4)
+- Agents share one warm `target/` per worktree
