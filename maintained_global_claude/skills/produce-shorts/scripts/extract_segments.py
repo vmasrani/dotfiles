@@ -7,30 +7,48 @@
 #   "typer>=0.12",
 #   "loguru>=0.7",
 #   "rich>=13.7",
+#   "opencv-python-headless>=4.10,<5",
+#   "numpy>=1.26",
 # ]
 # ///
 """Stage 8 step 4 — cut every A-roll timeline segment into `assets/aroll/`.
 
-Source selection per segment:
+Source selection per speaker panel:
 
-* `closeup-<speaker>` / `reaction-<speaker>` — if that speaker has a `camera_file`,
-  the isolated camera is used and the source range is shifted by the sync offset
-  (`camera_t = episode_t - offset_s`). An unverified, missing or gap-crossing sync
-  entry is a hard refusal: unverified sync means unusable footage, never a silent
-  fall back to the published frame.
-* everything else — the segment's own `source_file`.
+* the speaker has a `camera_file` — that isolated camera is used and the source range is shifted
+  by the sync offset (`camera_t = episode_t - offset_s`). An unverified, missing or gap-crossing
+  sync entry is a hard refusal: unverified sync means unusable footage, never a silent fall back
+  to the published frame.
+* otherwise — the segment's own `source_file` (a shared, multi-person frame).
 
-Framing: the speaker's `preferred_crop` when set, otherwise a treatment-appropriate
-centre crop. Output geometry follows the Remotion composition's contract
-(remotion/gen-props.mjs):
+Framing is COMPUTED PER SEGMENT from where the speaker's face is (scripts/facelib.py): YuNet
+face detection on frames sampled across the segment's source range, the speaker's face picked
+by transcript-derived identity on a shared frame (or the largest face on an isolated camera),
+and a crop centred on their median face position at the output aspect, with head room, kept
+inside their own tile. No stored crop is read: `episode.yaml speakers[].preferred_crop` is not
+used. A speaker whose face cannot be found in a segment is a hard refusal — there is no centre-
+crop fallback. `visual.crop` (a per-segment override set by hand) still wins for a closeup.
+Detections are cached under `clips/<slug>/assets/faces/`.
 
-* `closeup-<speaker>` / `reaction-<speaker>` → `<segment-id>.mp4` at the profile's
-  exact resolution (1080x1920).
+A closeup frames head and shoulders: the face box is ~30% of the frame height, the eye line sits at
+~0.30-0.36, and the source crop is never magnified beyond `framing.max_upscale` (config, default 2.0).
+When the speaker's tile cannot supply a full 9:16 window at that scale, the output is BLUR-FILLED —
+the sharp crop at its true scale over a blurred, darkened copy of itself — baked into the segment's mp4
+(same file name and treatment, so the manifest and the Remotion props are unchanged). A face that
+cannot be found is still a hard refusal.
+
+Alongside the cuts it writes `assets/aroll/layout.json`: per file and shot, the nose-to-chin band in
+output pixels, which `align_subtitles.py` / `validate_subtitles.py` use to keep split-screen captions
+off every mouth (scripts/capplace.py).
+
+Output geometry follows the Remotion composition's contract (remotion/gen-props.mjs):
+
+* `closeup-<speaker>` → `<segment-id>.mp4` at the profile's exact resolution (1080x1920).
 * `splitscreen` → `<segment-id>-top.mp4` + `<segment-id>-bottom.mp4`, one per-speaker
   panel each, at target width × half target height (1080x960); the composition stacks
-  them. Top is the left half of the source frame, bottom the right half.
-* `source-frame` → `<segment-id>.mp4`, the full frame at the profile width with its
-  own aspect kept; the composition letterboxes it.
+  them. `visual.speakers` = [top, bottom] picks WHICH speaker's face goes in each panel.
+
+Horizontal clips (`format: clip`) are not handled here; see render_horizontal.py.
 
 Video only (`-an`): the audio track of the finished clip comes from
 assemble_audio.py, never from these staged cuts.
@@ -49,29 +67,18 @@ from loguru import logger
 from rich.console import Console
 from rich.table import Table as RichTable
 
-from pslib import (
-    EPSILON,
-    Clip,
-    Episode,
-    Speaker,
-    SyncEntry,
-    TimelineSegment,
-    ffprobe_media,
-    fmt_range,
-    load_clip,
-    load_episode,
-)
+import capplace
+import facelib
+from framer import Framer, resolve_source
+from pslib import EPSILON, Clip, Episode, TimelineSegment, ffprobe_media, fmt_range, load_clip, load_episode
 from psmedia import (
-    center_crop,
     episode_root_for,
     even,
     ff_time,
-    fmt_crop,
     load_config,
     media_path,
     parse_crop,
     probe_dims,
-    probed_duration,
     profile_dims,
     resolve_profile,
     run_ffmpeg,
@@ -81,12 +88,12 @@ from psmedia import (
 console = Console()
 app = typer.Typer(add_completion=False)
 
-SPEAKER_TREATMENTS = ("closeup-", "reaction-")
+SPEAKER_TREATMENTS = ("closeup-",)
 
 
 @dataclass
 class Job:
-    """One output file: a source range, a crop, and a target geometry."""
+    """One output file: a source range, a crop schedule, and a target geometry."""
 
     segment: TimelineSegment
     name: str                       # output basename without extension
@@ -94,8 +101,8 @@ class Job:
     source_path: Path
     source_in: float
     source_out: float
-    crop: tuple[int, int, int, int]  # w, h, x, y
-    fit: str                        # "profile" (exact WxH) | "width" (profile width, free height)
+    shots: list[facelib.Shot]       # crop windows over source time (one per layout; a moving window pans)
+    fit: str                        # "profile" (exact WxH) | "half" (one split-screen panel)
     origin: str                     # human-readable note for the report
 
     @property
@@ -104,7 +111,7 @@ class Job:
 
 
 # ---------------------------------------------------------------------------
-# Source selection
+# Treatment -> jobs
 # ---------------------------------------------------------------------------
 
 
@@ -115,180 +122,77 @@ def treatment_speaker(seg: TimelineSegment) -> str | None:
     return None
 
 
-def speaker_by_id(episode: Episode, sid: str, where: str) -> Speaker:
-    match = [s for s in episode.speakers if s.id == sid]
-    if not match:
-        raise ValueError(f"{where}: speaker {sid!r} is not in episode.yaml speakers ({sorted(episode.speaker_ids())})")
-    return match[0]
-
-
-def sync_for(episode: Episode, camera_file: str) -> SyncEntry | None:
-    match = [s for s in episode.sync if s.file == camera_file]
-    if len(match) > 1:
-        raise ValueError(f"episode.yaml has {len(match)} sync entries for {camera_file}")
-    return match[0] if match else None
-
-
-def camera_range(sync: SyncEntry, seg: TimelineSegment) -> tuple[float, float]:
-    """Episode-time range → camera-time range. Camera t0 occurs `offset_s` after episode t0."""
-    return seg.source_in - sync.offset_s, seg.source_out - sync.offset_s
-
-
-def resolve_source(seg: TimelineSegment, episode: Episode) -> tuple[str, float, float, str, list[str]]:
-    """(source_rel, source_in, source_out, origin, refusals) for one A-roll segment."""
-    sid = treatment_speaker(seg)
-    if sid is None:
-        return seg.source_file, seg.source_in, seg.source_out, "segment source_file", []
-
-    speaker = speaker_by_id(episode, sid, seg.id)
-    if speaker.camera_file is None:
-        return seg.source_file, seg.source_in, seg.source_out, f"segment source_file (no camera for {sid})", []
-
-    sync = sync_for(episode, speaker.camera_file)
-    if sync is None:
-        return "", 0.0, 0.0, "", [
-            f"{seg.id}: speaker {sid} has camera_file {speaker.camera_file} but episode.yaml has no sync "
-            f"entry for it — run scripts/sync_cameras.py and verify it before rendering"
-        ]
-    if not sync.verified:
-        return "", 0.0, 0.0, "", [
-            f"{seg.id}: sync for {sync.file} is not verified (confidence {sync.confidence:.2f}, "
-            f"method {sync.method}) — verify it (`sync_cameras.py verify`, then set verified: true) "
-            f"or change {seg.id}'s treatment away from {seg.visual.treatment}"
-        ]
-
-    cam_in, cam_out = camera_range(sync, seg)
-    refusals = []
-    if cam_in < -EPSILON:
-        refusals.append(
-            f"{seg.id}: source range {fmt_range(seg.source_in, seg.source_out)} maps to camera time "
-            f"{cam_in:.3f}s in {sync.file} at offset {sync.offset_s:+.3f}s — before the camera started rolling"
-        )
-    cam_duration = probed_duration(episode, sync.file)
-    if cam_out > cam_duration + EPSILON:
-        refusals.append(
-            f"{seg.id}: maps to camera time {cam_out:.3f}s in {sync.file}, past its probed "
-            f"duration {cam_duration:.3f}s"
-        )
-    for gap in sync.gaps:
-        if cam_in < gap.camera_s + gap.duration_s and cam_out > gap.camera_s:
-            refusals.append(
-                f"{seg.id}: camera range {cam_in:.3f}-{cam_out:.3f}s crosses a recorded discontinuity in "
-                f"{sync.file} at {gap.camera_s:.3f}s (+{gap.duration_s:.3f}s) — the sync offset is not valid there"
-            )
-    origin = f"{sync.file} @ offset {sync.offset_s:+.3f}s"
-    return sync.file, cam_in, cam_out, origin, refusals
-
-
-# ---------------------------------------------------------------------------
-# Framing
-# ---------------------------------------------------------------------------
-
-
-def panel_crops(
-    src_w: int, src_h: int, panel_w: int, panel_h: int, speakers: list[Speaker], where: str
-) -> list[tuple[str, tuple[int, int, int, int], str]]:
-    """The two split-screen panels: (suffix, crop, note), top = left half, bottom = right half.
-
-    Each panel is one speaker's framing at the panel aspect. A speaker's
-    `preferred_crop` wins for the half it lies inside (that is what the director set
-    it for); otherwise the half is centre-cropped to the panel aspect. Two preferred
-    crops inside the same half is a manifest ambiguity, not something to pick between.
-    """
-    half = even(src_w // 2)
-    panels = []
-    for suffix, origin in (("top", 0), ("bottom", src_w - half)):
-        inside = [
-            s for s in speakers
-            if s.preferred_crop
-            and (lambda c: origin <= c[2] and c[2] + c[0] <= origin + half)(parse_crop(s.preferred_crop))
-        ]
-        if len(inside) > 1:
-            raise ValueError(
-                f"{where}: speakers {[s.id for s in inside]} both have a preferred_crop inside the "
-                f"{suffix} half of the frame — one panel cannot show two speakers; fix the crops in episode.yaml"
-            )
-        if inside:
-            panels.append((suffix, parse_crop(inside[0].preferred_crop), f"preferred_crop({inside[0].id})"))
-            continue
-        w, h, x, y = center_crop(half, even(src_h), panel_w, panel_h)
-        panels.append((suffix, (w, h, origin + x, y), f"centre {panel_w}:{panel_h} of the {suffix} half"))
-    return panels
+def static_shot(seg_in: float, seg_out: float, crop: tuple[int, int, int, int]) -> facelib.Shot:
+    w, h, x, y = crop
+    return facelib.Shot(seg_in, seg_out, w, h, [(seg_in, x, y)])
 
 
 def build_jobs(
-    clip: Clip, episode: Episode, episode_root: Path, out_w: int, out_h: int, aspect_w: int, aspect_h: int,
-    blur_fill_aspect: tuple[int, int] = (4, 5),
+    clip: Clip, episode: Episode, episode_root: Path, clip_dir: Path, out_w: int, out_h: int, max_upscale: float,
 ) -> tuple[list[Job], list[str]]:
     jobs: list[Job] = []
     refusals: list[str] = []
+    framer = Framer(clip_dir, episode_root, episode)
+    panel_h = even(out_h // 2)
+
+    def framed(seg: TimelineSegment, sid: str, source: tuple, kind: str, h: int) -> list[facelib.Shot] | None:
+        """Face-detected shots, or None after recording why not (the case boundary: one bad segment must not hide the rest)."""
+        try:
+            return framer.shots(seg, sid, source, kind, out_w, h, max_upscale)
+        except facelib.FaceError as err:
+            refusals.append(str(err))
+            return None
+
     for seg in clip.timeline:
         if seg.visual.kind != "aroll":
             continue
-        source_rel, src_in, src_out, origin, seg_refusals = resolve_source(seg, episode)
-        refusals += seg_refusals
-        if seg_refusals:
-            continue
-        source_path = media_path(episode_root, source_rel)
-        src_w, src_h = probe_dims(episode, source_rel)
         treatment = seg.visual.treatment
         sid = treatment_speaker(seg)
 
         if treatment == "splitscreen":
-            panel_w, panel_h = out_w, even(out_h // 2)
-            for suffix, crop, note in panel_crops(src_w, src_h, panel_w, panel_h, episode.speakers, seg.id):
-                validate_crop_within(crop, src_w, src_h, f"{seg.id} ({suffix})")
-                jobs.append(Job(seg, f"{seg.id}-{suffix}", source_rel, source_path, src_in, src_out,
-                                crop, "half", f"{origin} — {note}"))
+            names = seg.visual.speakers
+            if not names or len(names) != 2 or len(set(names)) != 2:
+                raise ValueError(f"{seg.id}: splitscreen needs visual.speakers = [top, bottom] (two distinct ids), got {names}")
+            for suffix, panel_sid in zip(("top", "bottom"), names):
+                source = resolve_source(seg, episode, panel_sid)
+                refusals += source[4]
+                if source[4]:
+                    continue
+                source_rel, src_in, src_out, origin, _, isolated = source
+                shots = framed(seg, panel_sid, source, "panel", panel_h)
+                if shots is None:
+                    continue
+                jobs.append(Job(seg, f"{seg.id}-{suffix}", source_rel, media_path(episode_root, source_rel), src_in, src_out,
+                                shots, "half", f"{origin} — {suffix} = {panel_sid} ({'own camera' if isolated else 'shared frame'})"))
             continue
 
-        if treatment == "source-frame":
-            crop = (even(src_w), even(src_h), 0, 0)
-            fit = "width"
-            note = "full frame"
-        elif treatment.startswith("blur-fill-"):
-            # Blur-fill keeps the SOURCE'S FULL HEIGHT — so a head is never cropped — but
-            # narrows the width to an intermediate aspect before the composition blurs the
-            # remainder in behind it. The aspect is the whole design decision:
-            #
-            #   16:9 (the raw frame) -> a 1080x608 band, face ~25% of frame height. That is
-            #     the letterbox failure with a prettier backdrop; measured on this episode.
-            #   9:16 (a full crop)   -> face ~69-72%, and the head clips when the speaker
-            #     leans forward. This is what blur-fill exists to avoid.
-            #   4:5  (the default)   -> a 1080x1350 band filling ~70% of frame height, face
-            #     ~45-50%, full source height retained. Head complete AND large enough to read.
-            #
-            # Per-segment `visual.crop` still wins where a speaker has moved.
-            bf_w, bf_h = blur_fill_aspect
-            if seg.visual.crop:
-                crop = parse_crop(seg.visual.crop)
-                note = f"segment crop (blur-fill {bf_w}:{bf_h})"
-            else:
-                crop = center_crop(src_w, src_h, bf_w, bf_h)
-                note = f"blur-fill {bf_w}:{bf_h}"
-            fit = "width"
-        elif sid is not None:
-            speaker = speaker_by_id(episode, sid, seg.id)
-            if seg.visual.crop:
-                crop = parse_crop(seg.visual.crop)
-                note = f"segment crop({sid})"
-            elif speaker.preferred_crop:
-                crop = parse_crop(speaker.preferred_crop)
-                note = f"preferred_crop({sid})"
-            else:
-                crop = center_crop(src_w, src_h, aspect_w, aspect_h)
-                note = f"centre {aspect_w}:{aspect_h}"
-            fit = "profile"
-        else:
+        if sid is None:
             refusals.append(
-                f"{seg.id}: unsupported aroll treatment {treatment!r} — expected "
-                f"closeup-<speaker>|reaction-<speaker>|splitscreen|source-frame"
+                f"{seg.id}: unsupported treatment {treatment!r} for a short — expected "
+                f"closeup-<speaker>|splitscreen (horizontal clips use render_horizontal.py)"
             )
             continue
-
-        validate_crop_within(crop, src_w, src_h, seg.id)
-        jobs.append(Job(seg, seg.id, source_rel, source_path, src_in, src_out, crop, fit,
+        source = resolve_source(seg, episode, sid)
+        refusals += source[4]
+        if source[4]:
+            continue
+        source_rel, src_in, src_out, origin, _, isolated = source
+        if seg.visual.crop:
+            shots = [static_shot(src_in, src_out, parse_crop(seg.visual.crop))]
+            note = f"{sid} (visual.crop override)"
+        else:
+            shots = framed(seg, sid, source, "closeup", out_h)
+            note = f"{sid} ({'own camera' if isolated else 'shared frame'})"
+        if shots is None:
+            continue
+        jobs.append(Job(seg, seg.id, source_rel, media_path(episode_root, source_rel), src_in, src_out, shots, "profile",
                         f"{origin} — {note}"))
+
+    for job in jobs:
+        src_w, src_h = probe_dims(episode, job.source_rel)
+        for shot in job.shots:
+            for _, x, y in shot.keys:
+                validate_crop_within((shot.w, shot.h, x, y), src_w, src_h, job.name)
     return jobs, refusals
 
 
@@ -296,30 +200,52 @@ def expected_dims(job: Job, out_w: int, out_h: int) -> tuple[int, int]:
     """The exact output geometry — computed here, never left to ffmpeg's `-2` rounding.
 
     `profile` fills the whole target frame, `half` one split-screen panel (the
-    Remotion composition stacks two of them), `width` keeps the source aspect at the
-    target width and lets the composition letterbox it.
+    Remotion composition stacks two of them).
     """
-    if job.fit == "profile":
-        return out_w, out_h
-    if job.fit == "half":
-        return out_w, even(out_h // 2)
-    w, h, _, _ = job.crop
-    return out_w, max(2, even(int(round(out_w * h / w))))
+    return (out_w, out_h) if job.fit == "profile" else (out_w, even(out_h // 2))
 
 
-def filter_chain(job: Job, out_w: int, out_h: int, fps: float) -> str:
-    w, h, x, y = job.crop
+def pan_expr(shot: facelib.Shot, axis: int) -> str:
+    """ffmpeg expression for the crop window's x (axis 1) or y (axis 2) at shot-relative time `t`."""
+    keys = [(round(k[0] - shot.t0, 3), k[axis]) for k in shot.keys]
+    expr = str(keys[-1][1])
+    for (ta, va), (tb, vb) in reversed(list(zip(keys, keys[1:]))):
+        expr = f"if(lt(t,{tb}),{va}+({vb}-{va})*(t-{ta})/{tb - ta:.3f},{expr})"
+    return expr if len(keys) == 1 else f"'{expr}'"
+
+
+def shot_graph(shot: facelib.Shot, src: str, dst: str, want_w: int, want_h: int) -> str:
+    """Filter-graph fragment `[src]` -> `[dst]` that frames one shot at want_w x want_h.
+
+    A blur-fill shot (`shot.dst`) draws the sharp crop at its true scale over a copy of itself that is scaled to
+    cover the frame at 1/BLUR_SCALE size, blurred, darkened and scaled back up (cheap: the blur runs on a thumbnail).
+    """
+    crop = f"crop={shot.w}:{shot.h}:{pan_expr(shot, 1)}:{pan_expr(shot, 2)}"
+    if shot.dst is None:
+        return (f"[{src}]{crop},scale={want_w}:{want_h}:force_original_aspect_ratio=decrease,"
+                f"pad={want_w}:{want_h}:(ow-iw)/2:(oh-ih)/2,setsar=1[{dst}]")
+    dx, dy, ow, oh = shot.dst
+    bw, bh = want_w // facelib.BLUR_SCALE // 2 * 2, want_h // facelib.BLUR_SCALE // 2 * 2
+    return (f"[{src}]{crop},split[{dst}a][{dst}b];"
+            f"[{dst}a]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},gblur=sigma={facelib.BLUR_SIGMA:g},"
+            f"lutyuv=y=val*{facelib.BLUR_BRIGHTNESS:g},scale={want_w}:{want_h}:flags=bilinear[{dst}bg];"
+            f"[{dst}b]scale={ow}:{oh}:flags=lanczos[{dst}fg];"
+            f"[{dst}bg][{dst}fg]overlay={dx}:{dy},setsar=1[{dst}]")
+
+
+def filter_args(job: Job, out_w: int, out_h: int, fps: float) -> list[str]:
+    """`-filter_complex` + `-map` for the job: one framed shot, or trim/frame/concat when the layout changes inside the segment."""
     want_w, want_h = expected_dims(job, out_w, out_h)
-    chain = [f"crop={w}:{h}:{x}:{y}"]
-    if job.fit == "width":
-        chain.append(f"scale={want_w}:{want_h}")
-    else:
-        chain += [
-            f"scale={want_w}:{want_h}:force_original_aspect_ratio=decrease",
-            f"pad={want_w}:{want_h}:(ow-iw)/2:(oh-ih)/2",
-        ]
-    chain += ["setsar=1", f"fps={fps:g}"]
-    return ",".join(chain)
+    if len(job.shots) == 1:
+        graph = shot_graph(job.shots[0], "0:v", "s0", want_w, want_h) + f";[s0]fps={fps:g}[out]"
+        return ["-filter_complex", graph, "-map", "[out]"]
+    legs = [
+        f"[0:v]trim=start={shot.t0 - job.source_in:.4f}:end={shot.t1 - job.source_in:.4f},setpts=PTS-STARTPTS[t{k}];"
+        + shot_graph(shot, f"t{k}", f"v{k}", want_w, want_h)
+        for k, shot in enumerate(job.shots)
+    ]
+    concat = "".join(f"[v{k}]" for k in range(len(job.shots))) + f"concat=n={len(job.shots)}:v=1:a=0,fps={fps:g}[out]"
+    return ["-filter_complex", ";".join([*legs, concat]), "-map", "[out]"]
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +267,7 @@ def extract(job: Job, out_path: Path, out_w: int, out_h: int, fps: float, crf: i
             "-i", str(job.source_path),
             "-t", ff_time(job.source_out - job.source_in),
             "-an", "-sn", "-dn",
-            "-vf", filter_chain(job, out_w, out_h, fps),
+            *filter_args(job, out_w, out_h, fps),
             "-c:v", "libx264", "-crf", str(crf), "-preset", "medium",
             "-pix_fmt", "yuv420p", "-r", f"{fps:g}",
             "-movflags", "+faststart",
@@ -351,10 +277,35 @@ def extract(job: Job, out_path: Path, out_w: int, out_h: int, fps: float, crf: i
     )
 
 
+def describe_shots(job: Job) -> str:
+    def one(s: facelib.Shot) -> str:
+        x, y = s.keys[0][1], s.keys[0][2]
+        text = f"{s.w}x{s.h}@({x},{y})" + ("" if s.static else f" pan x{len(s.keys)}")
+        if s.face_frac:
+            text += f" {s.scale:.2f}x face {s.face_frac:.0%} eyes {s.eye_frac:.2f}"
+        return text + (" BLUR-FILL" if s.blur_fill else "")
+    return one(job.shots[0]) if len(job.shots) == 1 else f"{len(job.shots)} shots: " + " | ".join(
+        f"{s.t0 - job.source_in:.1f}s {one(s)}" for s in job.shots)
+
+
+def layout_entry(job: Job, panel_offset: int) -> dict:
+    """The shots of one output file in CLIP time, with mouth bands in full-frame pixels (panel_offset = the panel's top)."""
+    seg = job.segment
+    return {
+        "segment": seg.id, "treatment": seg.visual.treatment,
+        "shots": [{
+            "t0": round(seg.output_in + shot.t0 - job.source_in, 4), "t1": round(seg.output_in + shot.t1 - job.source_in, 4),
+            "blur_fill": shot.blur_fill, "scale": round(shot.scale, 3), "face_frac": round(shot.face_frac, 3),
+            "eye_frac": round(shot.eye_frac, 3),
+            "mouth": None if shot.mouth == (0.0, 0.0) else [round(shot.mouth[0] + panel_offset, 1), round(shot.mouth[1] + panel_offset, 1)],
+        } for shot in job.shots],
+    }
+
+
 @app.command()
 def main(
     clip_dir: Path = typer.Argument(..., help="Clip directory containing clip.yaml"),
-    profile_name: str = typer.Option("youtube-shorts", "--profile", help="Platform profile name from episode.yaml"),
+    profile_name: str = typer.Option("youtube-shorts", "--profile", help="Platform profile name from episode.yaml (format: short)"),
     episode_root: Path = typer.Option(None, "--episode-root", help="Episode root holding episode.yaml (default: CLIP_DIR/../..)"),
     config_path: Path = typer.Option(None, "--config", help="Pipeline config (default: config/defaults.yaml)"),
     crf: int = typer.Option(16, "--crf", help="x264 quality for the staged cuts (lower is better)"),
@@ -365,15 +316,19 @@ def main(
     if not clip_dir.is_dir():
         raise typer.BadParameter(f"clip directory does not exist: {clip_dir}")
     root = episode_root_for(clip_dir, episode_root)
-    load_config(config_path)  # fails loudly if the pipeline config is missing/malformed
+    config = load_config(config_path)  # fails loudly if the pipeline config is missing/malformed
 
     clip = load_clip(clip_dir / "clip.yaml")
     episode = load_episode(root / "episode.yaml")
     profile = resolve_profile(episode, profile_name)
+    if profile.format != "short" or clip.clip.format != "short":
+        raise typer.BadParameter(
+            f"extract_segments.py is for shorts: profile {profile.name!r} is {profile.format!r}, clip "
+            f"{clip.clip.id} is {clip.clip.format!r}. Horizontal clips render via render_horizontal.py."
+        )
     out_w, out_h = profile_dims(profile)
-    aspect_w, aspect_h = (int(v) for v in profile.aspect.split(":"))
 
-    jobs, refusals = build_jobs(clip, episode, root, out_w, out_h, aspect_w, aspect_h)
+    jobs, refusals = build_jobs(clip, episode, root, clip_dir, out_w, out_h, config.framing.max_upscale)
     if refusals:
         console.print("[bold red]REFUSED[/] — A-roll sources are not usable as the manifest asks:")
         for r in refusals:
@@ -394,6 +349,11 @@ def main(
     ):
         table.add_column(column, **kwargs)
 
+    wanted = {f"{job.name}.mp4" for job in jobs}
+    for stale in sorted(p for p in (clip_dir / out_dir).glob("*.mp4") if p.name not in wanted):
+        logger.info(f"removing {stale.name} — no longer used by the timeline's current framing")
+        stale.unlink()
+
     failures: list[str] = []
     for job in jobs:
         out_path = clip_dir / out_dir / f"{job.name}.mp4"
@@ -411,10 +371,15 @@ def main(
             )
         table.add_row(
             job.name, job.segment.visual.treatment, job.origin,
-            fmt_range(job.source_in, job.source_out), fmt_crop(job.crop),
+            fmt_range(job.source_in, job.source_out), describe_shots(job),
             f"{probe.width}x{probe.height}@{probe.fps:g}", f"{probe.duration_s:.3f}s",
         )
     console.print(table)
+
+    panel_h = even(out_h // 2)
+    layout = capplace.write_layout(clip_dir, clip, out_h, {
+        job.name: layout_entry(job, panel_h if job.name.endswith("-bottom") else 0) for job in jobs})
+    logger.info(f"wrote {layout}")
 
     if failures:
         console.print("[bold red]FAIL[/] staged cuts do not match the profile/timeline:")

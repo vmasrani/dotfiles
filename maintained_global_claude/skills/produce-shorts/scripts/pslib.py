@@ -26,39 +26,26 @@ EPSILON = 0.01
 
 EPISODE_STAGE_ORDER: list[str] = [
     "ingested",
-    "mined",
-    "selected",
-    "storyboarded",
-    "assets_acquired",
-    "critiqued",
-    "approved_for_render",
-    "rendered",
-    "qc_passed",
+    "picking",
+    "frozen",
+    "storyboarding",
+    "rendering",
+    "delivered",
 ]
 
 CLIP_STATUS_ORDER: list[str] = [
-    "proposed",
-    "approved_edit",
+    "frozen",
     "storyboarded",
-    "assets_ready",
-    "critiqued",
     "approved_render",
     "rendered",
     "qc_passed",
     "delivered",
 ]
 
-TIMELINE_HEADERS = [
-    "Segment",
-    "Output",
-    "Source",
-    "Visual",
-    "Audio/Dialogue",
-    "Speaker",
-    "Shot/Transition",
-]
-
-SUBTITLE_HEADERS = ["Output", "Verbatim text", "Emphasis", "Position", "Notes"]
+CLIP_FORMATS = ("short", "clip")
+SHORT_MAX_DURATION_S = 180.0
+SHORT_TREATMENTS_FIXED = ("splitscreen",)
+CLIP_TREATMENT = "source-frame"
 
 
 class Strict(BaseModel):
@@ -76,16 +63,18 @@ class EpisodeMeta(Strict):
     id: str
     title: str
     source_url: str
+    youtube_id: str | None = None
     authorized: bool
     created: str
 
 
 class PlatformProfile(Strict):
     name: str
+    format: Literal["short", "clip"]
     aspect: str
     resolution: str
     fps: float
-    max_duration_s: float
+    max_duration_s: float | None  # null = no maximum (horizontal clips)
     container: str
     video_codec: str
     audio_codec: str
@@ -143,17 +132,7 @@ class TranscriptRef(Strict):
 
 
 class EpisodeStatus(Strict):
-    stage: Literal[
-        "ingested",
-        "mined",
-        "selected",
-        "storyboarded",
-        "assets_acquired",
-        "critiqued",
-        "approved_for_render",
-        "rendered",
-        "qc_passed",
-    ]
+    stage: Literal["ingested", "picking", "frozen", "storyboarding", "rendering", "delivered"]
 
 
 class Episode(Strict):
@@ -163,6 +142,9 @@ class Episode(Strict):
     media: MediaSpec
     sync: list[SyncEntry] = Field(default_factory=list)
     transcript: TranscriptRef
+    #: Written by build_pick_doc.py / doc_ops.py (account, folder_id, pick_doc, picks, round, ...).
+    #: Opaque here: those scripts own its shape. Absent until the pick doc exists.
+    review: dict[str, Any] | None = None
     status: EpisodeStatus
 
     def speaker_ids(self) -> set[str]:
@@ -198,79 +180,29 @@ class Transcript(Strict):
 
 
 # ---------------------------------------------------------------------------
-# candidates.yaml
-# ---------------------------------------------------------------------------
-
-
-class CoverageChunk(Strict):
-    start_s: float
-    end_s: float
-    overlap_next_s: float
-
-
-class Coverage(Strict):
-    chunks: list[CoverageChunk] = Field(default_factory=list)
-
-
-class CandidateScores(Strict):
-    hook: int
-    standalone: int
-    central_idea: int
-    payoff: int
-    edit_boundaries: int
-    visual_potential: int
-    missing_context: int
-    redundancy: int
-    risk: int
-
-
-class Candidate(Strict):
-    id: str
-    slug: str
-    source_in: float
-    source_out: float
-    context_before: str
-    context_after: str
-    summary: str
-    hook_text: str
-    scores: CandidateScores
-    notes: str
-    verdict: str | None = None
-
-
-class CandidateSet(Strict):
-    coverage: Coverage
-    candidates: list[Candidate] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
 # clip.yaml
 # ---------------------------------------------------------------------------
 
 
 class ClipMeta(Strict):
     id: str
+    pick: str
+    format: Literal["short", "clip"]
     title: str
-    status: Literal[
-        "proposed",
-        "approved_edit",
-        "storyboarded",
-        "assets_ready",
-        "critiqued",
-        "approved_render",
-        "rendered",
-        "qc_passed",
-        "delivered",
-    ]
-    logline: str
-    audience_response: str
-    hook: str
-    payoff: str
+    status: Literal["frozen", "storyboarded", "approved_render", "rendered", "qc_passed", "delivered"]
+    why: str
+    ends_on: str
 
 
 class VisualSpec(Strict):
-    kind: Literal["aroll", "broll"]
+    kind: Literal["aroll", "broll"]  # broll is rejected by validate_clip; kept so the error is specific
     treatment: str
+    #: splitscreen only: exactly two speaker ids [top, bottom]
+    speakers: list[str] | None = None
+    #: true = user override by comment; plan_framing.py never changes it
+    locked: bool = False
+    #: the framing rule, or the user's comment text
+    reason: str | None = None
     asset_id: str | None = None
     motion: str | None = None
     #: Per-segment crop `x=<n>:y=<n>:w=<n>:h=<n>`, overriding the speaker's `preferred_crop`.
@@ -348,10 +280,16 @@ class OutputSpec(Strict):
     duration_s: float
 
 
-class ThumbnailSpec(Strict):
-    first_frame_text: str
-    hierarchy: str
-    placement: str
+class StoryboardDocRef(Strict):
+    rev: int
+    id: str
+    url: str
+
+
+class ClipReview(Strict):
+    storyboard_docs: list[StoryboardDocRef] = Field(default_factory=list)
+    cover: int | None = None
+    final_url: str | None = None
 
 
 class RenderVersion(Strict):
@@ -372,7 +310,7 @@ class Clip(Strict):
     subtitles: SubtitleSpec
     assets: list[Asset] = Field(default_factory=list)
     output: OutputSpec
-    thumbnail: ThumbnailSpec
+    review: ClipReview = Field(default_factory=ClipReview)
     render: RenderSpec
 
 
@@ -412,14 +350,6 @@ def save_clip(path: str | Path, clip: Clip) -> None:
     _write_yaml(Path(path), _dump(clip))
 
 
-def load_candidates(path: str | Path) -> CandidateSet:
-    return CandidateSet.model_validate(_read_yaml(Path(path)))
-
-
-def save_candidates(path: str | Path, candidates: CandidateSet) -> None:
-    _write_yaml(Path(path), _dump(candidates))
-
-
 def load_transcript(path: str | Path) -> Transcript:
     p = Path(path)
     if not p.is_file():
@@ -431,17 +361,6 @@ def save_transcript(path: str | Path, transcript: Transcript) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(_dump(transcript), indent=2) + "\n")
-
-
-def load_coverage(path: str | Path) -> Coverage:
-    raw = _read_yaml(Path(path))
-    if "coverage" not in raw:
-        raise ValueError(f"{path}: missing top-level `coverage` block")
-    return Coverage.model_validate(raw["coverage"])
-
-
-def save_coverage(path: str | Path, coverage: Coverage) -> None:
-    _write_yaml(Path(path), {"coverage": _dump(coverage)})
 
 
 # ---------------------------------------------------------------------------

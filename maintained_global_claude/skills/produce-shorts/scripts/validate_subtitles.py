@@ -12,7 +12,7 @@
 # ///
 """Validate an aligned `.ass` against the readability limits, safe zones and manifest.
 
-Canonical rules: `references/storyboard.md` § Stage 6 (readability limits, safe zones)
+Canonical rules: `config/defaults.yaml` (subtitles + safe_zones) and `references/caption-style-research.md`
 and `references/schemas.md` (clip.yaml `subtitles.lines`). Limits and safe zones come
 from `config/defaults.yaml`; frame geometry from the named platform profile in
 `episode.yaml`. The file under test is the one `align_subtitles.py` emits — parsing is
@@ -49,6 +49,7 @@ from loguru import logger
 from rich.console import Console
 from rich.table import Table as RichTable
 
+import capplace
 from pslib import EPSILON, Clip, PlatformProfile, load_clip, load_episode, tokenize
 from psmedia import (
     PipelineConfig,
@@ -485,12 +486,49 @@ def check_safe_zones(script: Script, zones: SafeZones, profile: PlatformProfile)
 # --------------------------------------------------------------------------------------
 
 
-def validate(
-    ass_path: str | Path, clip: Clip, config: PipelineConfig, profile: PlatformProfile
+def check_mouth_clearance(
+    script: Script, clip: Clip, mouths: list[capplace.Zone], zones: SafeZones, profile: PlatformProfile
 ) -> list[Finding]:
-    """Run every subtitle check. Returns findings; an empty list means green."""
+    """A caption on screen during a split screen must not cover any visible mouth (measured by extract_segments.py)."""
+    region = safe_region(zones, profile)
+    out: list[Finding] = []
+    for ev in script.events:
+        if ev.legacy_alignment_tag is not None or not 1 <= ev.alignment <= 9 or not capplace.overlaps_split(clip, ev.start, ev.end):
+            continue
+        band = event_band(ev, script, region)
+        seconds, covered = capplace.exposure(band.top, band.bottom, ev.start, ev.end, mouths)
+        if seconds > capplace.tolerated_s(ev.start, ev.end):
+            out.append(
+                Finding(
+                    "mouth_clearance",
+                    _where(ev),
+                    f"caption band clear of every mouth during a split screen (<= {capplace.tolerated_s(ev.start, ev.end):.2f}s of contact "
+                    f"across a cut, {capplace.MOUTH_MARGIN_PX:.0f}px margin)",
+                    f"band {band.top:.0f}-{band.bottom:.0f}px (an{ev.alignment}"
+                    + (f", pos={ev.pos}" if ev.pos else f", MarginV={ev.margin_v:g}") + f") covers {seconds:.2f}s of "
+                    + ", ".join(f"{z.who} {z.top:.0f}-{z.bottom:.0f}px" for z in covered),
+                )
+            )
+    return out
+
+
+def validate(
+    ass_path: str | Path, clip: Clip, config: PipelineConfig, profile: PlatformProfile, clip_dir: Path | None = None
+) -> list[Finding]:
+    """Run every subtitle check. Returns findings; an empty list means green.
+
+    `clip_dir` locates assets/aroll/layout.json (the measured mouth bands); it is required whenever the clip has a
+    split screen, because the caption-clearance check cannot be skipped silently.
+    """
     script = read_script(ass_path)
     limits = config.subtitles
+    if capplace.has_split(clip):
+        if clip_dir is None:
+            raise ValueError("validate(): the clip has a split screen — pass clip_dir so caption clearance can be checked")
+        mouths = capplace.load_zones(clip_dir, clip, int(profile.resolution.lower().partition("x")[2]))
+        clearance = check_mouth_clearance(script, clip, mouths, config.safe_zones, profile)
+    else:
+        clearance = []
     return [
         *check_max_lines(script, limits),
         *check_max_chars_per_line(script, limits),
@@ -500,6 +538,7 @@ def validate(
         *check_manifest_coverage(script, clip),
         *check_safe_zones(script, config.safe_zones, profile),
         *check_within_duration(script, clip),
+        *clearance,
     ]
 
 
@@ -541,7 +580,7 @@ def main(
 
     logger.info(f"clip={clip_path} ass={ass} profile={target.name} ({target.resolution})")
     script = read_script(ass)
-    findings = validate(ass, clip, settings, target)
+    findings = validate(ass, clip, settings, target, clip_dir)
 
     if findings:
         render_findings(findings)

@@ -9,9 +9,9 @@
 #   "rich>=13.7",
 # ]
 # ///
-"""Validate a clip manifest against its storyboard, its assets and its episode.
+"""Validate a clip manifest against its episode.
 
-Enforces all ten timeline invariants plus the storyboard parse contract from
+Enforces the timeline invariants 1-10 (plus the dialogue-vs-audio check, numbered 11) from
 references/schemas.md. Any failure prints a findings table and exits 1.
 """
 
@@ -29,22 +29,15 @@ from rich.console import Console
 from rich.table import Table as RichTable
 
 from pslib import (
-    CLIP_STATUS_ORDER,
     EPSILON,
-    SUBTITLE_HEADERS,
-    TIMELINE_HEADERS,
     Clip,
     Episode,
     close,
-    find_table,
     fmt_mmss,
-    fmt_range,
     is_subsequence,
     load_clip,
     load_episode,
     load_transcript,
-    parse_md_tables,
-    parse_range,
     sha256_file,
     tokenize,
 )
@@ -138,11 +131,15 @@ def check_4_output_duration(clip: Clip, episode: Episode) -> list[Finding]:
     if not close(clip.output.duration_s, last):
         out.append(Finding("4", "output.duration_s", f"{last:.3f}s (timeline[-1].output_out)",
                            f"{clip.output.duration_s:.3f}s"))
+    profiles = [p for p in episode.platform_profiles if p.format == clip.clip.format]
+    if not profiles:
+        out.append(Finding("4", "episode.yaml platform_profiles",
+                           f"at least one profile with format: {clip.clip.format}", "none"))
     out += [
         Finding("4", f"profile {p.name}", f"duration <= max_duration_s {p.max_duration_s:.3f}s",
                 f"{clip.output.duration_s:.3f}s")
-        for p in episode.platform_profiles
-        if clip.output.duration_s > p.max_duration_s + EPSILON
+        for p in profiles
+        if p.max_duration_s is not None and clip.output.duration_s > p.max_duration_s + EPSILON
     ]
     return out
 
@@ -193,19 +190,12 @@ def check_6_asset_usage(clip: Clip) -> list[Finding]:
     return out
 
 
-def check_7_asset_files(clip: Clip, clip_dir: Path) -> tuple[list[Finding], list[Skip]]:
-    before_ready = CLIP_STATUS_ORDER.index(clip.clip.status) < CLIP_STATUS_ORDER.index("assets_ready")
+def check_7_asset_files(clip: Clip, clip_dir: Path) -> list[Finding]:
     findings: list[Finding] = []
-    skips: list[Skip] = []
     for asset in clip.assets:
         path = clip_dir / asset.file
         if not path.is_file():
-            if before_ready:
-                skips.append(Skip("7", asset.id,
-                                  f"{asset.file} not downloaded yet; clip.status={clip.clip.status} "
-                                  f"is before assets_ready"))
-            else:
-                findings.append(Finding("7", asset.id, f"file exists at {path}", "missing on disk"))
+            findings.append(Finding("7", asset.id, f"file exists at {path}", "missing on disk"))
             continue
         if asset.sha256 is None:
             findings.append(Finding("7", asset.id, "sha256 recorded for a downloaded asset",
@@ -214,7 +204,7 @@ def check_7_asset_files(clip: Clip, clip_dir: Path) -> tuple[list[Finding], list
         actual = sha256_file(path)
         if actual != asset.sha256:
             findings.append(Finding("7", asset.id, f"sha256 {asset.sha256}", actual))
-    return findings, skips
+    return findings
 
 
 def check_8_subtitles(clip: Clip) -> list[Finding]:
@@ -297,7 +287,7 @@ def check_11_dialogue_covers_audio(clip: Clip, transcript) -> list[Finding]:
     return out
 
 
-_AROLL_TREATMENTS = ("splitscreen", "source-frame")
+FORMAT_ASPECT = {"short": "9:16", "clip": "16:9"}
 
 
 def check_10_speakers(clip: Clip, episode: Episode) -> list[Finding]:
@@ -308,93 +298,47 @@ def check_10_speakers(clip: Clip, episode: Episode) -> list[Finding]:
         if seg.speaker not in ids
     ]
     for seg in clip.timeline:
-        if seg.visual.kind != "aroll":
-            continue
         treatment = seg.visual.treatment
-        if treatment in _AROLL_TREATMENTS:
+        if treatment.startswith("closeup-") and treatment[len("closeup-"):] not in ids:
+            out.append(Finding("10", seg.id, f"treatment speaker in {sorted(ids)}",
+                               f"{treatment} -> {treatment[len('closeup-'):]!r}"))
+        out += [
+            Finding("10", seg.id, f"visual.speakers entries in {sorted(ids)}", f"{spk!r}")
+            for spk in (seg.visual.speakers or [])
+            if spk not in ids
+        ]
+    return out
+
+
+def check_9_format_treatments(clip: Clip) -> list[Finding]:
+    fmt = clip.clip.format
+    out: list[Finding] = []
+    want_aspect = FORMAT_ASPECT[fmt]
+    if clip.output.aspect != want_aspect:
+        out.append(Finding("9", "output.aspect", f"{want_aspect} (format: {fmt})", clip.output.aspect))
+    for seg in clip.timeline:
+        v = seg.visual
+        if v.kind != "aroll":
+            out.append(Finding("9", seg.id, "visual.kind aroll (no B-roll in this pipeline)", v.kind))
             continue
-        if treatment.startswith("blur-fill-"):
-            prefix, ref = "blur-fill", treatment[len("blur-fill-"):]
+        if fmt == "clip":
+            if v.treatment != "source-frame":
+                out.append(Finding("9", seg.id, "format clip uses only treatment source-frame", v.treatment))
+            if v.speakers:
+                out.append(Finding("9", seg.id, "visual.speakers null on a source-frame segment", f"{v.speakers}"))
+            continue
+        if v.treatment == "splitscreen":
+            spk = v.speakers or []
+            if len(spk) != 2 or len(set(spk)) != 2:
+                out.append(Finding("9", seg.id,
+                                   "splitscreen names exactly two distinct speakers [top, bottom]",
+                                   f"visual.speakers={v.speakers}"))
+        elif v.treatment.startswith("closeup-") and len(v.treatment) > len("closeup-"):
+            if v.speakers:
+                out.append(Finding("9", seg.id, "visual.speakers null on a closeup segment", f"{v.speakers}"))
         else:
-            prefix, _, ref = treatment.partition("-")
-        if prefix not in ("closeup", "reaction", "blur-fill") or not ref:
-            out.append(Finding("10", seg.id,
-                               "treatment closeup-<speaker>|reaction-<speaker>|blur-fill-<speaker>"
-                               "|splitscreen|source-frame",
-                               treatment))
-        elif ref not in ids:
-            out.append(Finding("10", seg.id, f"treatment speaker in {sorted(ids)}", f"{treatment} -> {ref!r}"))
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Invariant 9 — storyboard.md
-# ---------------------------------------------------------------------------
-
-
-def check_9_storyboard(clip: Clip, storyboard_text: str) -> list[Finding]:
-    tables = parse_md_tables(storyboard_text)
-    timeline_rows = find_table(tables, TIMELINE_HEADERS).row_dicts()
-    subtitle_rows = find_table(tables, SUBTITLE_HEADERS).row_dicts()
-    return _check_timeline_table(clip, timeline_rows) + _check_subtitle_table(clip, subtitle_rows)
-
-
-def _check_timeline_table(clip: Clip, rows: list[dict[str, str]]) -> list[Finding]:
-    by_id = {seg.id: seg for seg in clip.timeline}
-    out: list[Finding] = []
-    row_ids = [r["Segment"].strip() for r in rows]
-    if row_ids != [seg.id for seg in clip.timeline]:
-        out.append(Finding("9", "storyboard Timeline table",
-                           f"rows for {[seg.id for seg in clip.timeline]} in order", f"{row_ids}"))
-    for row in rows:
-        sid = row["Segment"].strip()
-        seg = by_id.get(sid)
-        if seg is None:
-            out.append(Finding("9", f"storyboard row {sid}", "segment id present in clip.yaml", "unknown id"))
-            continue
-        o_start, o_end = parse_range(row["Output"])
-        if not (close(o_start, seg.output_in) and close(o_end, seg.output_out)):
-            out.append(Finding("9", sid, f"Output {fmt_range(seg.output_in, seg.output_out)}",
-                               f"{row['Output'].strip()}"))
-        s_start, s_end = parse_range(row["Source"])
-        if not (close(s_start, seg.source_in) and close(s_end, seg.source_out)):
-            out.append(Finding("9", sid, f"Source {fmt_range(seg.source_in, seg.source_out)}",
-                               f"{row['Source'].strip()}"))
-        if row["Speaker"].strip() != seg.speaker:
-            out.append(Finding("9", sid, f"Speaker {seg.speaker}", row["Speaker"].strip()))
-        if row["Shot/Transition"].strip() != seg.transition:
-            out.append(Finding("9", sid, f"Shot/Transition {seg.transition}", row["Shot/Transition"].strip()))
-        if seg.visual.kind == "broll" and seg.visual.asset_id:
-            if seg.visual.asset_id not in row["Visual"]:
-                out.append(Finding("9", sid, f"Visual cell mentions asset {seg.visual.asset_id}",
-                                   row["Visual"].strip()))
-        dialogue_cell = row["Audio/Dialogue"].strip().strip('"')
-        if tokenize(dialogue_cell) != tokenize(seg.dialogue):
-            out.append(Finding("9", sid, f"Audio/Dialogue {seg.dialogue!r}", f"{dialogue_cell!r}"))
-    return out
-
-
-def _check_subtitle_table(clip: Clip, rows: list[dict[str, str]]) -> list[Finding]:
-    lines = clip.subtitles.lines
-    out: list[Finding] = []
-    if len(rows) != len(lines):
-        out.append(Finding("9", "storyboard Subtitle plan table",
-                           f"{len(lines)} rows (one per clip.yaml subtitle line)", f"{len(rows)} rows"))
-    for idx, (row, line) in enumerate(zip(rows, lines), start=1):
-        start, end = parse_range(row["Output"])
-        if not (close(start, line.output_range[0]) and close(end, line.output_range[1])):
-            out.append(Finding("9", f"subtitle row {idx}",
-                               f"Output {fmt_range(line.output_range[0], line.output_range[1])}",
-                               row["Output"].strip()))
-        if tokenize(row["Verbatim text"]) != tokenize(line.text):
-            out.append(Finding("9", f"subtitle row {idx}", f"Verbatim text {line.text!r}",
-                               f"{row['Verbatim text'].strip()!r}"))
-        if row["Position"].strip() != line.position:
-            out.append(Finding("9", f"subtitle row {idx}", f"Position {line.position}", row["Position"].strip()))
-        missing = [e.word for e in line.emphasis if e.word.lower() not in row["Emphasis"].lower()]
-        if missing:
-            out.append(Finding("9", f"subtitle row {idx}", f"Emphasis cell mentions {missing}",
-                               row["Emphasis"].strip()))
+            out.append(Finding("9", seg.id, "format short uses only closeup-<speaker> or splitscreen",
+                               v.treatment))
     return out
 
 
@@ -421,7 +365,7 @@ def render_skips(skips: list[Skip]) -> None:
 
 @app.command()
 def main(
-    clip_dir: Path = typer.Argument(..., help="Clip directory containing clip.yaml and storyboard.md"),
+    clip_dir: Path = typer.Argument(..., help="Clip directory containing clip.yaml"),
     episode_root: Path = typer.Option(
         None, "--episode-root", help="Episode root holding episode.yaml (default: CLIP_DIR/../..)"
     ),
@@ -432,17 +376,16 @@ def main(
         raise typer.BadParameter(f"clip directory does not exist: {clip_dir}")
     root = (episode_root or clip_dir.parent.parent).resolve()
 
-    clip_path, storyboard_path, episode_path = (
-        clip_dir / "clip.yaml", clip_dir / "storyboard.md", root / "episode.yaml"
-    )
-    for p in (clip_path, storyboard_path, episode_path):
+    clip_path, episode_path = clip_dir / "clip.yaml", root / "episode.yaml"
+    for p in (clip_path, episode_path):
         if not p.is_file():
             raise typer.BadParameter(f"missing required file: {p}")
 
-    logger.info(f"clip={clip_path} storyboard={storyboard_path} episode={episode_path}")
+    logger.info(f"clip={clip_path} episode={episode_path}")
     clip, episode = load_clip(clip_path), load_episode(episode_path)
 
-    sha_findings, skips = check_7_asset_files(clip, clip_dir)
+    sha_findings = check_7_asset_files(clip, clip_dir)
+    skips: list[Skip] = []
 
     # Invariant 11 needs the transcript. If it is absent the check cannot run — say so
     # visibly rather than letting "skipped" and "passed" look identical.
@@ -462,7 +405,7 @@ def main(
         *check_6_asset_usage(clip),
         *sha_findings,
         *check_8_subtitles(clip),
-        *check_9_storyboard(clip, storyboard_path.read_text()),
+        *check_9_format_treatments(clip),
         *check_10_speakers(clip, episode),
         *dialogue_findings,
     ]

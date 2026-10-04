@@ -30,8 +30,8 @@ Checks (`references/render-qc.md` § Stage 9):
 
     container_matches_profile  streams present; codec/resolution/fps/aspect/container
     duration_matches_manifest  container vs clip.output.duration_s, audio vs video stream
-    black_frames               blackdetect; intervals fail unless the storyboard plans them
-    frozen_frames              freezedetect (-60dB, >= 1.5s); same storyboard exemption
+    black_frames               blackdetect; intervals fail unless the manifest plans them
+    frozen_frames              freezedetect (-60dB, >= 1.5s); same manifest exemption
     loudness                   ebur128 integrated LUFS +/- tolerance, true peak under ceiling
     clipping                   astats clipped-sample count == 0
     silence                    silencedetect >= 0.8s anywhere, plus a probe of every internal cut
@@ -51,7 +51,7 @@ import math
 import re
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -64,14 +64,11 @@ from rich.table import Table as RichTable
 
 from pslib import (
     EPSILON,
-    TIMELINE_HEADERS,
     Clip,
     PlatformProfile,
-    find_table,
     fmt_mmss,
     load_clip,
     load_episode,
-    parse_md_tables,
     sha256_file,
 )
 from psmedia import PipelineConfig, episode_root_for, load_config, profile_dims, resolve_profile
@@ -170,7 +167,7 @@ FONT_CANDIDATES = [
 
 #: A black or frozen interval is only acceptable when the plan asked for it
 #: (`references/render-qc.md` § Stage 9). "The plan" means a segment's `visual.motion`,
-#: `visual.treatment`, or the storyboard Timeline row's Visual cell, and it must say so
+#: or `visual.treatment`, and it must say so
 #: with one of these words — an overlapping interval passes only on an explicit match.
 #: The vocabulary is deliberately narrow: a vague Visual cell must not excuse a defect.
 BLACK_INTENT_WORDS = ("black",)
@@ -479,7 +476,6 @@ def transition_ramp_seconds(transition: str, fps: float, where: str) -> float:
 @dataclass
 class Timeline:
     clip: Clip
-    storyboard_visual: dict[str, str] = field(default_factory=dict)
 
     @property
     def boundaries(self) -> list[float]:
@@ -554,7 +550,7 @@ class Timeline:
 
     def visual_text(self, segment_id: str) -> str:
         seg = next(s for s in self.clip.timeline if s.id == segment_id)
-        parts = [seg.visual.treatment, seg.visual.motion or "", self.storyboard_visual.get(segment_id, "")]
+        parts = [seg.visual.treatment, seg.visual.motion or ""]
         return " ".join(parts).lower()
 
     def planned_by(self, interval: Interval, words: tuple[str, ...]) -> str | None:
@@ -566,15 +562,6 @@ class Timeline:
             if any(word in text for word in words):
                 return seg.id
         return None
-
-
-def read_storyboard_visuals(storyboard: Path) -> dict[str, str]:
-    """Segment id -> the storyboard Timeline row's Visual cell. Absent storyboard = {}."""
-    if not storyboard.is_file():
-        return {}
-    tables = parse_md_tables(storyboard.read_text())
-    rows = find_table(tables, TIMELINE_HEADERS).row_dicts()
-    return {row["Segment"].strip(): row["Visual"] for row in rows}
 
 
 # --------------------------------------------------------------------------------------
@@ -641,7 +628,7 @@ def check_duration(probe: dict, clip: Clip) -> Check:
 def _planned_split(
     name: str, intervals: list[Interval], timeline: Timeline, words: tuple[str, ...], probe_detail: str
 ) -> Check:
-    """Shared verdict for the two detectors whose intervals the storyboard may authorise."""
+    """Shared verdict for the two detectors whose intervals the manifest may authorise."""
     if not intervals:
         return Check(name, True, f"none ({probe_detail})")
     tagged = [(iv, timeline.planned_by(iv, words)) for iv in intervals]
@@ -654,7 +641,7 @@ def _planned_split(
             f"{len(bad)} unplanned interval(s): {', '.join(str(iv) for iv in bad)}"
             + (f"; planned: {', '.join(planned)}" if planned else "")
             + f" ({probe_detail}). An interval passes only when the overlapping segment's "
-            f"visual/motion or the storyboard Visual cell says one of {list(words)}.",
+            f"visual.motion/treatment says one of {list(words)}.",
         )
     return Check(name, True, f"{len(planned)} interval(s), all planned: {', '.join(planned)} ({probe_detail})")
 
@@ -749,7 +736,7 @@ def check_silence(render: Path, eof: float, timeline: Timeline, root: Path) -> C
             )
 
     # The whole-clip sweep needs the same source comparison as the cut probe: a speaker who
-    # pauses for a second has not created a dropout, and a storyboard may keep that beat
+    # pauses for a second has not created a dropout, and a plan may keep that beat
     # deliberately. Without this, every clip carrying a natural pause reports a false red.
     created = []
     for iv in everywhere:
@@ -776,6 +763,9 @@ def check_silence(render: Path, eof: float, timeline: Timeline, root: Path) -> C
 
 
 def check_cut_points(render: Path, timeline: Timeline) -> Check:
+    # Horizontal clips are the published frame untouched, so the SOURCE's own camera cuts
+    # land inside segments; they are reported, not failed. Missing cuts still fail.
+    source_edits_ok = timeline.clip.clip.format == "clip"
     # Built first so an unknown transition string fails loudly before any measurement.
     windows = timeline.boundary_slack
     # Two sensitivities: a floor calibrated on this render's own noise to CONFIRM the cuts
@@ -820,7 +810,7 @@ def check_cut_points(render: Path, timeline: Timeline) -> Check:
             f"{len(missing)} expected hard cut(s) with no scene change within "
             f"±{CUT_MATCH_TOLERANCE_S}s: {', '.join(missing)}"
         )
-    if unexpected:
+    if unexpected and not source_edits_ok:
         problems.append(
             f"{len(unexpected)} scene change(s) >{CUT_UNEXPECTED_TOLERANCE_S}s from any boundary "
             f"(plus its crossfade ramp): {', '.join(unexpected)}"
@@ -832,6 +822,8 @@ def check_cut_points(render: Path, timeline: Timeline) -> Check:
         f"±{CUT_MATCH_TOLERANCE_S}s; "
         f"{crossfades} crossfade boundary/ies exempt from must-detect"
     )
+    if unexpected and source_edits_ok:
+        detail += f"; {len(unexpected)} scene change(s) inside segments (source's own edits, format clip): {', '.join(unexpected)}"
     # A skip is never folded into the pass count — "verified" and "not verifiable" must
     # read differently, on a green check as much as on a red one.
     if skipped:
@@ -855,7 +847,7 @@ def check_subtitles(
             f"manifest declares {len(lines)} subtitle line(s) but no aligned .ass was found"
             + (f" at {ass}" if ass is not None else " (pass --ass PATH)"),
         )
-    findings = validate_subtitle_script(ass, clip, config, profile)
+    findings = validate_subtitle_script(ass, clip, config, profile, ass.resolve().parent.parent)
     if findings:
         return Check(
             "subtitles_present",
@@ -871,9 +863,33 @@ def check_subtitles(
     )
 
 
+def check_subtitles_srt(srt: Path, clip: Clip) -> Check:
+    """Horizontal clips ship captions as a sidecar .srt (uploaded to YouTube), never burned in."""
+    if not srt.is_file():
+        return Check("subtitles_present", False, f"no aligned .srt at {srt} (render_horizontal.py writes it)")
+    blocks = [b for b in srt.read_text().strip().split("\n\n") if b.strip()]
+    if not blocks:
+        return Check("subtitles_present", False, f"{srt.name} is empty")
+    problems = []
+    last_end = 0.0
+    for n, block in enumerate(blocks, start=1):
+        rows = block.splitlines()
+        stamp = re.match(r"(\d+):(\d\d):(\d\d),(\d{3}) --> (\d+):(\d\d):(\d\d),(\d{3})$", rows[1]) if len(rows) >= 3 else None
+        if stamp is None:
+            problems.append(f"cue {n} malformed")
+            continue
+        g = [int(x) for x in stamp.groups()]
+        start, end = g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 1000, g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000
+        if end <= start or start < last_end - EPSILON or end > clip.output.duration_s + 0.25:
+            problems.append(f"cue {n} timing {start:.2f}-{end:.2f}s invalid against duration {clip.output.duration_s:.2f}s")
+        last_end = end
+    if problems:
+        return Check("subtitles_present", False, f"{srt.name}: " + "; ".join(problems[:6]))
+    return Check("subtitles_present", True, f"{srt.name} present, {len(blocks)} cue(s) well-formed; sidecar captions (not burned in)")
+
+
 def check_assets(clip: Clip, clip_dir: Path) -> Check:
     problems: list[str] = []
-    by_id = {a.id: a for a in clip.assets}
     for asset in clip.assets:
         path = clip_dir / asset.file
         if not path.is_file():
@@ -885,15 +901,10 @@ def check_assets(clip: Clip, clip_dir: Path) -> Check:
         actual = sha256_file(path)
         if actual != asset.sha256:
             problems.append(f"{asset.id}: sha256 {actual[:12]}… != manifest {asset.sha256[:12]}…")
-    for seg in clip.timeline:
-        if seg.visual.kind != "broll":
-            continue
-        if seg.visual.asset_id is None:
-            problems.append(f"{seg.id}: broll segment names no asset_id")
-        elif seg.visual.asset_id not in by_id:
-            problems.append(f"{seg.id}: asset {seg.visual.asset_id} absent from assets[]")
-    broll = sum(1 for s in clip.timeline if s.visual.kind == "broll")
-    detail = f"{len(clip.assets)} asset(s) present with matching sha256; {broll} broll segment(s) resolved"
+    broll = [seg.id for seg in clip.timeline if seg.visual.kind == "broll"]
+    if broll:
+        problems.append(f"B-roll segments {broll} — this pipeline has no B-roll")
+    detail = f"{len(clip.assets)} asset(s) present with matching sha256"
     return Check("assets_tracked", not problems, detail if not problems else "; ".join(problems))
 
 
@@ -1029,8 +1040,13 @@ def resolve_render(clip: Clip, clip_dir: Path, version: int, profile: str, overr
 def default_ass(clip_dir: Path, version: int, override: Path | None) -> Path | None:
     if override is not None:
         return override if override.is_absolute() else clip_dir / override
-    candidate = clip_dir / "subtitles" / f"v{version}.ass"
-    return candidate
+    return clip_dir / "subtitles" / f"v{version}.ass"
+
+
+def default_srt(clip_dir: Path, version: int, override: Path | None) -> Path:
+    if override is not None:
+        return override if override.is_absolute() else clip_dir / override
+    return clip_dir / "subtitles" / f"v{version}.srt"
 
 
 # --------------------------------------------------------------------------------------
@@ -1064,7 +1080,10 @@ def main(
         help="Profile encode to QC, for use before the manifest records it "
         "(default: clip.yaml render.versions[N].finals[PROFILE]; never the Remotion master)",
     ),
-    ass: Path = typer.Option(None, "--ass", help="Aligned .ass (default: CLIP_DIR/subtitles/v<N>.ass)"),
+    ass: Path = typer.Option(
+        None, "--ass",
+        help="Aligned subtitles: .ass for shorts, .srt for clips (default: CLIP_DIR/subtitles/v<N>.ass|.srt)",
+    ),
     episode_root: Path = typer.Option(
         None, "--episode-root", help="Episode root holding episode.yaml (default: CLIP_DIR/../..)"
     ),
@@ -1083,8 +1102,14 @@ def main(
     target = resolve_profile(load_episode(root / "episode.yaml"), profile)
     clip = load_clip(clip_path)
     render_path = resolve_render(clip, clip_dir, version, profile, render)
-    ass_path = default_ass(clip_dir, version, ass)
-    timeline = Timeline(clip=clip, storyboard_visual=read_storyboard_visuals(clip_dir / "storyboard.md"))
+    if target.format != clip.clip.format:
+        raise typer.BadParameter(
+            f"profile {target.name!r} is format {target.format!r} but clip {clip.clip.id} is format "
+            f"{clip.clip.format!r}. Use a profile of the clip's format."
+        )
+    is_clip = clip.clip.format == "clip"
+    subs_path = default_srt(clip_dir, version, ass) if is_clip else default_ass(clip_dir, version, ass)
+    timeline = Timeline(clip=clip)
 
     logger.info(f"clip={clip_path} render={render_path} profile={target.name} version={version}")
     probe = ffprobe_json(render_path)
@@ -1099,7 +1124,7 @@ def main(
         check_clipping(render_path),
         check_silence(render_path, eof, timeline, root),
         check_cut_points(render_path, timeline),
-        check_subtitles(probe, ass_path, clip, settings, target),
+        check_subtitles_srt(subs_path, clip) if is_clip else check_subtitles(probe, subs_path, clip, settings, target),
         check_assets(clip, clip_dir),
         check_manifest_agreement(probe, clip),
     ]

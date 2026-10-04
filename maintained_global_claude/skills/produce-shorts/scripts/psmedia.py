@@ -70,11 +70,16 @@ class TranscriptionConfig(Loose):
     language: str
 
 
+class FramingSettings(Loose):
+    max_upscale: float = 2.0
+
+
 class PipelineConfig(Loose):
     transcription: TranscriptionConfig
     subtitles: SubtitleConfig
     safe_zones: SafeZones
     render: RenderConfig
+    framing: FramingSettings = Field(default_factory=FramingSettings)
 
 
 def load_config(path: str | Path | None = None) -> PipelineConfig:
