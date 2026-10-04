@@ -191,7 +191,14 @@ disk_perf_tsv() {
     sku=$(az disk show --ids "$disk_id" --query "sku.name" -o tsv)
     case "$sku" in
         PremiumV2_LRS|UltraSSD_LRS)
-            az disk show --ids "$disk_id" --query "[diskIopsReadWrite, diskMbpsReadWrite]" -o tsv ;;
+            # Object query, not a list: tsv prints a list one value per line.
+            local perf
+            perf=$(az disk show --ids "$disk_id" --query "{iops: diskIOPSReadWrite, mbps: diskMBpsReadWrite}" -o tsv)
+            if [[ ! "$perf" =~ ^[0-9]+$'\t'[0-9]+$ ]]; then
+                gum_error "Could not read IOPS/MBps for $sku disk $disk_id (got: '$perf')." >&2
+                exit 1
+            fi
+            echo "$perf" ;;
         *)
             echo "" ;;
     esac
