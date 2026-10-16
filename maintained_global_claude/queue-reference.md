@@ -122,5 +122,9 @@ still denies only TEST/GATE commands off the integration branch — workers buil
   `tools/sccache-watchdog` (LaunchAgent `com.vmasrani.sccache-watchdog`) detects it (also all-children-silent), saves
   evidence to `~/.cache/sccache-watchdog/hang-*` and kills the server; it never starts one (launchd-started servers hit
   a TCC prompt). `sccache-watchdog status` shows pool/clients.
-- CoW-seeding a target dir saves only ~12 s — not worth orchestration (and impossible on ext4)
+- CoW-seeding a target dir: ~12 s of payoff on the M4 for parot-core (small, 58 s cold), so not worth it
+  there, and impossible on ext4. For cartridge on APFS it IS worth it: `hydrate-worktree.sh`'s `clone`
+  mode (cartridge #1657) clones `target/debug` + `target/fastdev-install` in 18 s for 102 GB at ~22 MB of
+  disk, and the gate build then compiles 144 of 2785 units (~95% reused; results
+  `~/dev/bench/1657/results-38fd64b67-hydrate-clone.md`). Keep the primary warm for the gate tuple.
 - Agents share one warm `target/` per worktree
