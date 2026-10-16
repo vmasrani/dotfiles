@@ -25,6 +25,12 @@
 #
 # Slot count: $QUEUE_DIR/slots (machine-wide, live), seeded from QUEUE_SLOTS.
 # Express (short-job) pool: $QUEUE_DIR/express, seeded from QUEUE_EXPRESS_SLOTS.
+#
+# TEST THREADS. Each job runs with NEXTEST_TEST_THREADS = cpus / main slots, so N
+# concurrent suites share the box instead of each spawning one test per cpu; a
+# --solo job gets every cpu. QUEUE_TEST_THREADS in the caller's environment wins.
+# CARGO_BUILD_JOBS is left alone: sccache keys hash CARGO_* vars, so varying it
+# per job would churn the compile cache.
 import atexit
 import fcntl
 import glob
@@ -86,6 +92,14 @@ def seeded(fname, envvar, default, label_corrupt):
     if not pos_int(n):
         die(f"{path} is corrupt ('{n}')" + label_corrupt)
     return int(n)
+
+
+def test_threads(solo):
+    if "QUEUE_TEST_THREADS" in ENV:
+        val = ENV["QUEUE_TEST_THREADS"]
+        return val if pos_int(val) else die(f"QUEUE_TEST_THREADS={val!r} must be a positive integer")
+    cpus = os.cpu_count() or die("cannot count cpus; set QUEUE_TEST_THREADS")
+    return str(cpus if solo else max(1, cpus // pool_size("main")))
 
 
 def slots():
@@ -394,7 +408,9 @@ def main(argv):
     t_run = time.monotonic()
     child_argv = ["zsh", "-c", argv[0]] if len(argv) == 1 else argv
     try:
-        child = subprocess.Popen(child_argv, close_fds=True, env={**ENV, "QUEUE_ACTIVE": "1"})
+        child = subprocess.Popen(child_argv, close_fds=True,
+                                 env={**ENV, "QUEUE_ACTIVE": "1",
+                                      "NEXTEST_TEST_THREADS": test_threads(solo)})
         signal.signal(signal.SIGINT, signal.SIG_IGN)  # tty ^C reaches the child directly
         signal.signal(signal.SIGTERM, lambda s, _: child.send_signal(s))
         rc = child.wait()
