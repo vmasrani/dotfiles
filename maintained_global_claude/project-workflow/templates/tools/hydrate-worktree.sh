@@ -37,11 +37,35 @@
 #           worktree's run cannot overwrite another's outputs. The fallback
 #           produces an identical tree and differs only in disk used.
 #
-#   A directory entry is compared PER ARTIFACT, never as a whole. Guarding a
+#   clone -- ONE copy-on-write clone of a whole directory (APFS clonefile via
+#           `cp -cRp`), for a build directory such as a warm cargo `target/debug`
+#           (~10^6 files, 100+ GB) so a fresh worktree reuses every third-party
+#           dependency instead of recompiling it. Absent in the worktree: cloned
+#           from the primary in a single call (never per file). Present: left
+#           alone, and said so (a build dir is incomplete the moment cargo writes
+#           one unit, so it is judged as a whole, unlike `copy`). There is NO
+#           byte-copy fallback: `cp -c` silently degrades to a real copy on a
+#           non-APFS volume, so support is checked up front (primary and
+#           worktree on the same APFS volume) and the script FAILS LOUD naming
+#           the directory when it does not hold. While cloning, the source's
+#           `<dir>/.cargo-lock` -- the lock cargo itself holds for the whole of
+#           a build in that profile dir -- is held with flock(1), so a build
+#           running in the primary cannot be cloned half-written. Needs `flock`
+#           (brew install flock) and a `<dir>/.cargo-lock`; both fail loud.
+#           Workspace crates still rebuild in the worktree (cargo's fingerprint
+#           includes the path); third-party dependencies are reused.
+#
+#     clone target/debug
+#
+#   `copy`/`link` directory entries are compared PER ARTIFACT, never as a whole. Guarding a
 #   whole directory behind "does it exist" silently no-ops on a directory that
 #   exists but is INCOMPLETE -- and incomplete is the normal case, because a
 #   worktree acquires the directory the moment the suite writes one file into
 #   it. Existing files are always left alone; only absent ones are provisioned.
+#
+# ENVIRONMENT: HYDRATE_PRIMARY overrides the primary checkout;
+# HYDRATE_MANIFEST overrides the manifest path (to try a manifest before it is
+# merged into the primary).
 #
 # USAGE:
 #   hydrate-worktree.sh <worktree-path>   provision one worktree
@@ -57,7 +81,7 @@ PRIMARY=${HYDRATE_PRIMARY:-$(git rev-parse --path-format=absolute --git-common-d
   print -u2 "hydrate: cannot locate the primary checkout (run inside the repo, or set HYDRATE_PRIMARY)"
   exit 2
 }
-MANIFEST=$PRIMARY/.agent-workflow/hydrate.manifest
+MANIFEST=${HYDRATE_MANIFEST:-$PRIMARY/.agent-workflow/hydrate.manifest}
 
 # A project with no manifest has no untracked artifacts to provision. That is a
 # legitimate absence, not a failure -- but say so out loud, so "nothing to do"
@@ -80,7 +104,7 @@ WT=${1:?usage: hydrate-worktree.sh <worktree-path> | --all}
 [[ -d $WT ]] || { print -u2 "hydrate: no such worktree: $WT"; exit 2 }
 [[ ${WT:A} == ${PRIMARY:A} ]] && { print -u2 "hydrate: refusing to hydrate the primary checkout"; exit 2 }
 
-typeset -i linked=0 cloned=0 present=0 missing=0
+typeset -i linked=0 cloned=0 present=0 missing=0 dirs_cloned=0
 
 # NOTE: `(( n++ ))` evaluates to the OLD value, so it returns nonzero status on
 # the first increment and `set -e` would kill the run. Use plain assignment.
@@ -137,6 +161,44 @@ copy_one() {
   cloned=$(( cloned + 1 ))
 }
 
+# Filesystem type of the volume holding $1 (from `mount`, via the device df reports).
+fstype_of() {
+  local dev
+  dev=$(df -P $1 | awk 'NR==2{print $1}')
+  /sbin/mount | awk -v d="$dev" '$1==d{ if (match($0, /\([a-z0-9_]+[,)]/)) print substr($0, RSTART+1, RLENGTH-2) }'
+}
+
+die_clone() {  # clone failures are fatal and never degrade to a byte copy
+  print -u2 "hydrate: clone $1: $2"
+  print -u2 "hydrate: refusing to byte-copy a build directory (100+ GB); fix the cause or delete the manifest line."
+  exit 2
+}
+
+do_clone() {
+  local rel=${1%/}
+  [[ -d $PRIMARY/$rel ]] || { fail_missing $rel; return 0 }
+  if [[ -e $WT/$rel || -L $WT/$rel ]]; then
+    print "  = $rel (present, left alone)"; present=$(( present + 1 )); return 0
+  fi
+  mkdir -p ${WT}/${rel:h}
+  # `cp -c` falls back to a real copy on non-APFS volumes and across volumes:
+  # prove clonefile can work BEFORE starting.
+  local sfs wfs
+  sfs=$(fstype_of $PRIMARY/$rel); wfs=$(fstype_of ${WT}/${rel:h})
+  [[ $sfs == apfs && $wfs == apfs ]] || die_clone $rel "clonefile needs APFS on both sides (primary: ${sfs:-unknown}, worktree: ${wfs:-unknown})"
+  [[ $(stat -f %d $PRIMARY/$rel) == $(stat -f %d ${WT}/${rel:h}) ]] || die_clone $rel "primary and worktree are on different volumes; clonefile cannot cross volumes"
+  command -v flock >/dev/null || die_clone $rel "flock is not installed (needed to hold cargo's lock on $rel/.cargo-lock while cloning); install it: brew install flock"
+  [[ -f $PRIMARY/$rel/.cargo-lock ]] || die_clone $rel "$PRIMARY/$rel/.cargo-lock does not exist; this is not a cargo profile directory, so there is no lock to hold"
+  print "  … $rel (cloning; waits for any build running in the primary)"
+  # -w: a build held for 30 min is a fault to report, not to wait out silently.
+  flock -w 1800 $PRIMARY/$rel/.cargo-lock cp -cRp $PRIMARY/$rel $WT/$rel || {
+    rm -rf $WT/$rel  # never leave a partial clone that a rerun would call "present"
+    die_clone $rel "cp -cRp (under flock) failed"
+  }
+  print "  → $rel (clone)"
+  dirs_cloned=$(( dirs_cloned + 1 ))
+}
+
 print "▸ hydrating ${WT:t}"
 # NOTE: the loop variable is `artifact`, never `path`. In zsh `path` is the
 # special array tied to $PATH; reading a manifest line into it silently
@@ -146,11 +208,12 @@ while read -r mode artifact _rest; do
   case $mode in
     link) do_link $artifact ;;
     copy) do_copy $artifact ;;
-    *) print -u2 "hydrate: unknown mode '$mode' in $MANIFEST (want: link | copy)"; exit 2 ;;
+    clone) do_clone $artifact ;;
+    *) print -u2 "hydrate: unknown mode '$mode' in $MANIFEST (want: link | copy | clone)"; exit 2 ;;
   esac
 done < $MANIFEST
 
-print "▸ ${WT:t}: $linked linked, $cloned copied, $present already present"
+print "▸ ${WT:t}: $linked linked, $cloned copied, $dirs_cloned cloned, $present already present"
 
 # THE POINT OF THE WHOLE SCRIPT. A provisioning script that swallows a missing
 # artifact and exits 0 hands back a worktree whose suite skips tests, and the
