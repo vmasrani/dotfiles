@@ -608,6 +608,9 @@ install_dotfiles() {
 		"$dotfiles/local/.mutt_secrets:$home/.mutt_secrets"
 	)
 
+	# The one interactive step of the whole setup: back up pre-existing shell rc files
+	backup_conflicting_rc_files "${file_pairs[@]}"
+
 	# Create all symlinks in a single loop
 	for pair in "${file_pairs[@]}"; do
 		source="${pair%%:*}"
@@ -681,14 +684,73 @@ generate_plugin_configs() {
 	gum_success "Plugin configuration files generated successfully"
 }
 
+# Args: source:target pairs (as in install_dotfiles). Finds shell rc targets that
+# are real files/dirs (not already a symlink), asks ONCE, and mv's each to
+# <target>.pre-dotfiles.<timestamp> so ensure_symlink can link cleanly. Never rm.
+backup_conflicting_rc_files() {
+	local pair target tilde="~"
+	local -a conflicts=()
+	for pair in "$@"; do
+		target="${pair#*:}"
+		[[ "$(dirname "$target")" == "$HOME" ]] || continue
+		case "$(basename "$target")" in
+		.zshrc | .zprofile | .zshenv | .bashrc | .bash_profile | .p10k.zsh | .zpreztorc) ;;
+		*) continue ;;
+		esac
+		[[ -L "$target" ]] && continue
+		[[ -e "$target" ]] || continue
+		conflicts+=("$target")
+	done
+	((${#conflicts[@]})) || return 0
+
+	local prompt="Back up your existing ${conflicts[*]/#$HOME/$tilde} and replace with the dotfiles version?"
+	if ((${#conflicts[@]} > 1)); then
+		prompt="Back up your existing shell files (${conflicts[*]/#$HOME/$tilde}) and replace with the dotfiles version?"
+	fi
+	local ts
+	ts="$(date +%Y%m%d-%H%M%S)"
+	if ! gum_confirm "$prompt"; then
+		gum_warning "Keeping your existing files: the dotfiles shell config will NOT load."
+		gum_warning "To switch later: mv ~/.zshrc ~/.zshrc.pre-dotfiles.$ts && ./setup.sh"
+		return 0
+	fi
+
+	for target in "${conflicts[@]}"; do
+		mv "$target" "$target.pre-dotfiles.$ts"
+		gum_info "Backed up ${target/#$HOME/$tilde} to ${target/#$HOME/$tilde}.pre-dotfiles.$ts"
+		gum_info "  Restore: mv ${target/#$HOME/$tilde}.pre-dotfiles.$ts ${target/#$HOME/$tilde}"
+	done
+	gum_info "Personal additions can go in ~/dotfiles/local/.local_env.sh (sourced by our .zshrc)."
+}
+
+# Install Xcode Command Line Tools without the GUI dialog (softwareupdate route).
+install_xcode_clt_headless() {
+	local marker="/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
+	local label
+	touch "$marker"
+	label="$(softwareupdate -l 2>/dev/null | sed -n 's/^[ *]*Label: *\(Command Line Tools.*\)$/\1/p' | sort -V | tail -n1)"
+	if [[ -z "$label" ]]; then
+		rm -f "$marker"
+		gum_error "Could not find a 'Command Line Tools' update via softwareupdate -l. Run: xcode-select --install"
+		return 1
+	fi
+	if ! sudo softwareupdate -i "$label" --verbose; then
+		rm -f "$marker"
+		gum_error "softwareupdate failed installing '$label'. Run: xcode-select --install"
+		return 1
+	fi
+	rm -f "$marker"
+	if ! xcode-select -p &>/dev/null; then
+		gum_error "Command Line Tools still missing after install."
+		return 1
+	fi
+}
+
 install_homebrew() {
 	# Ensure Xcode Command Line Tools are installed (Homebrew prerequisite)
 	if ! xcode-select -p &>/dev/null; then
 		gum_info "Installing Xcode Command Line Tools (required for Homebrew)..."
-		xcode-select --install
-		until xcode-select -p &>/dev/null; do
-			sleep 5
-		done
+		install_xcode_clt_headless || return 1
 		gum_success "Xcode Command Line Tools installed."
 	fi
 
@@ -697,12 +759,17 @@ install_homebrew() {
 		sudo xcodebuild -license accept 2>/dev/null || true
 	fi
 
-	/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+	# NONINTERACTIVE=1 skips the installer's "Press RETURN" prompt
+	NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-	# Add to PATH for the current session (Apple Silicon Macs use /opt/homebrew)
-	if [[ -d "/opt/homebrew/bin" ]]; then
-		export PATH="/opt/homebrew/bin:$PATH"
-	fi
+	# Put brew on PATH for the current session (Apple Silicon: /opt/homebrew, Intel: /usr/local)
+	local prefix
+	for prefix in /opt/homebrew /usr/local; do
+		if [[ -x "$prefix/bin/brew" ]]; then
+			eval "$("$prefix/bin/brew" shellenv)"
+			break
+		fi
+	done
 
 	# Verify installation
 	if ! command_exists brew; then
@@ -718,7 +785,7 @@ install_zsh() {
 		sudo chsh -s "$(command -v zsh)" "$USER"
 	elif [[ "$OS_TYPE" == "mac" ]]; then
 		brew install zsh vim
-		chsh -s "$(command -v zsh)"
+		sudo chsh -s "$(command -v zsh)" "$USER"
 	fi
 	gum_success "zsh installed. Restart your shell to use it."
 }
@@ -1226,6 +1293,31 @@ install_meslo_font() {
 		gum_success "MesloLGS Nerd Font Mono installed successfully."
 	else
 		gum_dim "MesloLGS Nerd Font Mono is already installed."
+	fi
+}
+
+install_p10k_fonts() {
+	local font_dir="$HOME/Library/Fonts"
+	[[ "$OS_TYPE" == "mac" ]] || font_dir="$HOME/.local/share/fonts"
+	mkdir -p "$font_dir"
+
+	local base="https://github.com/romkatv/powerlevel10k-media/raw/master"
+	local style installed=false
+	for style in "Regular" "Bold" "Italic" "Bold Italic"; do
+		local file="MesloLGS NF $style.ttf"
+		if [[ -f "$font_dir/$file" ]]; then
+			continue
+		fi
+		gum_info "Downloading $file..."
+		curl -fL "$base/${file// /%20}" --output "$font_dir/$file"
+		installed=true
+	done
+
+	if [[ "$installed" == "true" ]]; then
+		[[ "$OS_TYPE" == "mac" ]] || { apt_install fontconfig; fc-cache -f; }
+		gum_success "MesloLGS NF (Powerlevel10k) fonts installed."
+	else
+		gum_dim "MesloLGS NF (Powerlevel10k) fonts are already installed."
 	fi
 }
 
