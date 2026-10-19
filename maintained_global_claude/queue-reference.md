@@ -98,6 +98,19 @@ slots re-pinned to stale jobs after crashes; one `ts -u` crash wiped every queue
 were lost between the daemon and the caller. Locks held by the kernel on behalf of live processes
 cannot go stale, and there is no job list to lose.
 
+### Stall watchdog (2026-10-19)
+
+A slot holder whose WHOLE process tree uses < 1 CPU-second over the stall window is declared stalled
+(incident: a `cargo test` sat at 0% CPU for 70 min and `--solo` plus everything behind it waited).
+The `queue` wrapper that owns the slot polls the tree's CPU every 60 s (no daemon). On a stall it
+writes evidence to `~/.cache/queue/stalls/<timestamp>-<pid>.txt` (command, cwd, `ps` tree, CPU over
+the window), prints a `queue: STALLED ... KILLED` line to the job's stderr, kills the tree (TERM,
+KILL after 10 s) and exits **124**. `--solo` jobs use the same logic. A job waiting on a lock inside
+the queue is not exempt.
+
+- `QUEUE_STALL_MINUTES` — window, default 15; `0` disables. (`QUEUE_STALL_SECONDS` overrides, tests only.)
+- `queue --no-stall-kill <cmd...>` — opt one job out (legitimately idle jobs, e.g. a long sleep/wait).
+
 ## The `&&` trap
 
     queue cd /repo && cargo nextest run     # WRONG
