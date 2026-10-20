@@ -14,6 +14,17 @@ cd "$(dirname "$0")"
 # Source the installation functions
 source "./install/install_functions.sh"
 source "./shell/gum_utils.sh"
+source "./install/install_iterm2_prefs.sh"
+
+# Unattended run: no Homebrew prompts or hints, no git credential prompts.
+export NONINTERACTIVE=1 HOMEBREW_NO_ENV_HINTS=1 GIT_TERMINAL_PROMPT=0
+
+# Ask for the sudo password ONCE and keep the ticket alive for the whole run so
+# later sudo / brew cask / chsh calls never re-prompt.
+sudo -v
+(while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done 2>/dev/null) &
+SUDO_KEEPALIVE_PID=$!
+trap 'kill "$SUDO_KEEPALIVE_PID" 2>/dev/null' EXIT
 
 # Prepend user bin dirs (whether or not they exist yet) so a re-run finds tools
 # installed on a previous pass instead of rebuilding them.
@@ -43,7 +54,8 @@ install_if_dir_missing ~/dotfiles/local install_local_dotfiles
 
 install_dotfiles
 install_if_missing gum install_gum # Terminal UI styling (Charm)
-install_meslo_font # MesloLGS NF font for Powerlevel10k theme
+install_meslo_font # MesloLGS Nerd Font Mono
+install_p10k_fonts # MesloLGS NF fonts for Powerlevel10k theme and iTerm2 profiles
 install_iterm2 # iTerm2 terminal emulator (macOS only)
 
 
@@ -128,18 +140,13 @@ install_if_missing taplo install_taplo_cli # TOML LSP and formatter
 install_helix_grammars
 
 if [[ "$OS_TYPE" == "mac" ]]; then
-    gum_info "Setup agent toggle window (TMUX REQUIRED):"
-    gum_info "  Map Cmd+Shift+L → F11 in iTerm2:"
-    gum_info "  1. Open iTerm2 → Settings → Keys → Key Bindings"
-    gum_info "  2. Click '+' to add a new binding"
-    gum_info "  3. Set shortcut to Cmd+Shift+L"
-    gum_info "  4. Action: 'Send Escape Sequence'"
-    gum_info "  5. Enter: [23~"
-    echo ""
     gum_info "If you haven't already, configure these macOS keyboard settings:"
     gum_info "  1. System Settings → Keyboard → Remap Caps Lock to Control"
     gum_info "  2. System Settings → Keyboard → Key repeat rate → Fast"
     gum_info "  3. System Settings → Keyboard → Delay until repeat → Short"
 fi
+
+# Last: fails loud if iTerm2 is running, after everything else has finished
+install_iterm2_prefs
 
 gum_box_success "Setup completed successfully. All necessary tools and configurations have been installed and set up."
