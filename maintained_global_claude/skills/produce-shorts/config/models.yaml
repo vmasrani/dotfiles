@@ -1,6 +1,6 @@
 # Subagent routing for produce-shorts. Values are Agent-tool `subagent_type`s whose
 # frontmatter pins model + effort — dispatch by subagent_type and OMIT `model`.
-# Never let a subagent inherit the session model; Opus is never a worker.
+# Never let a subagent inherit the session model. Opus 5.5 is the default worker; Sonnet only for easy roles.
 roles:
   # Stage 1: reads the whole transcript once, writes review/draft-picks.json.
   editor: sonnet55-worker-high

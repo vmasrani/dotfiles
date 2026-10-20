@@ -1,8 +1,8 @@
 #!/usr/bin/env zsh
 #
 # cargo-sweep-all — prune stale Rust build artifacts across every cargo
-# project under /Volumes/external/dev, plus the ad-hoc bare target dirs
-# used by parallel agent slots under /Volumes/external/.cargo-targets
+# project under /Volumes/volume/dev, plus the ad-hoc bare target dirs
+# used by parallel agent slots under /Volumes/volume/.cargo-targets
 # (see cargo-slot). Nothing else prunes these — target/ dirs balloon
 # fast and every worktree/slot gets its own (no global CARGO_TARGET_DIR).
 #
@@ -21,7 +21,7 @@
 #   toolchain this Mac literally cannot run.
 #
 # BARE TARGET DIRS
-#   Dirs under /Volumes/external/.cargo-targets/<project>/<slot> are
+#   Dirs under /Volumes/volume/.cargo-targets/<project>/<slot> are
 #   raw CARGO_TARGET_DIR outputs with no Cargo.toml beside them, so
 #   cargo-sweep (which locates the target dir via `cargo metadata`)
 #   can't address them directly. We point CARGO_TARGET_DIR at one and
@@ -49,8 +49,8 @@ Usage: $SCRIPT_NAME [--dry-run] [--help]
 
 Prunes stale Rust build artifacts (cargo-sweep --time \${CARGO_SWEEP_DAYS:-15}
 days, plus toolchain-based pruning) across every cargo project under
-/Volumes/external/dev and every bare agent-slot target dir under
-/Volumes/external/.cargo-targets.
+/Volumes/volume/dev and every bare agent-slot target dir under
+/Volumes/volume/.cargo-targets.
 
   --dry-run   pass through to cargo-sweep; report what WOULD be removed,
               delete nothing
@@ -74,8 +74,8 @@ for arg in "$@"; do
 done
 
 DAYS=${CARGO_SWEEP_DAYS:-15}
-DEV_ROOT=/Volumes/external/dev
-BARE_ROOT=/Volumes/external/.cargo-targets
+DEV_ROOT=/Volumes/volume/dev
+BARE_ROOT=/Volumes/volume/.cargo-targets
 LOG_DIR="$HOME/.cache/cargo-sweep"
 LOG_FILE="$LOG_DIR/last-run.log"
 SHIM_DIR="$LOG_DIR/shim"
@@ -111,7 +111,7 @@ parse_bytes() {
 }
 
 main() {
-  [[ -d /Volumes/external ]] || die "/Volumes/external is not mounted — refusing to run (would silently sweep nothing)"
+  [[ -d /Volumes/volume ]] || die "/Volumes/volume is not mounted — refusing to run (would silently sweep nothing)"
   command -v cargo-sweep >/dev/null 2>&1 || die "cargo-sweep not found on PATH"
   command -v cargo       >/dev/null 2>&1 || die "cargo not found on PATH"
   command -v fd          >/dev/null 2>&1 || die "fd not found on PATH"

@@ -41,7 +41,7 @@
 #
 # DISK
 #   ~25 GB per slot for a large workspace (parot-core), against ~1.7 TB
-#   free on /Volumes/external. Capped at CARGO_SLOT_MAX (default 8) NEW
+#   free on /Volumes/volume. Capped at CARGO_SLOT_MAX (default 8) NEW
 #   slots per project — creating the 9th fails loud rather than quietly
 #   filling the disk. Reclaim with `cargo-slot --reclaim <slot>`, or just
 #   `rm -rf` the printed path; the next run rebuilds it (sccache makes
@@ -59,7 +59,7 @@
 #      the lead re-verifies anyway. This is the default worth preferring.
 #
 # ENV OVERRIDES
-#   CARGO_SLOT_ROOT  where slots live   (default /Volumes/external/.cargo-targets)
+#   CARGO_SLOT_ROOT  where slots live   (default /Volumes/volume/.cargo-targets)
 #   CARGO_SLOT_MAX   max slots/project  (default 8)
 
 set -e
@@ -70,7 +70,7 @@ set -e
 die() { print -u2 "cargo-slot: error: $1"; exit 2 }
 note() { print -u2 "cargo-slot: $1" }
 
-SLOT_ROOT="${CARGO_SLOT_ROOT:-/Volumes/external/.cargo-targets}"
+SLOT_ROOT="${CARGO_SLOT_ROOT:-/Volumes/volume/.cargo-targets}"
 SLOT_MAX="${CARGO_SLOT_MAX:-8}"
 
 # Cargo invokes `cargo slot ...` as `cargo-slot slot ...`; drop the echoed name.
@@ -106,7 +106,7 @@ NOTES
   Capped at CARGO_SLOT_MAX (default 8) slots per project; reclaim to free.
 
 ENV
-  CARGO_SLOT_ROOT   default /Volumes/external/.cargo-targets
+  CARGO_SLOT_ROOT   default /Volumes/volume/.cargo-targets
   CARGO_SLOT_MAX    default 8
 
 See the comments at the top of this script for the full rationale and for

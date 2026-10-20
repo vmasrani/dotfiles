@@ -247,3 +247,6 @@ function y() {
 
 fwd()   { ssh -O forward -L "$1:localhost:$1" myremote && echo "→ localhost:$1"; }
 unfwd() { ssh -O cancel  -L "$1:localhost:$1" myremote && echo "✕ localhost:$1"; }
+
+# Launch from the real path so ~/dev/x and /Volumes/volume/dev/x share one project memory.
+claude() { builtin cd -P . && command claude "$@" }
