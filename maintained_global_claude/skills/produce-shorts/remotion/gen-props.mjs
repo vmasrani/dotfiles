@@ -131,7 +131,7 @@ if (clipWidth !== width || clipHeight !== height) {
 if (!near(clip.output.fps, fps)) {
   die(`clip.yaml output.fps is ${clip.output.fps} but the render is ${fps} fps`);
 }
-if (clip.output.duration_s > profile.max_duration_s) {
+if (profile.max_duration_s !== null && clip.output.duration_s > profile.max_duration_s) {
   die(`clip is ${clip.output.duration_s}s, over the ${profile.name} limit of ${profile.max_duration_s}s`);
 }
 

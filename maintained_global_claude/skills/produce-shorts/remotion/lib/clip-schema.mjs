@@ -11,6 +11,13 @@ const seconds = z.number().finite().nonnegative();
 export const VisualSchema = z.strictObject({
   kind: z.enum(['aroll', 'broll']),
   treatment: z.string().min(1),
+  // splitscreen only: exactly two speaker ids [top, bottom]
+  speakers: z.tuple([z.string().min(1), z.string().min(1)]).nullable().default(null),
+  // true = a user override by comment; plan_framing.py never changes it
+  locked: z.boolean().default(false),
+  reason: z.string().nullable().default(null),
+  // optional per-segment crop override `x=..:y=..:w=..:h=..` (scripts/extract_segments.py reads it, not the renderer)
+  crop: z.string().min(1).nullable().default(null),
   asset_id: z.string().min(1).nullable().default(null),
   motion: z.string().min(1).nullable().default(null),
 });
@@ -51,15 +58,12 @@ export const AssetSchema = z.strictObject({
 export const ClipSchema = z.strictObject({
   clip: z.strictObject({
     id: z.string().min(1),
+    pick: z.string().min(1),
+    format: z.enum(['short', 'clip']),
     title: z.string().min(1),
-    status: z.enum([
-      'proposed', 'approved_edit', 'storyboarded', 'assets_ready', 'critiqued',
-      'approved_render', 'rendered', 'qc_passed', 'delivered',
-    ]),
-    logline: z.string(),
-    audience_response: z.string(),
-    hook: z.string(),
-    payoff: z.string(),
+    status: z.enum(['frozen', 'storyboarded', 'approved_render', 'rendered', 'qc_passed', 'delivered']),
+    why: z.string(),
+    ends_on: z.string(),
   }),
   timeline: z.array(SegmentSchema).min(1),
   subtitles: z.strictObject({
@@ -82,11 +86,11 @@ export const ClipSchema = z.strictObject({
     fps: z.number().positive(),
     duration_s: z.number().positive(),
   }),
-  thumbnail: z.strictObject({
-    first_frame_text: z.string(),
-    hierarchy: z.string(),
-    placement: z.string(),
-  }),
+  review: z.strictObject({
+    storyboard_docs: z.array(z.strictObject({ rev: z.int(), id: z.string().min(1), url: z.string().min(1) })).default([]),
+    cover: z.int().nullable().default(null),
+    final_url: z.string().nullable().default(null),
+  }).default({ storyboard_docs: [], cover: null, final_url: null }),
   render: z.strictObject({
     versions: z.array(z.looseObject({ version: z.int() })).default([]),
   }),
@@ -99,7 +103,7 @@ export const EpisodeSchema = z.looseObject({
     name: z.string().min(1),
     resolution: z.string().regex(/^\d+x\d+$/),
     fps: z.number().positive(),
-    max_duration_s: z.number().positive(),
+    max_duration_s: z.number().positive().nullable(), // null = no maximum (horizontal clips)
   })).min(1),
 });
 

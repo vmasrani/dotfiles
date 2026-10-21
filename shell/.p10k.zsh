@@ -191,7 +191,7 @@
   # Format: [ip]='LABEL|256-color'. Linux is detected by uname and needs no IP.
   typeset -gA _P9K_MACHINES=(
     [192.168.86.26]='M5|201'     # Mac mini M5   (magenta)
-    # [192.168.86.XX]='M4|45'    # Mac mini M4   (cyan)      <- put its IP here
+    [192.168.86.43]='M4|45'     # Mac mini M4   (cyan)
     # [192.168.86.YY]='MBP|208'  # MacBook Pro   (orange)    <- put its IP here
   )
   typeset -g _P9K_MACHINE_SEGMENT

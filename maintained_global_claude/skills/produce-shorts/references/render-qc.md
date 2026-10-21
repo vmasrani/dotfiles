@@ -1,26 +1,34 @@
-# Stages 1, 8, 9 — ingest, render, and quality control
+# Stage 0 (ingest) and stage 3 (render, QC, delivery)
 
 These stages are deterministic: scripts do the work, the orchestrator sequences them and reads their exit codes. No creative subagents here; a failure is fixed by re-running with corrected inputs, never by an agent "adjusting" media by eye.
 
-## Stage 1 — Ingest (`scripts/ingest.py`, `transcribe.py`, `sync_cameras.py`)
+## Stage 0 — Ingest (`scripts/ingest.py`, `transcribe.py`; multitrack: `ingest_multitrack.py`, `sync_cameras.py`)
 
 1. `ingest.py init EPISODE_ROOT --url URL --title T` — refuses to run unless the user has attested authorization (`--authorized` flag, recorded in episode.yaml). Downloads best video+audio via yt-dlp, probes every file in `source/` with ffprobe, writes `episode.yaml` (media + probes blocks).
-2. User-supplied camera files: copy into `source/`, register speakers + camera files in `episode.yaml` (orchestrator edits YAML directly).
+2. Multitrack only — user-supplied camera files: copy into `source/`, register speakers + camera files in `episode.yaml` (orchestrator edits YAML directly).
 3. `transcribe.py EPISODE_ROOT --engine assemblyai|mlx-whisper` — word-level timestamps; speaker labels via engine diarization (assemblyai) or per-speaker camera audio activity (mlx-whisper + isolated tracks). Maps diarization labels to `speakers[].id` (asks orchestrator to confirm mapping via sample lines). Writes transcript.json + transcript.md.
 4. `sync_cameras.py EPISODE_ROOT` — audio cross-correlation offset per camera file; writes the `sync` block with offset, confidence, gaps. Low confidence (< threshold in config) exits nonzero.
 5. **Sync verification is mandatory before creative work when camera files exist:** extract a 5s side-by-side comparison at the computed offset (`sync_cameras.py verify`), eyeball/user-check it, then set `verified: true`. If sources cannot be reliably synchronized, STOP the pipeline and tell the user — do not proceed with unusable isolated footage silently.
 
-## Stage 8 — Render
+## Stage 3 — Render
+
+A pick reaches stage 3 only with `clip.status: approved_render` (approved by comment on its storyboard doc). The shorts render prep (steps 1, 3, 4 below) already ran in stage 2 for the stills; re-run it only if `clip.yaml` changed since the approved storyboard rev.
+
+### Clips (`format: clip`, horizontal)
+
+`scripts/render_horizontal.py CLIP_DIR` — cuts every timeline segment from the 16:9 source, joins them with the configured micro-crossfade, normalizes loudness to the `youtube` profile, writes `renders/v<N>-youtube.mp4` plus `subtitles/v<N>.srt` (from forced alignment — uploaded as YouTube captions, not burned in). No Remotion. Then `qc_render.py --profile youtube`.
+
+### Shorts (`format: short`, vertical)
 
 Tools: FFmpeg/FFprobe for extraction, audio assembly, encoding; **Remotion** (template in `remotion/`) for deterministic timeline composition — subtitles, split screens, crops, overlays, graphics. The Remotion composition takes a single `props.json` generated from `clip.yaml`; it renders what the manifest says, nothing more.
 
-Per approved clip (status must be `approved_render` — gate 2 passed):
+Per approved short:
 
 1. **Assemble audio:** `scripts/assemble_audio.py CLIP_DIR` — concatenates source audio per the timeline's source/output mapping (sample-accurate cuts, configurable micro-crossfade at internal cuts to kill clicks). Output: `renders/v<N>-audio.wav`.
-2. **Lock the timeline.** After this point any timeline edit means going back to gate 2.
-3. **Align subtitles:** `scripts/align_subtitles.py CLIP_DIR --audio renders/v<N>-audio.wav` → `subtitles/v<N>.ass`; then `scripts/validate_subtitles.py CLIP_DIR --ass subtitles/v<N>.ass` must pass.
-4. **Extract visual segments:** `scripts/extract_segments.py CLIP_DIR` — cuts every A-roll source range (from episode or synced camera file, applying sync offsets), applies crops, normalizes to the target fps/resolution; stages files under `assets/aroll/`. **Naming contract with the Remotion template:** `assets/aroll/<SEGMENT-ID>.mp4` for single-source treatments; splitscreen segments emit two half-height crops `<SEGMENT-ID>-top.mp4` and `<SEGMENT-ID>-bottom.mp4` (each target-width × half-target-height).
-5. **Compose:** copy `remotion/` into the episode workspace (one template copy serves one clip at a time — `gen-props.mjs` symlinks the clip dir into `public/clip`), generate `props.json` from clip.yaml, `npx remotion render` the composition over the assembled audio, A-roll, B-roll, text, graphics, and `.ass` subtitles. The Remotion output is the **visual master**, not a deliverable — don't QC codec/pix_fmt details on it (it may report `yuvj420p`).
+2. **Lock the timeline.** After this point any timeline edit means a new storyboard rev and a fresh approval.
+3. **Extract visual segments:** `scripts/extract_segments.py CLIP_DIR` — cuts every A-roll source range (from episode or synced camera file, applying sync offsets), applies crops, normalizes to the target fps/resolution; stages files under `assets/aroll/`. **Naming contract with the Remotion template:** `assets/aroll/<SEGMENT-ID>.mp4` for single-source treatments; splitscreen segments emit two half-height crops `<SEGMENT-ID>-top.mp4` and `<SEGMENT-ID>-bottom.mp4` (each target-width × half-target-height). Closeups are head-and-shoulders (face box ~30% of the frame, eye line ~0.33) and never magnified beyond `framing.max_upscale` (default 2.0): where the speaker's tile is too small the sharp crop is laid over a blurred, darkened copy of itself (blur-fill, baked into the same `<SEGMENT-ID>.mp4`). It also writes `assets/aroll/layout.json` (each mouth's nose-to-chin band) — so it must run BEFORE step 4.
+4. **Align subtitles:** `scripts/align_subtitles.py CLIP_DIR --audio renders/v<N>-audio.wav` → `subtitles/v<N>.ass`; then `scripts/validate_subtitles.py CLIP_DIR --ass subtitles/v<N>.ass` must pass. Solo captions sit bottom-centre; a caption on screen during a split screen is placed on the panel seam (or the top of the bottom panel) so neither mouth is covered, using `layout.json` (missing or stale layout fails loud). `validate_subtitles.py` re-checks that clearance.
+5. **Compose:** copy `remotion/` into the episode workspace (one template copy serves one clip at a time — `gen-props.mjs` symlinks the clip dir into `public/clip`), generate `props.json` from clip.yaml, `npx remotion render` the composition over the assembled audio, A-roll segments and `.ass` subtitles. The Remotion output is the **visual master**, not a deliverable — don't QC codec/pix_fmt details on it (it may report `yuvj420p`).
 
    **Render with an explicit OffthreadVideo cache cap — this is not optional on a long clip:**
 
@@ -95,18 +103,24 @@ Per approved clip (status must be `approved_render` — gate 2 passed):
 6. **Encode profiles:** ffmpeg pass per platform profile over the master — loudness normalization to the profile's LUFS/true-peak (two-pass `loudnorm`), codec/container per profile. Profile encodes are what stage 9 QC judges.
 7. **Version, never overwrite:** every render is `renders/v<N>-…`; `render.versions` in clip.yaml is append-only. A previously approved version is never deleted or replaced.
 
-## Stage 9 — QC (`scripts/qc_render.py`)
+## QC (`scripts/qc_render.py`)
 
 `qc_render.py CLIP_DIR --version N --profile youtube-shorts` writes `qc-v<N>.json` (schema in `references/schemas.md`) and exits nonzero on any failed check:
 
 - Stream integrity: video+audio streams present, no missing/duplicated frames at cut points, container/codec/resolution/fps/aspect match the profile.
 - Duration: rendered duration == manifest `output.duration_s` (±ε); audio and video stream durations agree.
-- `blackdetect` / `freezedetect`: black or frozen intervals are failures unless the storyboard explicitly specifies them.
+- `blackdetect` / `freezedetect`: black or frozen intervals are failures.
 - Audio: `ebur128` integrated loudness within profile target ±1 LU, true peak under ceiling, `astats` clipping check, `silencedetect` for accidental silence — especially in windows around every internal cut (jump-cut audio dropouts).
 - Subtitles: every manifest line present in the .ass, no overflow beyond safe zones, timing within readability limits (re-run validate_subtitles against the muxed result).
-- Manifest agreement: rendered timeline (cut points detected via scene/audio analysis at expected boundaries) consistent with clip.yaml; every asset in `assets[]` has a file+checksum; no compositing input outside the manifest.
+- Manifest agreement: rendered timeline (cut points detected via scene/audio analysis at expected boundaries) consistent with clip.yaml; no compositing input outside the manifest.
 - Contact sheet: tiled representative frames (one per timeline segment boundary ± midpoints) → `renders/v<N>-contact-sheet.png` for human visual review.
 
 ## Delivery
 
-A clip is done when: QC passes, the human approves the final render (show the contact sheet + the render path), and the packaging step has written `provenance.json`. Then set `clip.status: delivered`. The episode is complete only when every approved clip reaches `delivered`.
+1. QC green → upload the profile encode to `<episode folder>/finals/` (`gog drive upload`).
+2. Insert `FINAL RENDER v<N>: <link>` at the top of the pick's latest storyboard doc
+   (`doc_ops.py final CLIP_DIR --url …`), record `review.final_url`, and tell the user.
+3. The user watches it and comments. "ship" → write `provenance.json`, `clip.status: delivered`.
+   Anything else → fix upstream, re-render as v<N+1>, repeat.
+
+The episode is complete when every approved pick is `delivered` (`status.stage: delivered`).

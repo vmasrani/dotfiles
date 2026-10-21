@@ -191,7 +191,14 @@ disk_perf_tsv() {
     sku=$(az disk show --ids "$disk_id" --query "sku.name" -o tsv)
     case "$sku" in
         PremiumV2_LRS|UltraSSD_LRS)
-            az disk show --ids "$disk_id" --query "[diskIopsReadWrite, diskMbpsReadWrite]" -o tsv ;;
+            # Object query, not a list: tsv prints a list one value per line.
+            local perf
+            perf=$(az disk show --ids "$disk_id" --query "{iops: diskIOPSReadWrite, mbps: diskMBpsReadWrite}" -o tsv)
+            if [[ ! "$perf" =~ ^[0-9]+$'\t'[0-9]+$ ]]; then
+                gum_error "Could not read IOPS/MBps for $sku disk $disk_id (got: '$perf')." >&2
+                exit 1
+            fi
+            echo "$perf" ;;
         *)
             echo "" ;;
     esac
@@ -322,6 +329,37 @@ status_vm() {
     fi
 }
 
+# Incremental snapshots of PremiumV2/Ultra disks copy in the background after
+# `az snapshot create` returns; the source disk must outlive that copy or the
+# snapshot ends up Failed. Block until the copy is complete; die on failure.
+wait_snapshot_complete() {
+    local snap="$1"
+    local state pct
+    while true; do
+        read -r state pct < <(az snapshot show -n "$snap" -g "$RG" --query "{s:provisioningState, p:completionPercent}" -o tsv)
+        if [[ "$state" == "Failed" ]]; then
+            gum_error "Snapshot $snap is Failed (background copy did not complete). Source disks were NOT deleted."
+            exit 1
+        fi
+        if [[ "$state" == "Succeeded" && ( -z "$pct" || "$pct" == "None" || "${pct%.*}" == "100" ) ]]; then
+            return 0
+        fi
+        gum_dim "Snapshot $snap: state=$state copy=${pct:-?}% — waiting..."
+        sleep 30
+    done
+}
+
+# Restore-side check: no waiting, just refuse to build anything from an incomplete snapshot.
+require_snapshot_complete() {
+    local snap="$1"
+    local state pct
+    read -r state pct < <(az snapshot show -n "$snap" -g "$RG" --query "{s:provisioningState, p:completionPercent}" -o tsv)
+    if [[ "$state" != "Succeeded" || ( -n "$pct" && "$pct" != "None" && "${pct%.*}" != "100" ) ]]; then
+        gum_error "Snapshot $snap is not restorable (state=$state copy=${pct:-?}%)."
+        exit 1
+    fi
+}
+
 verify_vm() {
     gum_info "Verifying archive for VM: $vm_name"
     if [[ ! -f "$manifest_file" ]]; then
@@ -335,7 +373,8 @@ verify_vm() {
     os_snapshot=$(jq -r '.archive.osDiskSnapshot // empty' "$manifest_file" 2>/dev/null || echo "")
     if [[ -n "$os_snapshot" ]]; then
         if az snapshot show -n "$os_snapshot" -g "$RG" &>/dev/null; then
-            gum_success "OS Snapshot $os_snapshot verified."
+            wait_snapshot_complete "$os_snapshot"
+            gum_success "OS Snapshot $os_snapshot verified (copy complete)."
         else
             gum_error "OS Snapshot $os_snapshot missing!"
             exit 1
@@ -347,7 +386,8 @@ verify_vm() {
     data_snapshots=($(jq -r '.archive.dataDiskSnapshots[] // empty' "$manifest_file" 2>/dev/null || echo ""))
     for snap in "${data_snapshots[@]}"; do
         if az snapshot show -n "$snap" -g "$RG" &>/dev/null; then
-            gum_success "Data Snapshot $snap verified."
+            wait_snapshot_complete "$snap"
+            gum_success "Data Snapshot $snap verified (copy complete)."
         else
             gum_error "Data Snapshot $snap missing!"
             exit 1
@@ -553,6 +593,11 @@ restore_vm() {
         gum_error "No OS snapshot found in manifest to restore from."
         exit 1
     fi
+
+    local snap
+    for snap in "$os_snapshot" $(jq -r '.archive.dataDiskSnapshots[]? // empty' "$manifest_file"); do
+        require_snapshot_complete "$snap"
+    done
 
     local os_snapshot_id
     os_snapshot_id=$(az snapshot show -n "$os_snapshot" -g "$RG" --query "id" -o tsv)

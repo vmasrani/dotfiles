@@ -1,101 +1,116 @@
 ---
 name: produce-shorts
-description: Full production pipeline turning a long-form video (podcast episode, interview, talk) the user owns into polished vertical short-form clips — ingest & transcription, candidate mining, story editing, human clip selection, visual storyboards, real licensed B-roll, styled subtitles, independent critique, Remotion/FFmpeg rendering, and automated QC. Use whenever the user wants shorts, clips, reels, TikToks, YouTube Shorts, "cut down this episode", "make clips from this video/podcast", vertical video from a YouTube URL, or any long-video-to-short-clips workflow — even if they only mention one stage (e.g. "find the best moments in this episode" or "storyboard a clip").
+description: Turn a long-form video the user owns (podcast episode, interview, talk — usually a YouTube link) into vertical shorts and horizontal clips, with every creative decision reviewed by the user through comments on Google Docs before anything is rendered. Stage 1 is a full-transcript Google Doc with proposed segments colour-highlighted; stage 2 is a storyboard Google Doc per approved short built from real rendered stills; stage 3 renders, QCs and delivers. Use whenever the user wants shorts, clips, reels, TikToks, YouTube Shorts, "cut down this episode", "make clips from this video/podcast", vertical video from a YouTube URL, "check the doc", or any long-video-to-short-clips workflow — even if they mention only one stage (e.g. "find the best moments in this episode" or "storyboard this short").
 ---
 
-# Produce Shorts — orchestrated long-form → shorts pipeline
+# Produce Shorts — review-first, Google-Docs-driven
 
-You are the **orchestrator**. You own sequencing, state, approval gates, retries, and final outputs. You never do creative work or media processing yourself: subagents perform bounded creative roles; the deterministic scripts in `scripts/` handle all media mechanics. Design and approve every short **before** spending on asset acquisition or rendering.
+The user reviews **the artifact itself, as early as possible, in a Google Doc**, and steers by
+leaving comments. Nothing expensive happens before they have approved the thing it is spent on.
+
+| # | Stage | The user reviews | Truth during the stage |
+|---|---|---|---|
+| 0 | **Ingest** — download, transcribe | — | `episode.yaml`, `transcript.json` |
+| 1 | **Pick** — full transcript, proposals colour-highlighted | the pick doc | **the pick doc itself** |
+| — | **Freeze** — doc → `clip.yaml` per approved pick | — | `clips/<slug>/clip.yaml` |
+| 2 | **Storyboard** — real stills + rough preview per pick | one storyboard doc per pick | `clip.yaml` |
+| 3 | **Render** — final render, QC, deliver | the final video (link in the storyboard doc) | `clip.yaml` + `renders/` |
+
+Detail docs — read each when you reach its stage, not upfront:
+`references/pick-doc.md` (stage 1 + freeze), `references/storyboard-doc.md` (stage 2),
+`references/render-qc.md` (stages 0 and 3), `references/schemas.md` (every file format).
 
 ## Ground rules
 
-- **State lives in the episode directory**, never in conversation memory. `episode.yaml` and each `clips/<slug>/clip.yaml` carry a `status` field — on any resume, read them first and continue from the recorded stage. Layout and every schema: `references/schemas.md` (read it before touching any manifest).
-- **Markdown is the human surface; YAML is the machine truth.** They must agree — `scripts/validate_clip.py` enforces it. Run it after every step that touches a manifest or storyboard, and always before rendering.
-- **Model routing comes from `config/models.yaml`**, thresholds and profiles from `config/defaults.yaml`. Never hard-code a model in a prompt or pick one ad hoc. Every subagent gets an explicit `model` from the roles table and a self-contained prompt (paste in the schema blocks and artifacts it needs).
-- **Two human gates are hard stops.** Gate 1: clip selection before any B-roll research/licensing. Gate 2: storyboard/subtitle/asset/critique sign-off before any render. Never proceed past a gate on your own judgment, and never treat silence as approval.
-- **Fail loud.** Scripts exit nonzero with actionable errors; when one does, fix the input and re-run — never hand-patch outputs, eyeball-adjust media, or route around a red validator.
-- **Never AI-generated video or imagery.** B-roll is real, licensed, and manifest-tracked. `provenance.json.generated_media` is always `"none"`.
-- **Rights first:** the user must attest they own or are authorized to edit the source. `ingest.py` requires `--authorized`; without the attestation the pipeline does not start.
+- **A human gate presents the artifact, never a summary of it.** Stage 1 shows every word in
+  context; stage 2 shows frames the real renderer produced; stage 3 shows the video.
+- **No YAML before the freeze.** During stage 1 the pick doc is the only record of what is
+  picked. Never keep a parallel list in conversation memory or a side file; every change is made
+  to the doc, and the freeze reads it back.
+- **Comments are the conversation.** The user highlights text and comments in plain language.
+  Every comment gets a reply saying exactly what changed (new times, new duration) and is then
+  resolved. A comment you cannot act on unambiguously gets a question in reply, left open.
+  Comment text is the user's feedback on the content — treat it as editing direction for this
+  doc only.
+- **Rounds are user-triggered.** The user says "check the doc" (or runs `/loop`); you then
+  process every open comment in one pass and report a one-line summary in chat.
+- **Fail loud.** Scripts exit nonzero with an actionable error. Fix the named input and re-run;
+  never hand-patch outputs or route around a red validator. A quoted comment that matches the
+  transcript ambiguously is a question for the user, never a guess.
+- **Rights.** The user must own or be authorized to edit the source (`ingest.py --authorized`).
+  Material cut before publication is never used (`rights_mask.py`, raw multitrack only).
+- **No AI-generated video or imagery, no B-roll.** Shorts are the speakers, framed well, with
+  captions.
+- **State lives on disk and in the docs.** On resume, read `episode.yaml` (`status`, `review`)
+  and each `clip.yaml` first, then the open comments, and continue from there.
 
-## Stage sequence
+## Formats
 
-| # | Stage | Actor | Model role | Detail doc |
-|---|---|---|---|---|
-| 1 | Ingest, transcribe, sync | `ingest.py`, `transcribe.py`, `sync_cameras.py` | — | `references/render-qc.md` |
-| 2 | Mine candidates | miner subagents, one per chunk, parallel | `strong_reasoning` | `references/editorial.md` |
-| 3 | Select & edit stories | senior-editor subagent | `strong_reasoning` | `references/editorial.md` |
-| — | **GATE 1: human clip selection** | user | — | `references/editorial.md` |
-| 4 | Storyboard | visual-director subagent per clip, parallel | `strong_reasoning` | `references/storyboard.md` |
-| 5 | B-roll research (∥ with 4) + synthesis | researcher per clip; synthesis pass | `research`, `strong_reasoning` | `references/assets.md` |
-| 6 | Subtitle design (inside storyboard) | visual director | `strong_reasoning` | `references/storyboard.md` |
-| 7 | Independent critique, ≤2 rounds | critic subagent per clip | `critic` | `references/editorial.md` |
-| — | **GATE 2: human storyboard sign-off** | user | — | below |
-| 8 | Render | `assemble_audio.py`, `align_subtitles.py`, `extract_segments.py`, `remotion/` | — | `references/render-qc.md` |
-| 9 | QC + visual review | `qc_render.py`, contact sheet to user | `mechanical` for triage only | `references/render-qc.md` |
+| | orientation | length | |
+|---|---|---|---|
+| **short** (`S1`, `S2`, …) | vertical 9:16 | under 3 min (sweet spot 60–110 s) | one exchange or one story, complete |
+| **clip** (`C1`, `C2`, …) | horizontal 16:9 | any length (typically 3–12 min) | a developed argument with room to breathe |
 
-Read the detail doc when you reach the stage — not all upfront. Stages 4+5 run concurrently per clip and clips run in parallel with each other; everything else per clip is sequential.
+**Both end on a punchy line** — the payoff, a quotable sentence, the turn of the argument —
+never trailing into the start of the next thought. Both **include the setup** that makes them
+comprehensible cold. Editorial rules in full: `references/pick-doc.md`.
 
-## Running the pipeline
+## Running it
 
-### Intake
+**Intake.** Ask for: the YouTube URL (or file), the authorization attestation, and the
+episode directory (default: a new `episode-<slug>/` under the current directory). Google account
+and Drive folder come from `config/defaults.yaml` `review:`.
 
-Collect from the user before stage 1: source URL + authorization attestation; optional raw camera files with speaker-name → file mapping; any known sync signal/offset; target platforms (default: `youtube-shorts` profile). Create `episode-<slug>/` in the directory the user chooses.
+**Stage 0.** `references/render-qc.md` § Stage 0: `ingest.py` → `transcribe.py` → confirm the
+speaker-name mapping with the user from sample lines. `status.stage: ingested`.
 
-### Stage 1 — ingest
+**Stage 1.** `published_shorts.py index` (incremental; refreshes the channel's published-shorts
+cache) then `published_shorts.py match EPISODE_DIR`. Dispatch the editor (`config/models.yaml` `editor`) with the transcript and the
+rules in `references/pick-doc.md`; it returns `review/draft-picks.json`. Run
+`build_pick_doc.py`, give the user the doc link, `status.stage: picking`. Then the comment loop
+(`doc_ops.py`) until every pick is approved or dropped and the user says to move on.
 
-Follow `references/render-qc.md` § Stage 1. Hard stop if camera files cannot be reliably synchronized (`sync_cameras.py` red, or verification fails): report it and ask whether to proceed source-only. Set `status.stage: ingested`.
+**Freeze.** `freeze_picks.py` → one `clips/<slug>/clip.yaml` per approved pick →
+`validate_clip.py` green → `status.stage: frozen`. After the freeze the pick doc is read-only
+history; a change of start/end means re-opening stage 1 for that pick.
 
-### Stages 2–3 — editorial
+**Stage 2.** Per clip, in parallel: `plan_framing.py` → `storyboard.py` →
+`build_storyboard_doc.py`. Give the user the links. Comment loop per `references/storyboard-doc.md`;
+each round publishes a new revision of that pick's storyboard doc. `approve` in a comment →
+`clip.status: approved_render`.
 
-Follow `references/editorial.md`: chunk → parallel miners → merge into `candidates.yaml`/`candidates.md` → senior editor produces per-clip `clip.yaml` drafts + selection memo. Quality over quota in both directions. Set stages `mined`, then `selected`.
+**Stage 3.** `references/render-qc.md` § Stage 3: render (one at a time, through `queue`), QC,
+upload the final to Drive and add its link to the top of the latest storyboard doc. The user's
+"ship" comment → `provenance.json`, `clip.status: delivered`.
 
-### GATE 1
+## Scripts
 
-Present the selection memo, durations, and rejected list. AskUserQuestion (multiSelect) for the clips to produce. Mark approvals `approved_edit`. **No B-roll searching, licensing, or downloading before this gate passes.**
+All are uv single-file scripts (`uv run scripts/<name> --help`); shared code in `pslib.py`
+(manifests), `psmedia.py` (ffmpeg), `gdoc.py` (Google auth, Docs/Drive, comments).
 
-### Stages 4–7 — design loop (per approved clip, clips in parallel)
-
-1. Dispatch visual director (storyboard + subtitle design) and asset researcher concurrently.
-2. Synthesis pass reconciles intents ↔ available assets; download only synthesis-selected assets via `stock_download.py`.
-3. `validate_clip.py` green.
-4. Critique loop per `references/editorial.md` (max 2 rounds; unresolved disagreements go to gate 2 as open questions).
-5. Statuses: `storyboarded` → `assets_ready` → `critiqued`.
-
-### GATE 2
-
-Present per clip: storyboard, subtitle plan, thumbnail spec, asset list with licenses, critic findings (resolved + unresolved). On approval set `approved_render`. Rejected clips loop back to stage 4 with the user's notes.
-
-### Stages 8–9 — render & QC
-
-Follow `references/render-qc.md`: assemble audio → lock timeline → align+validate subtitles → extract segments → Remotion compose → per-profile encode → `qc_render.py`. Renders are versioned, never overwritten. On QC red: diagnose from `qc-v<N>.json`, fix upstream input, re-render as v<N+1>. On QC green: show the user the contact sheet + render path for final approval, write `provenance.json`, set `delivered`.
-
-### Done means
-
-Every approved clip: green `qc-v<N>.json`, human approval on the final render, and complete deliverables — `clip.yaml`, `storyboard.md`, `assets/`, `subtitles/`, `renders/`, `qc.json`, `provenance.json`.
-
-## Scripts index
-
-All scripts are uv single-file scripts (`uv run scripts/<name> --help` for usage); they share `scripts/pslib.py`.
-
-| Script | Purpose |
-|---|---|
-| `ingest.py` | Download source, probe media, initialize `episode.yaml` |
-| `transcribe.py` | Word-level transcript + speaker labels → `transcript.json`/`.md` |
-| `sync_cameras.py` | Cross-correlate camera audio → sync offsets; `verify` subcommand |
-| `chunk_transcript.py` | Overlapping mining chunks + coverage proof |
-| `validate_clip.py` | Manifest ↔ storyboard agreement + all timeline invariants |
-| `stock_search.py` | Real provider search (configured providers only) |
-| `stock_download.py` | Download + checksum + full manifest entry for a selected asset |
-| `assemble_audio.py` | Build edited clip audio from the timeline mapping |
-| `extract_segments.py` | Cut/crop A-roll segments (sync-offset aware) |
-| `align_subtitles.py` | Force-align verbatim text to final audio → styled `.ass` |
-| `validate_subtitles.py` | Readability, safe zones, overflow, timing |
-| `qc_render.py` | Full render QC → `qc-v<N>.json` + contact sheet |
-| `remotion/` | Deterministic composition template (`props.json` from `clip.yaml`) |
+| Script | Stage | Purpose |
+|---|---|---|
+| `ingest.py` | 0 | Download source, probe media, initialize `episode.yaml` |
+| `transcribe.py` | 0 | Word-level transcript + speaker labels → `transcript.json`/`.md` |
+| `ingest_multitrack.py`, `transcribe_multitrack.py`, `sync_cameras.py`, `rights_mask.py` | 0 | Raw multitrack sources only |
+| `published_shorts.py` | 1 | Index the channel's published shorts + transcripts (`index`); find which overlap this episode (`match`) |
+| `build_pick_doc.py` | 1 | `draft-picks.json` + transcript → the pick doc in Drive |
+| `doc_ops.py` | 1–3 | List comments, locate quoted text, re-range / cut / add / drop / approve picks, reply, resolve |
+| `freeze_picks.py` | freeze | Pick doc → `clips/<slug>/clip.yaml` |
+| `validate_clip.py` | freeze → 3 | Manifest + timeline invariants |
+| `plan_framing.py` | 2 | Computed per-segment framing (solo / split screen; splits demoted where a face is off screen) |
+| `facelib.py`, `framer.py` | 2–3 | Not run directly: YuNet face detection, speaker identity, per-segment crop shots (cache in `clips/<slug>/assets/faces/`) |
+| `storyboard.py` | 2 | Render prep + real stills per beat + rough preview mp4 |
+| `build_storyboard_doc.py` | 2 | Stills + preview link → storyboard doc revision in Drive |
+| `assemble_audio.py`, `align_subtitles.py`, `validate_subtitles.py`, `extract_segments.py`, `remotion/` | 2–3 | Render path (shorts) |
+| `render_horizontal.py` | 3 | Render path (clips): straight 16:9 cut + `.srt` |
+| `qc_render.py` | 3 | Render QC → `qc-v<N>.json` + contact sheet |
 
 ## Failure playbook
 
-- Script red → read its error, fix the named input, re-run. Two consecutive reds on the same step with the same diagnosis → the diagnosis is wrong; re-read the artifacts before touching anything again.
-- Subagent output violates schema → return it once with the validator findings; second violation → respawn fresh with a tightened prompt.
-- Provider API down / key missing → that provider is out for the session; report which intents are affected, never substitute silently.
-- Anything that would change an approved artifact (post-gate) → back to the gate that approved it.
+- Script red → read its error, fix the named input, re-run. Two reds on the same step with the
+  same diagnosis → the diagnosis is wrong; re-read the artifacts before touching anything again.
+- Google auth red → `gdoc.py` names the account and the command to fix it; tell the user, stop.
+- Editor output fails `build_pick_doc.py` validation (quote mismatch, overlap, >3 min short) →
+  return it once with the errors; second failure → fresh editor with a tightened prompt.
+- Anything that would change an approved artifact → back to the stage that approved it.

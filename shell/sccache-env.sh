@@ -12,12 +12,12 @@
 # logging has to come from the clients' environment too.
 #
 # Cache on the external SSD when there is one (Rust artifacts are big and the dev
-# trees live there anyway). Linux boxes and Macs without /Volumes/external fall
+# trees live there anyway). Linux boxes and Macs without /Volumes/volume fall
 # back to ~/.cache/sccache (a Mac path on Linux made every cargo build fail with
-# "failed to create directory /Volumes/external/sccache: Permission denied").
+# "failed to create directory /Volumes/volume/sccache: Permission denied").
 if [ -z "${SCCACHE_DIR:-}" ]; then
-  if [ -d /Volumes/external ]; then
-    SCCACHE_DIR=/Volumes/external/sccache
+  if [ -d /Volumes/volume ]; then
+    SCCACHE_DIR=/Volumes/volume/sccache
   else
     SCCACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sccache"
   fi

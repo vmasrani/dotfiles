@@ -7,13 +7,6 @@ transcription:
                               # tracks for diarization) are missing.
   language: en
 
-mining:
-  chunk_minutes: 16
-  overlap_minutes: 2
-  score_threshold: 6.5        # mean of the nine candidate scores required to survive
-                              # the merge; borderline-but-flagged candidates survive
-                              # regardless (senior editor decides).
-
 sync:
   min_confidence: 0.90        # below this, sync_cameras.py exits nonzero
 
@@ -48,8 +41,9 @@ safe_zones:                   # 1080x1920 reference frame, pixels
   right: 120
   left: 60
 
-platform_profiles:
+platform_profiles:              # each carries `format:` (short|clip); copied into episode.yaml at ingest
   - name: youtube-shorts
+    format: short
     aspect: "9:16"
     resolution: "1080x1920"
     fps: 30
@@ -60,6 +54,7 @@ platform_profiles:
     loudness_lufs: -14.0
     true_peak_dbtp: -1.0
   - name: tiktok
+    format: short
     aspect: "9:16"
     resolution: "1080x1920"
     fps: 30
@@ -70,15 +65,36 @@ platform_profiles:
     loudness_lufs: -14.0
     true_peak_dbtp: -1.0
 
-providers:                    # asset researcher may ONLY touch providers listed here
-  pexels:
-    api_key_env: PEXELS_API_KEY
-    license: "Pexels License"
-    credit_required: false
-  pixabay:
-    api_key_env: PIXABAY_API_KEY
-    license: "Pixabay Content License"
-    credit_required: false
+  - name: youtube
+    format: clip
+    aspect: "16:9"
+    resolution: "1920x1080"
+    fps: 30
+    max_duration_s: null      # horizontal clips have no maximum
+    container: mp4
+    video_codec: h264
+    audio_codec: aac
+    loudness_lufs: -14.0
+    true_peak_dbtp: -1.0
+
+review:                       # Google Docs review surfaces
+  account: incrementspodcast@gmail.com
+  drive_folder: "Shorts review"   # top-level Drive folder; one subfolder per episode
+  grey: "#9E9E9E"             # text outside every pick
+  boundary_pad_s: 0.12        # freeze pads pick edges, never into a neighbouring word
+  max_paragraph_s: 45         # long turns split into timestamped paragraphs
+  palette:                    # one per pick, never reused in a doc
+    ["#FFE08A", "#B6E3F4", "#C8F0C0", "#F9C6D0", "#D9C8F5", "#FFD1A6",
+     "#B8F2E6", "#F5E6A3", "#C9D7F8", "#F2C1E8", "#D4EDB0", "#FFC9C9"]
+
+framing:                      # plan_framing.py (shorts)
+  exchange_gap_s: 2.0         # question→answer within this = both parties live
+  exchange_turn_s: 6.0        # back-and-forth of turns shorter than this = split screen
+  max_dwell_s: 12.0           # no single treatment held longer
+  # extract_segments.py: a closeup frames head-and-shoulders (face box ~30% of the frame height, eye line ~0.33).
+  # The source crop is never magnified past this factor; when the speaker's tile cannot fill 9:16 at that scale the
+  # sharp crop is laid over a blurred, darkened copy of itself instead of being zoomed until it turns to mush.
+  max_upscale: 2.0
 
 render:
   internal_cut_crossfade_ms: 8   # audio micro-crossfade at internal cuts

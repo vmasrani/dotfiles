@@ -1,6 +1,6 @@
 ---
 name: sonnet55-worker-high
-description: Standard implementation worker pinned to Sonnet 5.5 (claude-sonnet-5-5) at high effort. Default worker for orchestrated tasks — pick the -low/-medium/-high variant to match the task's difficulty.
+description: Worker pinned to Sonnet 5.5 (claude-sonnet-5-5) at high effort. Only for easy tasks — small, well-specified, mechanical work with a direct check; everything else goes to an opus55-worker variant.
 model: claude-sonnet-5-5
 effort: high
 ---

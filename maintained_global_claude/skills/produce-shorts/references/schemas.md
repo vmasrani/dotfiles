@@ -1,33 +1,39 @@
 # Canonical schemas — the machine-readable source of truth
 
-Markdown (`storyboard.md`, `candidates.md`) is the human review surface. YAML (`episode.yaml`, `clip.yaml`, `candidates.yaml`) is the machine truth. The two must agree; `scripts/validate_clip.py` enforces agreement before any render. When they disagree, the pipeline stops — nobody "picks one".
+Before the freeze, the **pick doc** (a Google Doc) is the only record of what is picked — there is
+no YAML for picks. From the freeze on, `clip.yaml` is the machine truth; storyboard docs are
+generated *from* it and never parsed back. `scripts/validate_clip.py` enforces the invariants
+below after the freeze and before any render.
 
 ## Units and time systems
 
-- All times in YAML are **seconds as floats** (e.g. `734.20`). Markdown surfaces render `MM:SS.mmm` or `MM:SS.mmm-MM:SS.mmm` ranges.
+- All times in YAML are **seconds as floats** (e.g. `734.20`). Human surfaces render `mm:ss` / `MM:SS.mmm`.
 - Two distinct time systems exist and must never be conflated:
   - **Source time** — position in the original media file.
-  - **Output time** — position in the finished short.
+  - **Output time** — position in the finished short or clip.
 - Comparison epsilon everywhere: `0.01s`.
-- All IDs are stable once assigned: segment IDs `S01, S02, …` per clip; asset IDs `A01, A02, …` per clip. Never renumber on revision — retire IDs and append new ones.
+- IDs are stable once assigned: pick IDs `S1…`/`C1…` per episode; segment IDs `S01, S02, …` per clip. Never renumber on revision — retire IDs and append new ones (the one exception: `doc_ops.py format` renames a pick whose format changes).
 
 ## Project layout
 
 ```text
 episode-<slug>/
   episode.yaml
-  source/                 # downloaded episode + raw camera files
+  source/                 # downloaded episode (+ raw camera files, multitrack only)
   transcript/
     transcript.json
     transcript.md
-  candidates.yaml         # machine truth for stage 2/3
-  candidates.md           # human review surface
+  published-overlap.json  # published_shorts.py match output
+  review/
+    draft-picks.json      # editor's one-shot input to build_pick_doc.py; never read again
+    pick-doc.html         # what was uploaded (debug only — the Google Doc is the truth)
   clips/
     <clip-slug>/
       clip.yaml           # canonical manifest (schema below)
-      storyboard.md       # human creative plan
-      assets/             # licensed B-roll + extracted source shots
-      subtitles/          # design plan, aligned .ass, validation report
+      storyboard/rev<N>/  # beats.json, beat-<k>.png, cover-<k>.png, preview.mp4, storyboard.docx
+      assets/aroll/       # extracted source segments
+      assets/faces/       # per-segment face detections (cache for the computed crops)
+      subtitles/          # aligned .ass (shorts) / .srt (clips), validation report
       renders/            # versioned, never overwritten
       qc-v<N>.json
       provenance.json
@@ -40,10 +46,12 @@ episode:
   id: my-episode-slug
   title: "Episode 42 — ..."
   source_url: "https://youtube.com/watch?v=..."
+  youtube_id: "V-w7X-zTkCY"   # when the source is this channel's own upload
   authorized: true            # user attested ownership/authorization; ingest refuses to run when false/absent
   created: "2026-08-05"
-platform_profiles:
+platform_profiles:            # copied from config/defaults.yaml profiles at ingest
   - name: youtube-shorts
+    format: short
     aspect: "9:16"
     resolution: "1080x1920"
     fps: 30
@@ -53,11 +61,22 @@ platform_profiles:
     audio_codec: aac
     loudness_lufs: -14.0
     true_peak_dbtp: -1.0
+  - name: youtube
+    format: clip
+    aspect: "16:9"
+    resolution: "1920x1080"
+    fps: 30
+    max_duration_s: null      # no maximum
+    container: mp4
+    video_codec: h264
+    audio_codec: aac
+    loudness_lufs: -14.0
+    true_peak_dbtp: -1.0
 speakers:
   - id: host1                 # referenced by transcript + clip timelines
     name: "Vaden"
-    camera_file: source/cam_vaden.mp4    # optional isolated footage
-    preferred_crop: null      # e.g. "x=120:y=0:w=960:h=1080", set after probe
+    camera_file: null         # optional isolated footage (multitrack only)
+    preferred_crop: null      # legacy, unused: shorts crops are computed per segment from face detection
 media:
   episode_video: source/episode.mp4
   episode_audio: source/episode.m4a     # optional separate best-audio stream
@@ -71,22 +90,24 @@ media:
       audio_codec: aac
       audio_channels: 2
       sample_rate: 48000
-sync:                         # one entry per camera file; empty list if none
-  - file: source/cam_vaden.mp4
-    offset_s: 12.432          # camera t0 occurs 12.432s after episode t0
-    confidence: 0.97          # correlation confidence, 0..1
-    method: audio-cross-correlation
-    gaps: []                  # [{camera_s: 840.0, duration_s: 3.2}] discontinuities
-    verified: true            # set true only after spot-check passes
+sync: []                      # multitrack only: [{file, offset_s, confidence, method, gaps, verified}]
 transcript:
   json: transcript/transcript.json
   md: transcript/transcript.md
   engine: assemblyai          # or mlx-whisper
   language: en
   word_count: 48210
+review:                       # written by build_pick_doc.py / doc_ops.py
+  account: incrementspodcast@gmail.com
+  folder_id: "1AbC…"          # this episode's Drive folder
+  pick_doc: {id: "1XyZ…", url: "https://docs.google.com/document/d/1XyZ…/edit"}
+  log_comment_id: "AAAA…"     # the revision-log thread
+  round: 2
+  picks:                      # pick id → colour + status; colours never reused in one doc
+    S1: {format: short, color: "#FFE08A", status: approved, title: "…"}
+    C1: {format: clip,  color: "#B6E3F4", status: proposed, title: "…"}
 status:
-  stage: ingested             # ingested → mined → selected → storyboarded → assets_acquired
-                              # → critiqued → approved_for_render → rendered → qc_passed
+  stage: ingested             # ingested → picking → frozen → storyboarding → rendering → delivered
 ```
 
 ## transcript.json
@@ -105,49 +126,23 @@ status:
 }
 ```
 
-`words` is the alignment truth (subtitles, cut points). `segments` is the readable/mining truth. Speaker IDs must match `episode.yaml speakers[].id`; the transcription step maps diarization labels (e.g. `SPEAKER_00`) to speaker IDs and records the mapping.
-
-## candidates.yaml
-
-```yaml
-coverage:                     # proves no transcript range was skipped during mining
-  chunks:
-    - {start_s: 0.0, end_s: 960.0, overlap_next_s: 120.0}
-candidates:
-  - id: C01
-    slug: why-incentives-fail
-    source_in: 734.2
-    source_out: 851.0
-    context_before: "…text of the ~30s before…"
-    context_after: "…text of the ~30s after…"
-    summary: "One-sentence central idea."
-    hook_text: "verbatim first line"
-    scores:                   # each 1-10
-      hook: 8
-      standalone: 9
-      central_idea: 8
-      payoff: 7
-      edit_boundaries: 9
-      visual_potential: 6
-      missing_context: 8      # 10 = none missing
-      redundancy: 9           # 10 = fully distinct
-      risk: 10                # 10 = no factual/legal/reputational risk
-    notes: "why this works / concerns"
-    verdict: null             # senior editor fills: selected | rejected:<reason>
-```
+`words` is the alignment truth (pick boundaries, subtitles, cut points). `segments` is the readable
+truth (the pick doc's paragraphs). Speaker IDs must match `episode.yaml speakers[].id`; the
+transcription step maps diarization labels (e.g. `SPEAKER_00`) to speaker IDs and records the mapping.
 
 ## clip.yaml — the canonical per-clip manifest
 
+Written by `freeze_picks.py`; refined by `plan_framing.py` and stage-2 comment edits.
+
 ```yaml
 clip:
-  id: why-incentives-fail
+  id: why-incentives-fail     # slug, from the pick title
+  pick: S1                    # pick id in the pick doc
+  format: short               # short (9:16, < 180 s) | clip (16:9, any length)
   title: "Why incentives backfire"
-  status: proposed            # proposed → approved_edit → storyboarded → assets_ready
-                              # → critiqued → approved_render → rendered → qc_passed → delivered
-  logline: "One-sentence central idea."
-  audience_response: "What the viewer should feel/think."
-  hook: "Why the first 3 seconds hold."
-  payoff: "How the ending lands."
+  status: frozen              # frozen → storyboarded → approved_render → rendered → qc_passed → delivered
+  why: "The pick's why line from the doc."
+  ends_on: "verbatim last line"
 timeline:                     # ordered by output_in; the edit decision list
   - id: S01
     source_file: source/episode.mp4
@@ -159,86 +154,49 @@ timeline:                     # ordered by output_in; the edit decision list
     speaker: host1
     audio: as-recorded        # as-recorded | duck | mute
     visual:
-      kind: aroll             # aroll | broll
-      treatment: closeup-host1   # aroll: closeup-<speaker>|splitscreen|source-frame|reaction-<speaker>
-                              # broll: cover | contain | letterbox (closed set — the renderer
-                              # refuses free-form B-roll treatments rather than guessing)
-      asset_id: null          # broll only: must exist in assets[]
-      motion: null            # e.g. "slow zoom-in 100->108% over segment"
+      kind: aroll             # always aroll — no B-roll in this pipeline
+      treatment: closeup-host1   # short: closeup-<speaker> | splitscreen ; clip: source-frame
+      speakers: null          # splitscreen only: exactly two speaker ids [top, bottom]
+      locked: false           # true = user override by comment; plan_framing.py never changes it
+      reason: null            # why: the framing rule, or the user's comment text
+      crop: null              # optional hand override "x=..:y=..:w=..:h=.." for a closeup; normally absent —
+                              # crops are computed per segment from face detection (extract_segments.py)
+      asset_id: null
+      motion: null
     transition: cut           # transition INTO next segment: cut | crossfade-<N>f
 subtitles:
   font: "Inter Semibold"
   base_color: "#FFFFFF"
-  emphasis_palette: ["#FFD34D"]   # episode-level, restrained
+  emphasis_palette: ["#FFD34D"]
   position_default: bottom-center
-  lines:
-    - output_range: [0.0, 3.0]    # design-time; final timing comes from forced alignment
-      text: "Today we're breaking down..."
-      emphasis:
-        - {word: "breaking", style: bold-gold}
-      position: bottom-center     # bottom-center | middle-lower
-      note: "why moved, if moved"
-assets:
-  - id: A03
-    provider: pexels
-    provider_asset_id: "857195"
-    source_url: "https://www.pexels.com/video/857195/"
-    license: "Pexels License"
-    entitlement: free            # free | subscription | purchased
-    download_date: "2026-08-05"
-    creator: "Jane Doe"
-    credit_required: false
-    width: 3840
-    height: 2160
-    fps: 25.0
-    duration_s: 14.2
-    file: assets/A03-cityscape.mp4
-    sha256: "…"
-    used_in_segments: [S03]
-output:
+  lines: []                   # optional design-time overrides; final timing comes from forced alignment
+assets: []                    # always empty — kept so the asset invariants hold vacuously
+review:
+  storyboard_docs: []         # [{rev, id, url}] — append-only
+  cover: null                 # chosen cover still index (from a stage-2 comment)
+  final_url: null             # Drive link of the delivered render
+output:                       # short: 9:16 1080x1920 ; clip: 16:9 1920x1080
   aspect: "9:16"
   resolution: "1080x1920"
   fps: 30
-  duration_s: 41.70             # must equal last timeline output_out
-thumbnail:
-  first_frame_text: "INCENTIVES BACKFIRE"
-  hierarchy: "hook word largest; subtitle line secondary"
-  placement: "upper third, inside safe zone"
+  duration_s: 41.70           # must equal last timeline output_out
 render:
-  versions: []                  # append-only: {version, preview, finals: {profile: path},
-                                #  rendered_at, qc: qc-v1.json}
+  versions: []                # append-only: {version, preview, finals: {profile: path},
+                              #  rendered_at, qc: qc-v1.json}
 ```
 
 ## Timeline invariants (enforced by validate_clip.py)
 
 1. Output timeline is contiguous from zero: `timeline[0].output_in == 0.0`; each `output_in == previous output_out` (±ε). No gaps, no overlaps.
-2. Segment durations match across time systems: `output_out - output_in == source_out - source_in` (±ε). No speed changes exist in this pipeline; a mismatch is an error, not a feature.
+2. Segment durations match across time systems: `output_out - output_in == source_out - source_in` (±ε). No speed changes.
 3. Every `source_in/source_out` lies within the probed duration of `source_file` (from `episode.yaml media.probes`).
-4. `clip.output.duration_s == timeline[-1].output_out` (±ε) and ≤ every target profile's `max_duration_s`.
-5. Every `broll` segment names an `asset_id` present in `assets[]`, and that asset's `duration_s` ≥ segment duration.
-6. Every asset's `used_in_segments` matches the timeline exactly (both directions — no unused assets, no untracked usage).
-7. Every asset file exists on disk and its `sha256` matches.
+4. `clip.output.duration_s == timeline[-1].output_out` (±ε) and ≤ the `max_duration_s` of every profile for the clip's format (clips have no maximum).
+5. Every `broll` segment names an `asset_id` present in `assets[]` (vacuous: no B-roll).
+6. Every asset's `used_in_segments` matches the timeline exactly (vacuous: `assets: []`).
+7. Every asset file exists on disk and its `sha256` matches (vacuous).
 8. Subtitle `output_range`s lie within `[0, duration_s]`, do not overlap, and each range's text words appear (in order) in the union of `dialogue` of the segments it spans.
-9. `storyboard.md` agrees with `clip.yaml` (see parse rules below).
+9. `format: short` uses only `closeup-*` / `splitscreen`; a `splitscreen` names exactly two distinct speakers; `format: clip` uses only `source-frame`. `output.aspect` matches the format.
 10. Speaker IDs and `treatment` speaker references exist in `episode.yaml speakers[]`.
-
-## storyboard.md — parse contract
-
-The storyboard must contain exactly one **Timeline** table and one **Subtitle plan** table with these headers (columns in this order):
-
-```markdown
-| Segment | Output | Source | Visual | Audio/Dialogue | Speaker | Shot/Transition |
-|---|---|---|---|---|---|---|
-| S01 | 00:00.000-00:07.350 | 12:14.200-12:21.550 | Close-up host1 | "exact dialogue" | host1 | cut |
-```
-
-```markdown
-| Output | Verbatim text | Emphasis | Position | Notes |
-|---|---|---|---|---|
-| 00:00.000-00:03.000 | Today we're breaking down... | **breaking** gold | bottom-center | opening |
-```
-
-Validator checks per row: segment ID exists in `clip.yaml`, output/source ranges match (±ε after `MM:SS.mmm` → seconds conversion), speaker matches, B-roll rows mention the correct asset ID in the Visual cell. Prose sections around the tables are free-form and unvalidated.
 
 ## qc.json (written by qc_render.py)
 
@@ -252,14 +210,13 @@ Validator checks per row: segment ID exists in `clip.yaml`, output/source ranges
   "checks": [
     {"name": "container_matches_profile", "passed": true, "detail": "h264/aac 1080x1920@30"},
     {"name": "duration_matches_manifest", "passed": true, "detail": "41.70s vs 41.70s"},
-    {"name": "black_frames", "passed": true, "detail": "none outside storyboard"},
+    {"name": "black_frames", "passed": true, "detail": "none"},
     {"name": "frozen_frames", "passed": true, "detail": ""},
     {"name": "loudness", "passed": false, "detail": "-11.2 LUFS, target -14.0 ±1.0"},
     {"name": "clipping", "passed": true, "detail": ""},
     {"name": "silence", "passed": true, "detail": ""},
     {"name": "cut_points", "passed": true, "detail": "2 hard cut(s) matched; 1 crossfade exempt"},
     {"name": "subtitles_present", "passed": true, "detail": "subtitle rules re-validated against final timing"},
-    {"name": "assets_tracked", "passed": true, "detail": ""},
     {"name": "manifest_agreement", "passed": true, "detail": ""}
   ],
   "contact_sheet": "renders/v1-contact-sheet.png"
@@ -274,11 +231,8 @@ Validator checks per row: segment ID exists in `clip.yaml`, output/source ranges
 {
   "clip_id": "why-incentives-fail",
   "source": {"url": "…", "downloaded": "2026-08-05", "authorized_by_user": true},
-  "assets": [
-    {"id": "A03", "provider": "pexels", "provider_asset_id": "857195",
-     "license": "Pexels License", "source_url": "…", "credit_required": false,
-     "credit_text": null}
-  ],
+  "pick_doc": "https://docs.google.com/document/d/…",
+  "storyboard_doc": "https://docs.google.com/document/d/…",
   "generated_media": "none"
 }
 ```

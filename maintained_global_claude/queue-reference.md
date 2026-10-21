@@ -98,6 +98,19 @@ slots re-pinned to stale jobs after crashes; one `ts -u` crash wiped every queue
 were lost between the daemon and the caller. Locks held by the kernel on behalf of live processes
 cannot go stale, and there is no job list to lose.
 
+### Stall watchdog (2026-10-19)
+
+A slot holder whose WHOLE process tree uses < 1 CPU-second over the stall window is declared stalled
+(incident: a `cargo test` sat at 0% CPU for 70 min and `--solo` plus everything behind it waited).
+The `queue` wrapper that owns the slot polls the tree's CPU every 60 s (no daemon). On a stall it
+writes evidence to `~/.cache/queue/stalls/<timestamp>-<pid>.txt` (command, cwd, `ps` tree, CPU over
+the window), prints a `queue: STALLED ... KILLED` line to the job's stderr, kills the tree (TERM,
+KILL after 10 s) and exits **124**. `--solo` jobs use the same logic. A job waiting on a lock inside
+the queue is not exempt.
+
+- `QUEUE_STALL_MINUTES` — window, default 15; `0` disables. (`QUEUE_STALL_SECONDS` overrides, tests only.)
+- `queue --no-stall-kill <cmd...>` — opt one job out (legitimately idle jobs, e.g. a long sleep/wait).
+
 ## The `&&` trap
 
     queue cd /repo && cargo nextest run     # WRONG
@@ -122,5 +135,9 @@ still denies only TEST/GATE commands off the integration branch — workers buil
   `tools/sccache-watchdog` (LaunchAgent `com.vmasrani.sccache-watchdog`) detects it (also all-children-silent), saves
   evidence to `~/.cache/sccache-watchdog/hang-*` and kills the server; it never starts one (launchd-started servers hit
   a TCC prompt). `sccache-watchdog status` shows pool/clients.
-- CoW-seeding a target dir saves only ~12 s — not worth orchestration (and impossible on ext4)
+- CoW-seeding a target dir: ~12 s of payoff on the M4 for parot-core (small, 58 s cold), so not worth it
+  there, and impossible on ext4. For cartridge on APFS it IS worth it: `hydrate-worktree.sh`'s `clone`
+  mode (cartridge #1657) clones `target/debug` + `target/fastdev-install` in 18 s for 102 GB at ~22 MB of
+  disk, and the gate build then compiles 144 of 2785 units (~95% reused; results
+  `~/dev/bench/1657/results-38fd64b67-hydrate-clone.md`). Keep the primary warm for the gate tuple.
 - Agents share one warm `target/` per worktree

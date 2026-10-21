@@ -7,7 +7,7 @@
 #   "typer>=0.12",
 #   "loguru>=0.7",
 #   "rich>=13.7",
-#   "yt-dlp>=2024.8.6",
+#   "yt-dlp[default]>=2026.8.19",
 # ]
 # ///
 """Stage 1 ingest — download an authorized source episode, probe it, write episode.yaml.
@@ -25,6 +25,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -108,6 +109,26 @@ def config_transcription(defaults: dict[str, Any], config_path: Path) -> tuple[s
             f"{config_path} `transcription` must set both `engine` and `language`"
         )
     return str(engine), str(language)
+
+
+def youtube_id_from_url(url: str) -> str | None:
+    """The 11-char video id when `url` is a YouTube URL; None for any other host."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").removeprefix("www.").removeprefix("m.")
+    if host == "youtu.be":
+        candidate = parsed.path.strip("/").split("/")[0]
+    elif host in ("youtube.com", "music.youtube.com"):
+        parts = [p for p in parsed.path.split("/") if p]
+        candidate = (
+            parse_qs(parsed.query).get("v", [""])[0]
+            if parsed.path == "/watch"
+            else (parts[1] if len(parts) >= 2 and parts[0] in ("shorts", "live", "embed", "v") else "")
+        )
+    else:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_-]{11}", candidate):
+        raise typer.BadParameter(f"{url!r} is a YouTube URL but no 11-character video id could be parsed from it")
+    return candidate
 
 
 def slugify(text: str) -> str:
@@ -247,7 +268,11 @@ def init(
         False, "--dry-run", help="Print the resolved yt-dlp invocations and exit; touches nothing"
     ),
 ) -> None:
-    """Download the source episode, probe source/, and write episode.yaml."""
+    """Download the source episode, probe source/, and write episode.yaml.
+
+    `platform_profiles` (each with its `format:`) is copied from the config; `episode.youtube_id`
+    is recorded when the URL is a YouTube URL.
+    """
     if not authorized:
         raise typer.BadParameter(AUTHORIZATION_NOTICE, param_hint="--authorized")
 
@@ -286,6 +311,7 @@ def init(
                 id=slug or existing.episode.id,
                 title=title,
                 source_url=url,
+                youtube_id=youtube_id_from_url(url),
                 authorized=True,
                 created=existing.episode.created,
             ),
@@ -298,6 +324,7 @@ def init(
             ),
             sync=existing.sync,
             transcript=existing.transcript,
+            review=existing.review,
             status=existing.status,
         )
         logger.info(
@@ -310,6 +337,7 @@ def init(
                 id=slug or slugify(title),
                 title=title,
                 source_url=url,
+                youtube_id=youtube_id_from_url(url),
                 authorized=True,
                 created=created,
             ),

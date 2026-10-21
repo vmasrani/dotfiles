@@ -1,5 +1,5 @@
 ---
-description: Deduplicate, consolidate, and fast-lane-label open issues, then emit the batches to start
+description: Deduplicate, merge issues that touch the same files, fast-lane-label, then emit parallel waves of batches to start
 ---
 
 # Triage
@@ -66,7 +66,71 @@ one instance of a rule the codebase should enforce everywhere. When it is:
 A fix that lands for one filename and leaves the same defect for every other
 filename is not a fix; it is a second issue, filed later, by someone else.
 
-## Phase 4 — Label by predicate
+## Phase 4 — Consolidate by file overlap
+
+Phase 2 merges issues that break the same rule. This phase merges issues that
+**touch the same files**, even when they break different rules. Run it
+automatically on every pass; do not ask first. Two open issues that edit the
+same files cannot run in parallel anyway, because they would conflict. Giving
+them to one owner on one branch turns that hidden conflict into a planned
+sequence.
+
+1. **Map files.** For every surviving issue, record the files or modules its
+   remaining work will edit, in a table of issue / files / subsystem. Take them
+   from the issue body, linked PRs, and one bounded `rg` per named symbol
+   (`-n -m 20`). Mark rows whose file list comes from issue text alone as
+   unconfirmed.
+2. **Group.** Build groups from shared files. Merge a group of two or more only
+   when at least one of these holds, and name which one in the new issue:
+   - **Faster implementation:** one owner, one worktree, one gate where there
+     would have been several, for example a shared fixture, a shared test
+     harness, or one fix that settles several issues.
+   - **More parallelism:** after merging, the groups that remain touch
+     disjoint files, so separate workers can take them at the same time
+     without conflicts.
+   - **Less overlap:** the issues repeat, contradict, or depend on each
+     other's to-dos, for example "B is A's candidate fix".
+3. **Do not merge** when any of these holds; leave the issue on its own and
+   give the reason in the report:
+   - **Different states:** ready work would be tied to parked, blocked, or
+     experimental work. Merge parked with parked only.
+   - **Too big:** the merged issue would no longer fit one branch and one PR
+     (more than about 5–6 separable features), or would cross crate or package
+     boundaries that otherwise split cleanly.
+   - **Shared theme only:** the issues share a subject but no files. Merging
+     them would serialize work that could run in parallel.
+   - **Claimed or excluded:** the issue is claimed (assigned, has a branch, is
+     in flight, or is named by an open PR), is an epic, or is a bot-managed
+     tracker. An epic stays a parent; point the merged issue at it.
+4. **Write the merged issue** so no work is lost:
+   - Its title names the shared files or subsystem and what the group
+     delivers.
+   - Its body opens with the combined plan and the order of work. Then add one
+     `### From #N` section per original, carrying every open to-do, number,
+     acceptance criterion and owner decision.
+   - Copy the to-dos verbatim; rewording loses detail.
+   - Mark any open owner decision `**OWNER DECISION:**`.
+   - Add a `Supersedes #a, #b, …` line.
+   - Union the originals' labels and assignees.
+   - If the body would go over GitHub's limit (about 60,000 characters), keep
+     the plan in the body and post each `From #N` section as a comment.
+5. **Check before closing.** Re-fetch each original and confirm it is still
+   OPEN. Check every cross-reference you rely on ("A's leftover work lives in
+   B") by reading both issues; never infer the direction. Then create the
+   merged issue and close each original:
+   `gh issue close <n> --reason "not planned" --comment "Superseded by #<new>, which merges it with issues that touch the same files. Every open to-do, number and decision is carried into #<new>."`
+   Script the create-and-close step when there are more than three groups.
+   Without a flag the script prints only the plan; it applies it only when
+   given an explicit `--go`. Run the dry run first.
+6. **Record the parallel plan.** List the issues that remain, single or
+   merged, as **waves**. Within a wave, no two issues share a file, so they
+   can run at the same time. Phase 6 builds on these waves.
+
+Leaving an issue unmerged is the default when unsure. A merge that hides one
+issue's to-do inside another issue's prose costs more than the duplicate
+issue did.
+
+## Phase 5 — Label by predicate
 
 Apply `fast-lane` only when ALL four hold. Post the four answers as a comment
 on the issue so the grant is auditable and a later reviewer can check it:
@@ -83,11 +147,13 @@ and costs nothing but a review. Then
 Do not label an issue you are about to implement in the same act. File, triage,
 then start — in that order, as three distinct steps.
 
-## Phase 5 — Emit the batches
+## Phase 6 — Emit the batches
 
 Group the newly labeled issues into batches of **2–4** by the subsystem they
 touch, not by number order — a batch whose issues touch disjoint files is a
-batch whose commits cannot conflict. Print the commands to run:
+batch whose commits cannot conflict. Lay the batches over Phase 4's waves, so
+batches in the same wave can start at the same time. Print the commands to
+run:
 
 ```
 /start-task 131 136 137      # web test gate: lockfile, shebang, freshness
@@ -105,6 +171,11 @@ Terse, to the user:
 - duplicate groups found, with the invariant each names, and the cycle count
   saved (a folded group of N saves N-1 full issue→PR→CI→review cycles)
 - issues rewritten from instance to class, with the sweep counts
+- file-overlap merges: one line per merged issue (new number ← originals,
+  shared files, which reason from Phase 4 step 2). Also the open-issue count
+  before and after, and each candidate group left unmerged with its
+  step-3 reason.
+- the parallel waves: which issues can run at the same time
 - issues labeled `fast-lane`, and how many stayed strict
 - the `/start-task` batch commands, ready to run
 

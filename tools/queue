@@ -7,6 +7,7 @@
 #                                  keeps the && inside the gated command)
 #   queue --priority <cmd...>      skip the waiting line; take the next free slot
 #   queue --solo <cmd...>          take EVERY slot; runs with the box to itself
+#   queue --no-stall-kill <cmd>    opt this job out of the stall watchdog (see below)
 #   queue --slots [N]              show, or set, the machine-wide slot count
 #   queue -l | --list              who holds which slot, and who is waiting
 #   queue --exit-code --last       exit code of this session's last queued job
@@ -25,6 +26,19 @@
 #
 # Slot count: $QUEUE_DIR/slots (machine-wide, live), seeded from QUEUE_SLOTS.
 # Express (short-job) pool: $QUEUE_DIR/express, seeded from QUEUE_EXPRESS_SLOTS.
+#
+# STALL WATCHDOG. A job whose WHOLE process tree accumulates < 1 CPU-second over
+# a window (default 15 min; QUEUE_STALL_MINUTES, 0 disables) is declared stalled:
+# evidence goes to ~/.cache/queue/stalls/<timestamp>-<pid>.txt, a loud line goes
+# to stderr, the tree is killed (TERM, KILL after 10 s) and the exit code is 124.
+# Polled every 60 s from this (slot-owning) process. --no-stall-kill opts out.
+# QUEUE_STALL_SECONDS overrides the window in seconds (tests only).
+#
+# TEST THREADS. Each job runs with NEXTEST_TEST_THREADS = cpus / main slots, so N
+# concurrent suites share the box instead of each spawning one test per cpu; a
+# --solo job gets every cpu. QUEUE_TEST_THREADS in the caller's environment wins.
+# CARGO_BUILD_JOBS is left alone: sccache keys hash CARGO_* vars, so varying it
+# per job would churn the compile cache.
 import atexit
 import fcntl
 import glob
@@ -45,7 +59,100 @@ POLL = float(ENV.get("QUEUE_POLL") or 0.2)
 FAST_S = float(ENV.get("QUEUE_FAST_S") or 30)
 FAST_RUNS = int(ENV.get("QUEUE_FAST_RUNS") or 3)
 EXPRESS_CAP_S = float(ENV.get("QUEUE_EXPRESS_CAP_S") or 60)
+STALL_MIN_CPU_S = 1.0
+KILL_GRACE_S = 10
 INT_RE = re.compile(r"[0-9]+")
+
+
+def stall_window_s():
+    if ENV.get("QUEUE_STALL_SECONDS"):
+        return float(ENV["QUEUE_STALL_SECONDS"])
+    return float(ENV.get("QUEUE_STALL_MINUTES") or 15) * 60 if ENV.get("QUEUE_STALL_MINUTES") != "0" else 0
+
+
+def parse_cpu_time(t):
+    """ps TIME ([D-][[H:]M:]S[.cc]) -> seconds."""
+    days, _, rest = t.rpartition("-")
+    secs = 0.0
+    for part in rest.split(":"):
+        secs = secs * 60 + float(part)
+    return secs + (int(days) * 86400 if days else 0)
+
+
+def tree_cpu(root):
+    """{pid: cpu seconds} for root and all its descendants (one ps call)."""
+    out = subprocess.run(["ps", "-A", "-o", "pid=,ppid=,time="],
+                         capture_output=True, text=True, check=True).stdout
+    kids, cpu = {}, {}
+    for ln in out.splitlines():
+        pid, ppid, t = ln.split()
+        kids.setdefault(int(ppid), []).append(int(pid))
+        cpu[int(pid)] = parse_cpu_time(t)
+    seen, todo = {}, [root]
+    while todo:
+        p = todo.pop()
+        if p in cpu and p not in seen:
+            seen[p] = cpu[p]
+            todo.extend(kids.get(p, []))
+    return seen
+
+
+class StallWatch:
+    """Cumulative tree CPU (max per pid, so exited children still count)."""
+
+    def __init__(self, root, window):
+        self.root, self.window = root, window
+        self.best, self.samples = {}, []
+        self.poll_s = min(60.0, max(0.5, window / 4))
+
+    def sample(self):
+        for p, c in tree_cpu(self.root).items():
+            self.best[p] = max(self.best.get(p, 0.0), c)
+        now = time.monotonic()
+        self.samples.append((now, sum(self.best.values())))
+        return now
+
+    def stalled(self):
+        now = self.sample()
+        old = [s for s in self.samples if s[0] <= now - self.window]
+        if not old:
+            return None
+        self.samples = [old[-1]] + [s for s in self.samples if s[0] > now - self.window]
+        return self.samples[-1][1] - old[-1][1] if self.samples[-1][1] - old[-1][1] < STALL_MIN_CPU_S else None
+
+
+def write_stall_evidence(display, cwd, root, window, used):
+    os.makedirs(f"{STATE}/stalls", exist_ok=True)
+    path = f"{STATE}/stalls/{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}.txt"
+    pids = ",".join(str(p) for p in tree_cpu(root))
+    ps = subprocess.run(["ps", "-o", "pid,ppid,stat,etime,time,pcpu,command", "-p", pids],
+                        capture_output=True, text=True).stdout
+    with open(path, "w") as f:
+        f.write(f"command: {display}\ncwd: {cwd}\nqueue pid: {os.getpid()}\n"
+                f"window: {window:.0f}s\ncumulative tree CPU over window: {used:.2f}s "
+                f"(threshold {STALL_MIN_CPU_S}s)\n\nprocess tree:\n{ps}")
+    return path
+
+
+def kill_tree(root):
+    pids = list(tree_cpu(root))
+    for sig, wait in ((signal.SIGTERM, KILL_GRACE_S), (signal.SIGKILL, 0)):
+        for p in pids:
+            try:
+                os.kill(p, sig)
+            except OSError:
+                pass
+        end = time.monotonic() + wait
+        while wait and time.monotonic() < end and any(pid_alive(p) for p in pids):
+            time.sleep(0.2)
+
+
+def pid_alive(p):
+    try:
+        os.kill(p, 0)
+        return True
+    except OSError:
+        return False
 
 
 def die(msg):
@@ -86,6 +193,14 @@ def seeded(fname, envvar, default, label_corrupt):
     if not pos_int(n):
         die(f"{path} is corrupt ('{n}')" + label_corrupt)
     return int(n)
+
+
+def test_threads(solo):
+    if "QUEUE_TEST_THREADS" in ENV:
+        val = ENV["QUEUE_TEST_THREADS"]
+        return val if pos_int(val) else die(f"QUEUE_TEST_THREADS={val!r} must be a positive integer")
+    cpus = os.cpu_count() or die("cannot count cpus; set QUEUE_TEST_THREADS")
+    return str(cpus if solo else max(1, cpus // pool_size("main")))
 
 
 def slots():
@@ -272,11 +387,13 @@ def main(argv):
         die(f"{first} was removed with the task-spooler daemon (2026-10-01): a waiting "
             "job is just a process -- stop it with Ctrl-C or kill <pid> (see queue -l)")
 
-    priority = solo = 0
+    priority = solo = no_stall = 0
     while argv:
         a = argv[0]
         if a == "--priority":
             priority = 1
+        elif a == "--no-stall-kill":
+            no_stall = 1
         elif a == "--solo":
             solo = 1
         elif a == "--":
@@ -394,10 +511,33 @@ def main(argv):
     t_run = time.monotonic()
     child_argv = ["zsh", "-c", argv[0]] if len(argv) == 1 else argv
     try:
-        child = subprocess.Popen(child_argv, close_fds=True, env={**ENV, "QUEUE_ACTIVE": "1"})
+        child = subprocess.Popen(child_argv, close_fds=True,
+                                 env={**ENV, "QUEUE_ACTIVE": "1",
+                                      "NEXTEST_TEST_THREADS": test_threads(solo)})
         signal.signal(signal.SIGINT, signal.SIG_IGN)  # tty ^C reaches the child directly
         signal.signal(signal.SIGTERM, lambda s, _: child.send_signal(s))
-        rc = child.wait()
+        window = 0 if no_stall else stall_window_s()
+        if window <= 0:
+            rc = child.wait()
+        else:
+            watch = StallWatch(child.pid, window)
+            watch.sample()
+            rc = None
+            while rc is None:
+                try:
+                    rc = child.wait(timeout=watch.poll_s)
+                except subprocess.TimeoutExpired:
+                    used = watch.stalled()
+                    if used is None:
+                        continue
+                    ev = write_stall_evidence(display, cwd, child.pid, window, used)
+                    print(f"{SELF}: STALLED: job tree used {used:.2f} CPU-s in {window:.0f}s "
+                          f"(< {STALL_MIN_CPU_S:g}); evidence: {ev}; KILLED (exit 124). "
+                          "Use --no-stall-kill if it legitimately idles.",
+                          file=sys.stderr, flush=True)
+                    kill_tree(child.pid)
+                    child.wait()
+                    rc = 124
         rc = 128 - rc if rc < 0 else rc
     except FileNotFoundError:
         print(f"{SELF}: {argv[0]}: command not found", file=sys.stderr)

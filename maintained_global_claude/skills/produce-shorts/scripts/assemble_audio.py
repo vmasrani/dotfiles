@@ -64,8 +64,10 @@ from psmedia import (
 console = Console()
 app = typer.Typer(add_completion=False)
 
-RENDER_GATE = "approved_render"
+# Stage 2 (storyboard) runs render prep on frozen/storyboarded clips; stage 3 on approved_render onward.
+# Audio assembly has no approval gate of its own — the human gate is the final render, not this prep.
 DUCK_DB = -12.0
+PRE_ROLL_S = 1.0  # decoded-and-discarded audio before each cut (covers decoder priming)
 
 
 @dataclass
@@ -120,11 +122,10 @@ def plan_pieces(clip: Clip) -> list[Piece]:
 
 def check_gate(clip: Clip) -> None:
     status = clip.clip.status
-    if CLIP_STATUS_ORDER.index(status) < CLIP_STATUS_ORDER.index(RENDER_GATE):
+    if status not in CLIP_STATUS_ORDER:
         raise typer.BadParameter(
-            f"clip {clip.clip.id} has status {status!r}; audio assembly requires the render gate "
-            f"({RENDER_GATE}) to have been passed. Run the critique/approval steps and set "
-            f"clip.status: {RENDER_GATE} before rendering."
+            f"clip {clip.clip.id} has status {status!r}; audio assembly runs on a frozen clip or later "
+            f"({', '.join(CLIP_STATUS_ORDER)}). Freeze the pick first (freeze_picks.py)."
         )
 
 
@@ -151,12 +152,17 @@ def check_sources(clip: Clip, episode: Episode, episode_root: Path) -> None:
 def extract_piece(piece: Piece, episode_root: Path, out_path: Path, crossfade_s: float, work: Path) -> float:
     """Cut the segment (pass 1) and, at internal cuts, de-click it (pass 2). Returns its duration.
 
-    The two passes are not an accident. Output-side `-ss/-to` is the sample-accurate
-    cut, but it leaves the SOURCE timestamps on the frames entering the filter graph —
-    a segment cut from 16s reaches `afade` at t=16s, so a fade-out at t=5.992s has
-    "already finished" and the filter emits six seconds of silence (measured; the same
-    happens with afade's sample-count mode, which counts from the PTS too). Fades
-    therefore run in a second pass over the extracted PCM, whose timeline starts at 0.
+    Pass 1 seeks on the INPUT side (`-ss` before `-i`: jump to the keyframe/packet before the
+    pre-roll, decode a second of audio) and then trims sample-accurately with `atrim`. Output-side
+    `-ss` after `-i` decodes the whole file from 0 and discards everything before the cut —
+    ~6 s per cut on a 99-minute episode, the same bug extract_segments.py fixed (measured 95x).
+    The pre-roll absorbs the decoder's priming samples so `atrim` starts from clean, timestamped
+    samples; `atrim` counts in the post-seek timeline, so the cut lands on the exact sample.
+
+    The two passes are not an accident: `atrim`+`asetpts=PTS-STARTPTS` hands the fade filter a
+    timeline that starts at 0, but `afade`'s `st=` is easiest to reason about on the extracted PCM,
+    so fades run in a second pass over the extracted piece (a segment cut from 16 s that still
+    carried source timestamps would reach `afade` at t=16 s and emit silence — measured).
     """
     seg = piece.segment
     faded = piece.fade_in or piece.fade_out
@@ -167,7 +173,12 @@ def extract_piece(piece: Piece, episode_root: Path, out_path: Path, crossfade_s:
             f"or lengthen the segment"
         )
 
-    cut_filters = ["aresample=async=0"]
+    pre_roll = min(PRE_ROLL_S, seg.source_in)
+    cut_filters = [
+        "aresample=async=0",
+        f"atrim=start={pre_roll:.6f}:duration={seg.source_duration:.6f}",
+        "asetpts=PTS-STARTPTS",
+    ]
     action = piece.action_filter
     if action:
         cut_filters.append(action)
@@ -176,9 +187,8 @@ def extract_piece(piece: Piece, episode_root: Path, out_path: Path, crossfade_s:
     cut_path = work / f"{seg.id}-cut.wav" if faded else out_path
     run_ffmpeg(
         [
+            "-ss", ff_time(seg.source_in - pre_roll),
             "-i", str(media_path(episode_root, seg.source_file)),
-            "-ss", ff_time(seg.source_in),
-            "-to", ff_time(seg.source_out),
             "-vn", "-sn", "-dn",
             "-af", ",".join(cut_filters),
             "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le",

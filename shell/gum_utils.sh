@@ -165,6 +165,12 @@ gum_spin_wait() {
 gum_confirm() {
     if _gum_check; then
         gum confirm "$@"
+    elif [[ -t 0 && -t 1 ]]; then
+        # Interactive but gum not installed yet (e.g. fresh machine): plain y/N prompt
+        local reply
+        printf '%s [y/N] ' "$1"
+        read -r reply
+        [[ "$reply" == [yY]* ]]
     else
         # Auto-approve in non-interactive mode
         return 0
