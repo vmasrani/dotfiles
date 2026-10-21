@@ -11,8 +11,9 @@ description: Run fast checks and open the current issue-owned or batch branch as
    this is a wave: do NOT run a gate and do NOT open a per-issue PR — rebase
    onto that integration branch, `git merge --no-ff` into it, push it, report,
    and STOP here (the orchestrator runs the wave's single gate and PR). Only
-   for a genuinely lone issue with no integration branch: run `just ci-fast`
-   in the current worktree once; it must be green before you go on. A check
+   for a genuinely lone issue with no integration branch: run `just ci-fast`,
+   plus `just test-fast` when the justfile defines it, in the current worktree
+   once; both must be green before you go on. A check
    that cannot run must be visibly absent from the recipe, never a step that
    prints `not applicable` and passes; a broken check must fail loudly.
 3. Inspect `git diff origin/dev...HEAD`, commit only the intended files, and
@@ -33,8 +34,8 @@ On a `chore/<slug>` branch there is no issue: skip the issue read in step 1 and
 the issue comment in step 5. The PR body carries NO `Closes #` line. Instead it
 states in one or two lines what changed and that the chore-lane criteria are
 met — no behavior change, no decision to explain, mechanically re-derivable or
-externally forced, nobody would search for why it happened. `just ci-fast` must
-still be green before pushing, and the author self-merges on mergeable-green
+externally forced, nobody would search for why it happened. `just ci-fast` (plus
+`just test-fast` when the justfile defines it) must still be green before pushing, and the author self-merges on mergeable-green
 per rule 6, same bar as the fast lane.
 
 Never bypass a required check. Merge the PR yourself once it is
