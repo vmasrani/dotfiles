@@ -12,5 +12,7 @@ for opt in window-status-current-format window-status-format; do
     # Inactive pill: "#W #[norange]" -> "#W#[norange]"
     new_fmt="${fmt//#W #\{?pane_synchronized/#W#\{?pane_synchronized}"
     new_fmt="${new_fmt//#W #\[norange/#W#\[norange}"
-    [[ "$new_fmt" != "$fmt" ]] && tmux set-option -g "$opt" "$new_fmt"
+    if [[ "$new_fmt" != "$fmt" ]]; then
+        tmux set-option -g "$opt" "$new_fmt"
+    fi
 done
