@@ -1,6 +1,7 @@
 // The props.json contract. gen-props.mjs writes it, the composition refuses to
 // render anything that does not match it.
 
+import type { Caption } from '@remotion/captions';
 import { z } from 'zod';
 
 const px = z.number().finite();
@@ -24,11 +25,33 @@ export const SegmentSchema = z.strictObject({
   credit: z.string().min(1).nullable(),
 });
 
+const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
+
 export const SpanSchema = z.strictObject({
   text: z.string(),
-  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  color: hexColor,
   bold: z.boolean(),
   italic: z.boolean(),
+  /** index into the event's `words`; null for whitespace between words */
+  word: z.int().nonnegative().nullable(),
+});
+
+/** One spoken word of a card — exactly @remotion/captions' `Caption` (absolute ms in the clip). */
+export const CaptionSchema = z.strictObject({
+  text: z.string().min(1),
+  startMs: z.number().nonnegative(),
+  endMs: z.number().nonnegative(),
+  timestampMs: z.number().nullable(),
+  confidence: z.number().nullable(),
+});
+// Compile-time proof the props carry the package's type, not a look-alike.
+true satisfies (z.infer<typeof CaptionSchema> extends Caption ? (Caption extends z.infer<typeof CaptionSchema> ? true : never) : never);
+
+export const PlacementSchema = z.strictObject({
+  fromFrame: frame,
+  layout: z.enum(['solo', 'split']),
+  posY: px,
+  anchorY: z.enum(['top', 'middle', 'bottom']),
 });
 
 export const SubtitleEventSchema = z.strictObject({
@@ -36,8 +59,10 @@ export const SubtitleEventSchema = z.strictObject({
   endFrame: z.int().positive(),
   text: z.string().min(1),
   styledSpans: z.array(SpanSchema).min(1),
-  posY: px,
-  anchorY: z.enum(['top', 'middle', 'bottom']),
+  words: z.array(CaptionSchema).min(1),
+  // One position per screen layout the card spans (solo -> bottom, split -> seam), switching on exactly the
+  // frame the layout switches; fromFrame is relative to startFrame and the first is always 0.
+  placements: z.array(PlacementSchema).min(1),
   alignX: z.enum(['left', 'center', 'right']),
 });
 
@@ -56,6 +81,8 @@ export const ShortPropsSchema = z.strictObject({
     fontFamily: z.string().min(1),
     fontWeight: z.int().positive(),
     emphasisFontWeight: z.int().positive(),
+    activeColor: hexColor,
+    activeFontWeight: z.int().positive(),
     fontSizePx: z.number().positive(),
     lineHeightEm: z.number().positive(),
     outlineWidthPx: z.number().nonnegative(),

@@ -32,7 +32,8 @@ script exits 1 with the unmatched spans rather than papering over it.
 
 `subtitles.lines` is an OPTIONAL design-time override. When it is empty (the normal case for
 shorts) the caption cards are derived here from the timeline's verbatim `dialogue` and the word
-timings: a dynamic program splits the words into cards that fit `max_lines` x `max_chars_per_line`,
+timings: a dynamic program splits the words into cards that fit `max_lines` x `max_chars_per_line` (a card
+takes up to `reading_speed_max_lines` rows only when no `max_lines`-row split meets the reading speed),
 read at <= `max_chars_per_second` over the whole time the card can stay on screen (its first word to
 the next card's first word), and break at sentence ends, commas and pauses. A stretch that is
 physically too fast to caption within the limits is reported with its output time range and words
@@ -45,7 +46,11 @@ aligned and clamped by the same machinery, and written as `subtitles/v<N>.srt` (
 
 Output: `subtitles/v<N>.ass`, PlayRes = the profile resolution, styled from
 `clip.subtitles` + `config/defaults.yaml`, with per-word emphasis as inline
-override tags (`{\\b1\\c&H..&}word{\\r}`).
+override tags (`{\\b1\\c&H..&}word{\\r}`) and per-word karaoke timing as standard
+`{\\k<centiseconds>}` tags: each word's syllable runs from the moment it is spoken to the
+moment the next word is (a leading empty `{\\k}` covers the pause before the card's first
+word), so the durations of one event sum to exactly its on-screen time. The Remotion
+template highlights the word whose syllable is current (remotion/src/Subtitles.tsx).
 """
 
 from __future__ import annotations
@@ -57,7 +62,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
-from itertools import groupby
+from itertools import combinations, groupby, pairwise
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -94,7 +99,6 @@ app = typer.Typer(add_completion=False)
 
 UNMATCHED_FRACTION_LIMIT = 0.10
 MIDDLE_LOWER_HEIGHT_FRACTION = 0.38   # MarginV for `middle-lower`, as a fraction of PlayResY
-FONT_SIZE_HEIGHT_FRACTION = 0.0437    # 84px at 1920 — the storyboard's reference size (an upper bound)
 MIN_FONT_HEIGHT_FRACTION = 0.015      # ~29px at 1920: below this the line is unreadable, not "smaller"
 
 # Glyph advances in em for Inter Semibold, bucketed. Used to size the font so a legal
@@ -104,6 +108,14 @@ MIN_FONT_HEIGHT_FRACTION = 0.015      # ~29px at 1920: below this the line is un
 NARROW_CHARS = "ijltfrI.,;:!'|()[]{}/\\ "
 WIDE_CHARS = "mwMW@%"
 ADVANCE_NARROW, ADVANCE_DEFAULT, ADVANCE_UPPER, ADVANCE_WIDE = 0.34, 0.56, 0.68, 0.92
+FIT_MARGIN = 1.05   # headroom for em_width's estimation error when fitting the font to the safe box
+# The template draws plain words at 600 and emphasised words at 700 (remotion/gen-props.mjs) and reserves
+# every word's slot at the karaoke `active_font_weight`, so the line is as wide as if all of it were set
+# at the heaviest of those. em_width's buckets are Inter Semibold (600); these are the widest measured
+# ratios of bundled Inter at each weight to 600 (fontTools instancer over this series' captions and
+# pangrams, rounded up). A weight not listed here cannot be fitted and fails loud.
+CAPTION_FONT_WEIGHT, EMPHASIS_FONT_WEIGHT = 600, 700
+WEIGHT_WIDTH_FACTOR = {600: 1.0, 700: 1.015, 800: 1.033, 900: 1.053}
 ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2"
 
 NAMED_COLORS: dict[str, str] = {
@@ -134,6 +146,8 @@ class AlignedLine:
     matched: int
     expected: int
     display_lines: list[str] = field(default_factory=list)
+    #: per whitespace token of `line.text`: earliest matched spoken start, None when unmatched
+    token_starts: list[float | None] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +314,16 @@ def align(clip: Clip, hyp: list[HypWord]) -> tuple[list[AlignedLine], list[str],
     for idx, line in enumerate(clip.subtitles.lines):
         own = [i for i, (line_idx, _) in enumerate(expected) if line_idx == idx]
         hits = [matched[i] for i in own if i in matched]
+        raws = line.text.split()
+        owner = [r for r, raw in enumerate(raws) for _ in tokenize(raw)]
+        if len(owner) != len(own):
+            raise ValueError(f"subtitle line {idx + 1} ({line.text!r}): per-word tokens ({len(owner)}) disagree "
+                             f"with the line's tokens ({len(own)}) — tokenize() is not whitespace-compositional here")
+        token_starts: list[float | None] = [None] * len(raws)
+        for k, i in enumerate(own):
+            if i in matched:
+                r, start = owner[k], hyp[matched[i]].start
+                token_starts[r] = start if token_starts[r] is None else min(token_starts[r], start)
         aligned.append(
             AlignedLine(
                 index=idx,
@@ -308,6 +332,7 @@ def align(clip: Clip, hyp: list[HypWord]) -> tuple[list[AlignedLine], list[str],
                 end=max(hyp[h].end for h in hits) if hits else -1.0,
                 matched=len(hits),
                 expected=len(own),
+                token_starts=token_starts,
             )
         )
     return aligned, spans, fraction
@@ -413,12 +438,24 @@ def timed_dialogue_words(clip: Clip, hyp: list[HypWord]) -> list[TimedWord]:
     return [TimedWord(text, *sp) for text, sp in zip(merged, spans)]
 
 
-def _fits(texts: list[str], max_chars: int, max_lines: int) -> bool:
-    if len(" ".join(texts)) <= max_chars:
-        return True
-    if max_lines < 2:
-        return False
-    return any(len(" ".join(texts[:k])) <= max_chars and len(" ".join(texts[k:])) <= max_chars for k in range(1, len(texts)))
+def rows_needed(texts: list[str], max_chars: int) -> float:
+    """Fewest rows of <= max_chars that hold these words in order (greedy fill is optimal); inf if a word is too long."""
+    rows, width = 0, None
+    for t in texts:
+        if len(t) > max_chars:
+            return float("inf")
+        if width is not None and width + 1 + len(t) <= max_chars:
+            width += 1 + len(t)
+        else:
+            rows, width = rows + 1, len(t)
+    return rows
+
+
+# A card may take a row beyond `max_lines` (up to `reading_speed_max_lines`) ONLY when no split into
+# `max_lines`-row cards meets the reading-speed limit. In the DP this penalty sits just under the cost of
+# one reading-speed breach, so an extra row is only ever bought to remove a breach; main() then re-checks
+# every such card on its own (overflow_is_needed) and fails loud if a two-row split would have passed.
+OVERFLOW_ROW_PENALTY = 90.0
 
 
 def derive_caption_lines(clip: Clip, hyp: list[HypWord], cfg: SubtitleConfig) -> list[SubtitleLine]:
@@ -433,9 +470,15 @@ def derive_caption_lines(clip: Clip, hyp: list[HypWord], cfg: SubtitleConfig) ->
     duration = clip.output.duration_s
     max_chars, max_cps = cfg.max_chars_per_line, cfg.max_chars_per_second
 
-    def card_cost(i: int, j: int) -> float | None:
+    def breaches(i: int, j: int) -> bool:
+        chars = len(" ".join(w.text for w in words[i:j]))
+        window = max(max(words[j].start if j < n else duration, words[j - 1].end) - words[i].start, 1e-3)
+        return chars / window > max_cps + EPSILON or window < cfg.min_display_seconds - EPSILON
+
+    def card_cost(i: int, j: int, max_rows: int) -> float | None:
         texts = [w.text for w in words[i:j]]
-        if not _fits(texts, max_chars, cfg.max_lines):
+        rows = rows_needed(texts, max_chars)
+        if rows > max_rows:
             return None
         chars = len(" ".join(texts))
         shown_until = max(words[j].start if j < n else duration, words[j - 1].end)
@@ -445,6 +488,8 @@ def derive_caption_lines(clip: Clip, hyp: list[HypWord], cfg: SubtitleConfig) ->
         cost = 1.0                                         # every card costs a little: fewer, fuller cards
         if over > 0 or short > 0:
             cost += 100.0 + 40.0 * over + 40.0 * short     # a limit breach dominates every stylistic preference
+        if rows > cfg.max_lines:
+            cost += OVERFLOW_ROW_PENALTY                   # an extra row is bought only to remove a breach
         cost += 3.0 * (chars / window / max_cps) ** 2      # prefer cards that read slower than the limit
         last = words[j - 1].text
         if SENTENCE_END.search(last):
@@ -459,20 +504,31 @@ def derive_caption_lines(clip: Clip, hyp: list[HypWord], cfg: SubtitleConfig) ->
             cost += 0.5                                    # two rows are legal but one is easier
         return cost
 
-    best = [0.0] + [float("inf")] * n
-    back = [0] * (n + 1)
-    for j in range(1, n + 1):
-        for i in range(max(0, j - CARD_MAX_WORDS), j):
-            c = card_cost(i, j)
-            if c is not None and best[i] + c < best[j]:
-                best[j], back[j] = best[i] + c, i
-    if best[n] == float("inf"):
-        raise ValueError(f"cannot split the dialogue into caption cards of <= {cfg.max_lines} x {max_chars} chars "
-                         f"(a single word is too long?)")
-    cuts, j = [], n
-    while j > 0:
-        cuts.append((back[j], j))
-        j = back[j]
+    def segment(max_rows: int) -> list[tuple[int, int]]:
+        best = [0.0] + [float("inf")] * n
+        back = [0] * (n + 1)
+        for j in range(1, n + 1):
+            for i in range(max(0, j - CARD_MAX_WORDS), j):
+                c = card_cost(i, j, max_rows)
+                if c is not None and best[i] + c < best[j]:
+                    best[j], back[j] = best[i] + c, i
+        if best[n] == float("inf"):
+            raise ValueError(f"cannot split the dialogue into caption cards of <= {max_rows} x {max_chars} chars "
+                             f"(a single word is too long?)")
+        cuts, j = [], n
+        while j > 0:
+            cuts.append((back[j], j))
+            j = back[j]
+        return cuts
+
+    cuts = segment(cfg.max_lines)
+    if any(breaches(i, j) for i, j in cuts) and cfg.reading_speed_max_lines > cfg.max_lines:
+        cuts = segment(cfg.reading_speed_max_lines)
+        for i, j in cuts:
+            if rows_needed([w.text for w in words[i:j]], max_chars) > cfg.max_lines:
+                logger.info(f"reading speed: {fmt_mmss(words[i].start)} card takes "
+                            f"{rows_needed([w.text for w in words[i:j]], max_chars)} rows — no {cfg.max_lines}-row split "
+                            f"meets {max_cps:g} chars/s: {' '.join(w.text for w in words[i:j])!r}")
     return [
         SubtitleLine(output_range=[words[i].start, words[j - 1].end],
                      text=" ".join(w.text for w in words[i:j]), position=clip.subtitles.position_default)
@@ -617,32 +673,31 @@ def emphasis_runs(raw_tokens: list[str], line: SubtitleLine) -> dict[int, tuple[
 
 
 def wrap_tokens(raw_tokens: list[str], max_chars: int, max_lines: int, where: str) -> list[list[int]]:
-    """Split token indices into ≤ max_lines display lines, breaking at natural phrase ends."""
+    """Split token indices into the fewest display rows (≤ max_lines) of ≤ max_chars, balanced, breaking at phrase ends."""
     text = " ".join(raw_tokens)
-    if len(text) <= max_chars:
-        return [list(range(len(raw_tokens)))]
-    if max_lines < 2:
-        raise ValueError(f"{where}: {len(text)} chars exceeds max_chars_per_line {max_chars} and max_lines is 1")
-
-    def width(lo: int, hi: int) -> int:
-        return len(" ".join(raw_tokens[lo:hi]))
-
-    candidates = [
-        (
-            abs(width(0, i) - width(i, len(raw_tokens)))
-            - (12 if raw_tokens[i - 1].rstrip().endswith((",", ";", ":", "—", "-", ".", "?", "!")) else 0),
-            i,
-        )
-        for i in range(1, len(raw_tokens))
-        if width(0, i) <= max_chars and width(i, len(raw_tokens)) <= max_chars
-    ]
-    if not candidates:
+    rows = rows_needed(raw_tokens, max_chars)
+    if rows > max_lines:
         raise ValueError(
             f"{where}: {text!r} ({len(text)} chars) cannot be wrapped into {max_lines} lines of "
             f"{max_chars} chars — shorten the subtitle line in clip.yaml"
         )
-    split = min(candidates)[1]
-    return [list(range(split)), list(range(split, len(raw_tokens)))]
+    n = len(raw_tokens)
+
+    def width(lo: int, hi: int) -> int:
+        return len(" ".join(raw_tokens[lo:hi]))
+
+    def cost(splits: tuple[int, ...]) -> float | None:
+        bounds = [0, *splits, n]
+        widths = [width(a, b) for a, b in pairwise(bounds)]
+        if max(widths) > max_chars:
+            return None
+        phrase_ends = sum(raw_tokens[i - 1].rstrip().endswith((",", ";", ":", "—", "-", ".", "?", "!")) for i in splits)
+        return max(widths) - min(widths) - 12 * phrase_ends
+
+    candidates = [(c, splits) for splits in combinations(range(1, n), rows - 1) if (c := cost(splits)) is not None]
+    splits = min(candidates)[1]
+    bounds = [0, *splits, n]
+    return [list(range(a, b)) for a, b in pairwise(bounds)]
 
 
 def escape_ass(text: str) -> str:
@@ -651,24 +706,110 @@ def escape_ass(text: str) -> str:
     return text
 
 
-def render_text(line: SubtitleLine, cfg: SubtitleConfig, palette: list[str], where: str) -> list[str]:
+def karaoke_tags(item: AlignedLine, raw_tokens: list[str], where: str) -> list[str]:
+    """Per whitespace token: the `{\\k<cs>}` tag(s) opening its karaoke syllable, or '' when it rides along.
+
+    A syllable is one spoken word: it starts when the word is spoken and lasts until the next word starts
+    (the last one until the card ends), so the highlight stays on the last spoken word through a pause.
+    A token with no letters or digits (a bare dash) rides with the word before it (the first word, if it
+    leads). An unmatched word is interpolated evenly between its timed neighbours inside the card — the
+    caller has already failed the run when too many words are unmatched or a card matched none.
+    """
+    wordy, cs = spoken_starts_cs(item, raw_tokens, where)
+    t0, t1 = round(item.start * 100), round(item.end * 100)
+    if cs[-1] >= t1:
+        raise ValueError(f"{where}: the word {raw_tokens[wordy[-1]]!r} is spoken at or after the card ends "
+                         f"({cs[-1] / 100:.2f}s >= {t1 / 100:.2f}s) — it would never be highlighted")
+    tags = [""] * len(raw_tokens)
+    for k, r in enumerate(wordy):
+        first = 0 if k == 0 else r                          # leading dashes join the first word's syllable
+        lead = f"{{\\k{cs[0] - t0}}}" if k == 0 and cs[0] > t0 else ""
+        tags[first] = f"{lead}{{\\k{(cs[k + 1] if k + 1 < len(cs) else t1) - cs[k]}}}"
+    return tags
+
+
+def spoken_starts_cs(item: AlignedLine, raw_tokens: list[str], where: str) -> tuple[list[int], list[int]]:
+    """(indices of the tokens that are words, each word's spoken start in centiseconds inside the card's window).
+
+    Unmatched words are interpolated evenly between their timed neighbours; starts never run backwards.
+    """
+    if len(item.token_starts) != len(raw_tokens):
+        raise ValueError(f"{where}: {len(raw_tokens)} words but {len(item.token_starts)} word timings")
+    wordy = [r for r, raw in enumerate(raw_tokens) if tokenize(raw)]
+    if not wordy:
+        raise ValueError(f"{where}: {item.line.text!r} has no words to time")
+    starts = [item.token_starts[r] for r in wordy]
+    if all(s is None for s in starts):
+        raise ValueError(f"{where}: none of {item.line.text!r} was matched in the word timings — cannot time its words")
+    known = [k for k, s in enumerate(starts) if s is not None]
+    for k, s in enumerate(starts):
+        if s is not None:
+            continue
+        lo_k = max((j for j in known if j < k), default=None)
+        hi_k = min((j for j in known if j > k), default=None)
+        lo, lo_at = (starts[lo_k], lo_k) if lo_k is not None else (item.start, -1)
+        hi, hi_at = (starts[hi_k], hi_k) if hi_k is not None else (item.end, len(starts))
+        starts[k] = lo + (hi - lo) * (k - lo_at) / (hi_at - lo_at)
+    t0, t1 = round(item.start * 100), round(item.end * 100)
+    cs, floor = [], t0
+    for s in starts:                      # inside the card's window, never earlier than the word before
+        floor = max(floor, min(round(s * 100), t1))
+        cs.append(floor)
+    return wordy, cs
+
+
+def overflow_is_needed(item: AlignedLine, cfg: SubtitleConfig, where: str) -> bool:
+    """True when NO split of this card's words into cards of <= max_lines rows meets the reading-speed and
+    minimum-display limits inside the card's own window — the only reason a card may take extra rows."""
+    raw_tokens = item.line.text.split()
+    wordy, cs = spoken_starts_cs(item, raw_tokens, where)
+    t0, t1 = round(item.start * 100), round(item.end * 100)
+    bounds = [0, *wordy[1:], len(raw_tokens)]               # a word owns the dashes riding after it
+    units = [" ".join(raw_tokens[a:b]) for a, b in pairwise(bounds)]
+    starts = [t0, *cs[1:]]
+    n = len(units)
+    reach = [True] + [False] * n
+    for j in range(1, n + 1):
+        for i in range(j):
+            if not reach[i] or rows_needed(units[i:j], cfg.max_chars_per_line) > cfg.max_lines:
+                continue
+            window = ((starts[j] if j < n else t1) - starts[i]) / 100
+            chars = len(" ".join(units[i:j]))
+            if window >= cfg.min_display_seconds - EPSILON and chars / max(window, 1e-3) <= cfg.max_chars_per_second + EPSILON:
+                reach[j] = True
+                break
+    return not reach[n]
+
+
+def render_text(item: AlignedLine, cfg: SubtitleConfig, palette: list[str], where: str) -> list[str]:
+    line = item.line
     raw_tokens = escape_ass(line.text).split()
     runs = emphasis_runs(raw_tokens, line)
-    rendered: list[str] = []
+    rendered = [f"{tag}{tok}" for tag, tok in zip(karaoke_tags(item, raw_tokens, where), raw_tokens)]
     i = 0
     while i < len(raw_tokens):
         run = runs.get(i)
         if run is None:
-            rendered.append(raw_tokens[i])
             i += 1
             continue
         length, style = run
         bold, color = resolve_emphasis_color(style, palette)
-        body = " ".join(raw_tokens[i:i + length])
-        rendered.append(f"{{\\b{1 if bold else 0}\\c{ass_color(color)}&}}{body}{{\\r}}")
+        # emphasis opens after the karaoke tag so the syllable boundary stays at the word's start
+        head = _KARAOKE_PREFIX.match(rendered[i]).group(0)
+        rendered[i] = f"{head}{{\\b{1 if bold else 0}\\c{ass_color(color)}&}}{rendered[i][len(head):]}"
+        rendered[i + length - 1] += "{\\r}"
         i += length
-    groups = wrap_tokens(raw_tokens, cfg.max_chars_per_line, cfg.max_lines, where)
+    groups = wrap_tokens(raw_tokens, cfg.max_chars_per_line, cfg.reading_speed_max_lines, where)
+    if len(groups) > cfg.max_lines and not overflow_is_needed(item, cfg, where):
+        raise ValueError(
+            f"{where}: {line.text!r} needs {len(groups)} rows, but its words can be split into cards of "
+            f"<= {cfg.max_lines} rows that meet {cfg.max_chars_per_second:g} chars/s — extra rows are only for cards "
+            f"that cannot. Split the line in clip.yaml (or empty subtitles.lines to derive the cards)"
+        )
     return [" ".join(rendered[j] for j in group) for group in groups]
+
+
+_KARAOKE_PREFIX = re.compile(r"(?:\{\\k\d+\})*")
 
 
 _OVERRIDE_BLOCK = re.compile(r"\{[^}]*\}")
@@ -690,19 +831,31 @@ def em_width(text: str) -> float:
     )
 
 
-def fit_font_size(aligned: list[AlignedLine], box_w: int, play_h: int) -> tuple[int, str]:
+def layout_weight(aligned: list[AlignedLine], active_font_weight: int) -> int:
+    """The weight every word's slot is reserved at in the template: the heaviest weight any word can take."""
+    emphasised = any(item.line.emphasis for item in aligned)
+    return max(CAPTION_FONT_WEIGHT, active_font_weight, EMPHASIS_FONT_WEIGHT if emphasised else CAPTION_FONT_WEIGHT)
+
+
+def fit_font_size(aligned: list[AlignedLine], box_w: int, play_h: int, weight: int, height_fraction: float) -> tuple[int, str]:
     """Largest font size at which no rendered line soft-wraps inside the safe box.
 
-    The design size (`FONT_SIZE_HEIGHT_FRACTION` of the frame) is an upper bound, not a
+    The design size (config `subtitles.font_height_fraction` of the frame) is an upper bound, not a
     target: the composition wraps text at `PlayResX − MarginL − MarginR`, so a legal
-    42-char line rendered too large would wrap where nobody asked it to.
+    42-char line rendered too large would wrap where nobody asked it to. Widths are taken at
+    `weight` — the karaoke layout reserves every word at its highlighted (heaviest) width.
     """
-    design = int(round(play_h * FONT_SIZE_HEIGHT_FRACTION))
+    if weight not in WEIGHT_WIDTH_FACTOR:
+        raise ValueError(f"no measured width factor for font weight {weight} (known: {sorted(WEIGHT_WIDTH_FACTOR)}) — "
+                         f"set config subtitles.active_font_weight to one of those or measure it into WEIGHT_WIDTH_FACTOR")
+    design = int(round(play_h * height_fraction))
     widest_text = max(
         (plain_text(line) for item in aligned for line in item.display_lines), key=em_width
     )
-    widest = em_width(widest_text)
-    fitted = int(box_w / widest)
+    widest = em_width(widest_text) * WEIGHT_WIDTH_FACTOR[weight]
+    # em_width is an estimate: against the bundled Inter Semibold it runs up to ~3% narrow (measured:
+    # "because there's always obnoxious" est 16.52 em, real 16.74 em -> 904px in a 900px box, a 3rd row).
+    fitted = int(box_w / (widest * FIT_MARGIN))
     size = min(design, fitted)
     floor = int(round(play_h * MIN_FONT_HEIGHT_FRACTION))
     if size < floor:
@@ -736,7 +889,8 @@ def build_ass(
     font_size: int,
     style: SubtitleConfig,
     mouths: list[capplace.Zone],
-) -> str:
+    fps: float,
+) -> tuple[str, dict]:
     # Two objects, two responsibilities, and they are NOT interchangeable:
     #   `clip.subtitles` (SubtitleSpec, from clip.yaml) owns WHAT the captions say and where —
     #       font, base_color, emphasis_palette, position_default, lines.
@@ -792,28 +946,50 @@ def build_ass(
     ]
     middle_lower = int(round(play_h * MIDDLE_LOWER_HEIGHT_FRACTION))
 
-    def position_tags(item: AlignedLine) -> str:
-        """Per-treatment placement: solo captions keep the style's bottom-centre; any caption on screen during a
-        split screen goes to the seam (or the top of the bottom panel) where it covers neither mouth."""
-        if not capplace.overlaps_split(clip, item.start, item.end):
-            return ""
+    def run_placement(item: AlignedLine, run: capplace.LayoutRun) -> capplace.Placement:
+        """Per-layout placement: over a solo shot the style's bottom-centre; over a split screen the seam (or the top
+        of the bottom panel) where it covers neither mouth."""
         margin_v = middle_lower if item.line.position == "middle-lower" else zones.bottom
-        return capplace.choose_position(item.start, item.end, len(item.display_lines), font_size, play_w, play_h, mouths,
-                                        margin_v, capplace.split_fraction(clip, item.start, item.end),
-                                        zones.top, play_h - zones.bottom).ass_tags
+        block = capplace.block_height(len(item.display_lines), font_size)
+        if run.layout == "solo":
+            bottom = capplace.Placement("bottom", "", play_h - margin_v - block, play_h - margin_v)
+            seconds, covered = capplace.exposure(bottom.top, bottom.bottom, run.t0, run.t1, mouths)
+            if seconds > 0:
+                logger.warning(f"caption {run.t0:.2f}-{run.t1:.2f}s at the bottom ({bottom.top:.0f}-{bottom.bottom:.0f}px) "
+                               f"touches a mouth for {seconds:.2f}s: " + ", ".join(f"{z.who} {z.top:.0f}-{z.bottom:.0f}px" for z in covered))
+            return bottom
+        return capplace.choose_position(run.t0, run.t1, len(item.display_lines), font_size, play_w, play_h, mouths,
+                                        margin_v, 1.0, zones.top, play_h - zones.bottom)
 
+    def as_written(seconds: float) -> float:
+        """The time the .ass stores (centiseconds) — the frames the renderer draws come from this, not the float."""
+        return round(seconds * 100) / 100
+
+    placed = [(item, [(run, run_placement(item, run))
+                      for run in capplace.layout_runs(clip, as_written(item.start), as_written(item.end), fps)])
+              for item in aligned]
+    for item, runs in placed:
+        if len(runs) > 1:
+            logger.info(f"caption {item.start:.2f}-{item.end:.2f}s spans a layout change: "
+                        + " -> ".join(f"{r.layout}@{r.t0:.2f}s {p.name}" for r, p in runs))
     events = [
         "Dialogue: "
         + ",".join(
             [
                 "0", ass_timestamp(item.start), ass_timestamp(item.end), "Default", "",
                 "0", "0", str(middle_lower if item.line.position == "middle-lower" else 0), "",
-                position_tags(item) + "\\N".join(item.display_lines),
+                # the .ass carries the card's opening position; the sidecar carries every layout run's
+                runs[0][1].ass_tags + "\\N".join(item.display_lines),
             ]
         )
-        for item in aligned
+        for item, runs in placed
     ]
-    return "\n".join([*header, *events]) + "\n"
+    sidecar = {"fps": fps, "play_h": play_h, "events": [
+        {"start": as_written(item.start), "end": as_written(item.end), "runs": [
+            {"t0": r.t0, "t1": r.t1, "layout": r.layout, "placement": p.name, "top": round(p.top, 2), "bottom": round(p.bottom, 2)}
+            for r, p in runs]}
+        for item, runs in placed]}
+    return "\n".join([*header, *events]) + "\n", sidecar
 
 
 # ---------------------------------------------------------------------------
@@ -915,11 +1091,16 @@ def main(
         return
     for item in aligned:
         item.display_lines = render_text(
-            item.line, cfg, clip.subtitles.emphasis_palette, f"subtitle line {item.index + 1}"
+            item, cfg, clip.subtitles.emphasis_palette, f"subtitle line {item.index + 1}"
         )
+    interpolated = sum(1 for item in aligned for raw, s in zip(item.line.text.split(), item.token_starts)
+                       if s is None and tokenize(raw))
+    if interpolated:
+        logger.info(f"karaoke: {interpolated} word(s) not matched in the word timings — interpolated inside their card")
     box_w = play_w - config.safe_zones.left - config.safe_zones.right
-    font_size, why = fit_font_size(aligned, box_w, play_h)
-    logger.info(f"font size {font_size}px: {why}")
+    weight = layout_weight(aligned, cfg.active_font_weight)
+    font_size, why = fit_font_size(aligned, box_w, play_h, weight, cfg.font_height_fraction)
+    logger.info(f"font size {font_size}px at layout weight {weight}: {why}")
 
     emphasised = sum(len(tokenize(e.word)) for line in clip.subtitles.lines for e in line.emphasis)
     total_words = sum(len(tokenize(line.text)) for line in clip.subtitles.lines)
@@ -939,7 +1120,9 @@ def main(
     if out_path.exists():
         logger.info(f"regenerating {out_path} from {audio_path.name}")
     mouths = capplace.load_zones(clip_dir, clip, play_h) if capplace.has_split(clip) else []
-    out_path.write_text(build_ass(clip, aligned, config.safe_zones, play_w, play_h, font_size, config.subtitles, mouths))
+    ass_text, placements = build_ass(clip, aligned, config.safe_zones, play_w, play_h, font_size, config.subtitles, mouths, profile.fps)
+    out_path.write_text(ass_text)
+    capplace.placements_path(out_path).write_text(json.dumps(placements, indent=1))
 
     table = RichTable(title=f"Aligned subtitles — {clip.clip.id} v{n}", header_style="bold cyan")
     for column, kwargs in (

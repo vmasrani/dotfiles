@@ -13,12 +13,31 @@ sync:
 subtitles:
   font: "Inter Semibold"
   font_fallbacks: ["Arial Bold", "Helvetica Bold"]
-  base_color: "#FFFFFF"
+  # Word-by-word ("karaoke") captions: every word is drawn in base_color; the word being spoken
+  # is drawn in active_color at active_font_weight (a weight of the bundled Inter variable font,
+  # 600-900; align_subtitles.py sizes the layout at this weight so the highlight never reflows).
+  base_color: "#FFD400"
+  active_color: "#39E75F"
+  active_font_weight: 800
+  # Colour of designed per-word emphasis (clip.yaml subtitles.lines[].emphasis). freeze_picks.py seeds
+  # each clip's emphasis_palette with it. White: distinct from both the yellow text and the green highlight.
+  emphasis_color: "#FFFFFF"
+  # Caption type size as a fraction of frame height: 0.0365 = 70px at 1920. It is the size the fit aims
+  # for and its cap — align_subtitles.py shrinks below it only when a row would not fit the safe box at
+  # active_font_weight, which max_chars_per_line is set to prevent.
+  font_height_fraction: 0.0365
   max_lines: 2
+  # A card may take up to this many rows ONLY when no split of its words into max_lines-row cards meets
+  # max_chars_per_second (fast speech at a large type size). align_subtitles.py enforces the reason card by
+  # card and fails loud otherwise; validate_subtitles.py accepts the extra row only on a card that cannot
+  # fit max_lines rows of max_chars_per_line.
+  reading_speed_max_lines: 3
   # 42 was too permissive for 1080x1920: the renderer auto-fits type to the longest line,
   # so a 42-character card shrinks the whole clip's subtitles to ~42px — small on a phone.
   # Shorter lines let the fit land larger (measured 42px -> 64px on the same clip).
-  max_chars_per_line: 32
+  # 22 lets 70px (font_height_fraction) fit at the bold 800 karaoke width: measured on Truth S2, 26 -> 61px,
+  # 24 -> 66px, 22 -> 70px (widest row 11.8 em of the 11.85 em the 900px box allows).
+  max_chars_per_line: 22
   max_chars_per_second: 20
   min_display_seconds: 0.8
   emphasis_max_word_fraction: 0.15

@@ -165,20 +165,44 @@ enough that the framing never exposes an empty edge.
 
 `src/Subtitles.tsx` draws the events parsed from the `.ass` — the timing truth
 after forced alignment, never the design-time ranges in `clip.yaml`. Line-level
-display windows (no word-level karaoke): one `<Sequence>` per dialogue event,
-positioned from the .ass alignment plus `MarginV`/`\pos`, always inside the safe
-zone, horizontally constrained to `width - left - right`.
+display windows: one `<Sequence>` per dialogue event, horizontally constrained to
+`width - left - right`.
+
+Vertical position follows the screen layout frame by frame: bottom-centre over a
+solo shot, the seam (or wherever clears both mouths) over a split screen. A card
+that spans a layout change is not split; `align_subtitles.py` writes one position
+per layout run to `subtitles/v<N>.placements.json` next to the `.ass`, and
+`gen-props.mjs` turns it into the event's `placements` (`fromFrame`, `posY`,
+`anchorY`). The position switches on exactly the frame the layout switches.
+`gen-props.mjs` dies if the sidecar is missing, or if a card's positions don't
+switch on precisely the layout-change frames it spans. It also dies if any
+position falls outside the safe zone. `validate_subtitles.py`
+(`layout_positions`) runs the same checks. Only the vertical anchor moves; the
+word slots and line breaks stay fixed, so nothing reflows.
 
 Line breaks are the `.ass` file's (`\N`); the text box additionally soft-wraps
 so a line can never spill sideways out of the safe zone. `gen-props.mjs`'s
 vertical safe-zone check counts the `.ass`'s own breaks, so keep
-`validate_subtitles.py` (≤2 lines, ≤42 chars/line) green upstream — it owns line
-length, this template owns placement.
+`validate_subtitles.py` (`max_lines` rows — a third only on a card too fast to split — and
+`max_chars_per_line`, see config/defaults.yaml) green upstream — it owns line length, this
+template owns placement.
 
 Per-word emphasis comes through as styled spans: `\b1` renders at weight 700,
 `\c&HBBGGRR&` recolours, `\r` resets, `\N` breaks the line. Every colour must be
 `subtitles.base_color` or a member of `emphasis_palette` — an off-palette colour
 is an error, not a surprise in the render.
+
+**Word-by-word ("karaoke") highlight.** `align_subtitles.py` writes one `\k<cs>` syllable per
+spoken word (a leading empty `\k` covers the pause before the first word; each word lasts until
+the next one starts, so the durations sum to the event). `gen-props.mjs` turns them into the
+event's `words` — `@remotion/captions` `Caption`s in absolute ms — and tags each styled span with
+its word; an event without `\k` tags is an error. `Subtitles.tsx` keeps the validated card as is
+(no `createTikTokStyleCaptions` re-paging) and draws the word whose start has most recently
+passed in `subtitleStyle.activeColor` at `activeFontWeight` (from `--defaults`
+`subtitles.active_color` / `active_font_weight`, which is therefore required); nothing is
+highlighted before the first word. Every word sits in a slot whose width is reserved by an
+invisible copy at its heaviest weight, so the highlight never moves a line break or a word, and
+`align_subtitles.py` fits the font size at that same weight.
 
 Inter is loaded from `public/fonts/*.woff2` (the Google Fonts latin and
 latin-ext subsets of the Inter variable font, SIL OFL 1.1) — **not** from a CDN,

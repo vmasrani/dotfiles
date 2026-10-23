@@ -4,7 +4,7 @@
 //
 // public/fonts/Inter-*.woff2 are the Google Fonts "latin" and "latin-ext"
 // subsets of the Inter variable font (SIL Open Font License 1.1); one file
-// serves both weights via its wght axis.
+// serves every weight (100-900) via its wght axis.
 
 import { loadFont } from '@remotion/fonts';
 import { cancelRender, continueRender, delayRender, staticFile } from 'remotion';
@@ -27,7 +27,10 @@ const SUBSETS = [
   },
 ];
 
-const WEIGHTS = ['600', '700'];
+// One face per subset covering the whole wght axis, so every weight the captions use (600 body,
+// 700 emphasis, the configured karaoke active weight) is a true instance of the variable font —
+// never a synthesised bold, which would be wider than the layout align_subtitles.py fitted.
+const WEIGHTS = ['100 900'];
 
 // Why this is not a plain `Promise.all(...).then(continueRender)`:
 //

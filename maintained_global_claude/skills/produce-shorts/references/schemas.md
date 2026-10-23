@@ -166,8 +166,8 @@ timeline:                     # ordered by output_in; the edit decision list
     transition: cut           # transition INTO next segment: cut | crossfade-<N>f
 subtitles:
   font: "Inter Semibold"
-  base_color: "#FFFFFF"
-  emphasis_palette: ["#FFD34D"]
+  base_color: "#FFD400"        # every word's colour; the spoken word's colour/weight are config subtitles.active_*
+  emphasis_palette: ["#FFFFFF"]   # seeded from config subtitles.emphasis_color
   position_default: bottom-center
   lines: []                   # optional design-time overrides; final timing comes from forced alignment
 assets: []                    # always empty — kept so the asset invariants hold vacuously

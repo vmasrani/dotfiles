@@ -4,7 +4,7 @@
 //
 //   node gen-props.mjs <clip-dir> --audio <path> --ass <path> \
 //        [--fps 30 --width 1080 --height 1920] [--profile youtube-shorts]
-//        [--episode <episode.yaml>] [--defaults <config/defaults.yaml>]
+//        [--episode <episode.yaml>] --defaults <config/defaults.yaml>
 //        [--aroll-dir assets/aroll] [--out props.json] [--public-link clip]
 //        [--safe-top 200 --safe-bottom 320 --safe-left 60 --safe-right 120]
 //
@@ -141,9 +141,23 @@ const speakerIds = new Set(episode.speakers.map((s) => s.id));
 // Safe zones
 // ---------------------------------------------------------------------------
 
-const fileSafeZone = flags.defaults === undefined
-  ? {}
-  : (readYaml(resolve(flags.defaults), 'defaults yaml')?.safe_zones ?? {});
+if (flags.defaults === undefined) {
+  die('--defaults <skill>/config/defaults.yaml is required — the karaoke caption colours and active weight (subtitles.active_color, subtitles.active_font_weight) live there');
+}
+const defaultsYaml = readYaml(resolve(flags.defaults), 'defaults yaml');
+const fileSafeZone = defaultsYaml?.safe_zones ?? {};
+
+// Karaoke highlight: the word being spoken is drawn in activeColor at activeFontWeight.
+const karaokeCfg = defaultsYaml?.subtitles ?? {};
+const activeColor = karaokeCfg.active_color;
+const activeFontWeight = karaokeCfg.active_font_weight;
+if (typeof activeColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(activeColor)) {
+  die(`${flags.defaults}: subtitles.active_color must be an opaque #RRGGBB, got ${JSON.stringify(activeColor)}`);
+}
+// Bundled Inter is a variable font (wght 100-900, src/fonts.ts); align_subtitles.py has measured widths for these.
+if (![600, 700, 800, 900].includes(activeFontWeight)) {
+  die(`${flags.defaults}: subtitles.active_font_weight must be one of 600, 700, 800, 900, got ${JSON.stringify(activeFontWeight)}`);
+}
 
 const safeZone = {
   top: num('safe-top', flags['safe-top']) ?? fileSafeZone.top ?? DEFAULT_SAFE_ZONE.top,
@@ -301,6 +315,15 @@ const audioSrc = inClipDir(flags.audio, 'assembled audio (--audio)');
 const assPath = resolve(clipDir, flags.ass);
 if (!existsSync(assPath)) die(`aligned subtitles (--ass) not found: ${assPath}`);
 const ass = parseAss(readFileSync(assPath, 'utf8'));
+// Position per layout run (scripts/align_subtitles.py writes it next to the .ass; capplace.placements_path).
+const placementsPath = assPath.replace(/\.ass$/, '.placements.json');
+if (!existsSync(placementsPath)) {
+  die(`caption positions per layout (${placementsPath}) not found — re-run scripts/align_subtitles.py`);
+}
+const placementsFile = JSON.parse(readFileSync(placementsPath, 'utf8'));
+if (placementsFile.events.length !== ass.events.length) {
+  die(`${placementsPath}: ${placementsFile.events.length} cards, the .ass has ${ass.events.length} — re-run scripts/align_subtitles.py`);
+}
 
 const scaleX = width / ass.playResX;
 const scaleY = height / ass.playResY;
@@ -335,8 +358,104 @@ const checkColor = (color, where) => {
 const alignX = (alignment) => (alignment % 3 === 1 ? 'left' : alignment % 3 === 2 ? 'center' : 'right');
 const anchorY = (alignment) => (alignment <= 3 ? 'bottom' : alignment <= 6 ? 'middle' : 'top');
 
+/**
+ * Per-word timing from the event's `\k` syllables as @remotion/captions `Caption`s (absolute ms),
+ * plus the styled spans re-cut so every visible run names the word it belongs to and whitespace
+ * (spaces, row breaks) belongs to none. The validated card is kept as is — this never re-pages.
+ */
+const karaokeWords = (event, where) => {
+  if (event.syllables.length === 0) {
+    die(`${where}: no karaoke word timings (\\k tags) — regenerate the .ass with scripts/align_subtitles.py`);
+  }
+  const startCs = Math.round(event.start * 100);
+  const endCs = Math.round(event.end * 100);
+  const last = event.syllables[event.syllables.length - 1];
+  if (last.offsetCs + last.durationCs !== endCs - startCs) {
+    die(`${where}: karaoke durations sum to ${last.offsetCs + last.durationCs}cs but the event lasts ${endCs - startCs}cs — the .ass timing is inconsistent`);
+  }
+  // Consecutive spans of one syllable form one word; whitespace at a word's edges (the space after it,
+  // a row break) belongs to no word, whitespace inside it (a dash riding with its word) stays with it.
+  const groups = [];
+  for (const span of event.spans) {
+    const group = groups[groups.length - 1];
+    if (group !== undefined && group.syllable === span.syllable) group.spans.push(span);
+    else groups.push({ syllable: span.syllable, spans: [span] });
+  }
+  const words = [];
+  const styledSpans = [];
+  const seen = new Set();
+  for (const { syllable, spans } of groups) {
+    const text = spans.map((s) => s.text).join('');
+    const core = text.trim();
+    if (core === '') {
+      for (const s of spans) styledSpans.push({ text: s.text, color: s.color, bold: s.bold, italic: s.italic, word: null });
+      continue;
+    }
+    if (syllable === null) {
+      die(`${where}: ${JSON.stringify(core)} comes before the first \\k tag, so it has no spoken time`);
+    }
+    if (seen.has(syllable)) die(`${where}: word ${JSON.stringify(core)} is split around other text — one word must be one run`);
+    seen.add(syllable);
+    const syl = event.syllables[syllable];
+    const startMs = (startCs + syl.offsetCs) * 10;
+    const word = words.length;
+    words.push({ text: core, startMs, endMs: startMs + syl.durationCs * 10, timestampMs: null, confidence: null });
+    const coreFrom = text.length - text.trimStart().length;
+    const coreTo = text.trimEnd().length;
+    let at = 0;
+    for (const s of spans) {
+      const cuts = [[at, Math.min(at + s.text.length, coreFrom), null], [Math.max(at, coreFrom), Math.min(at + s.text.length, coreTo), word], [Math.max(at, coreTo), at + s.text.length, null]];
+      for (const [from, to, owner] of cuts) {
+        if (to > from) styledSpans.push({ text: s.text.slice(from - at, to - at), color: s.color, bold: s.bold, italic: s.italic, word: owner });
+      }
+      at += s.text.length;
+    }
+  }
+  return { styledSpans, words };
+};
+
 const fontSizePx = firstStyle.fontSize * scaleY;
 const lineHeightEm = 1.2;
+
+// The screen layout of a timeline segment: captions sit at the bottom over a solo shot and on the seam over a split screen.
+const layoutOf = (segment) => (segment.kind === 'aroll' && segment.treatment === 'splitscreen' ? 'split' : 'solo');
+// Frames on which the layout switches (a cut between two segments of different layout).
+const layoutSwitches = new Set(segments.slice(1).filter((s, k) => layoutOf(s) !== layoutOf(segments[k])).map((s) => s.startFrame));
+const layoutAt = (frame) => layoutOf(segments.find((s) => s.startFrame <= frame && frame < s.startFrame + s.durationInFrames));
+
+/**
+ * One position per layout run of a card: [{fromFrame, layout, posY, anchorY}], fromFrame relative to the card's
+ * startFrame. Dies unless the runs open on the card's first frame, switch on exactly the frames the layout switches
+ * (and on no other), match the layout they claim, are the band height of the card, and sit inside the safe zone.
+ */
+const cardPlacements = (event, side, startFrame, endFrame, blockHeight, where) => {
+  if (Math.abs(side.start - event.start) > 0.005 || Math.abs(side.end - event.end) > 0.005) {
+    die(`${where}: ${placementsPath} has this card at ${side.start.toFixed(2)}-${side.end.toFixed(2)}s — re-run scripts/align_subtitles.py`);
+  }
+  if (side.runs.length === 0) die(`${where}: no caption position in ${placementsPath}`);
+  const runs = side.runs.map((run) => {
+    const from = toFrame(run.t0);
+    const at = `${where} ${run.layout} run from frame ${from}`;
+    if (layoutAt(from) !== run.layout) die(`${at}: the timeline shows a ${layoutAt(from)} layout on that frame`);
+    const top = run.top * scaleY;
+    const bottom = run.bottom * scaleY;
+    if (Math.abs(bottom - top - blockHeight) > 1.5) die(`${at}: band ${top.toFixed(0)}-${bottom.toFixed(0)}px is not the card's ${blockHeight.toFixed(0)}px`);
+    if (top + EPS < safeZone.top || bottom > height - safeZone.bottom + EPS) {
+      die(`${at}: renders at y ${top.toFixed(0)}-${bottom.toFixed(0)}px, outside the safe zone (${safeZone.top}-${height - safeZone.bottom}px) — fix the placement and re-run scripts/validate_subtitles.py`);
+    }
+    const anchor = run.placement === 'bottom' ? 'bottom' : run.placement === 'seam' ? 'middle' : 'top';
+    const posY = anchor === 'bottom' ? bottom : anchor === 'middle' ? (top + bottom) / 2 : top;
+    return { fromFrame: from - startFrame, layout: run.layout, posY, anchorY: anchor };
+  });
+  if (runs[0].fromFrame !== 0) die(`${where}: the first caption position starts at frame ${startFrame + runs[0].fromFrame}, not the card's first frame ${startFrame}`);
+  if (toFrame(side.runs[side.runs.length - 1].t1) !== endFrame) die(`${where}: the caption positions end before the card does (frame ${endFrame})`);
+  const switchesInCard = [...layoutSwitches].filter((f) => f > startFrame && f < endFrame).sort((a, b) => a - b);
+  const runSwitches = runs.slice(1).map((r) => startFrame + r.fromFrame);
+  if (JSON.stringify(runSwitches) !== JSON.stringify(switchesInCard)) {
+    die(`${where}: the layout switches on frames [${switchesInCard}] but the caption position switches on [${runSwitches}] — every layout segment the card overlaps needs its own position; re-run scripts/align_subtitles.py`);
+  }
+  return runs;
+};
 
 const subtitles = ass.events.map((event, i) => {
   const where = `.ass event ${i + 1} (${event.start.toFixed(2)}-${event.end.toFixed(2)}s)`;
@@ -356,7 +475,7 @@ const subtitles = ass.events.map((event, i) => {
 
   const anchor = anchorY(event.alignment);
   const marginV = event.marginV !== 0 ? event.marginV : event.style.marginV;
-  const posY = event.posY !== null
+  const assPosY = event.posY !== null
     ? event.posY * scaleY
     : anchor === 'bottom'
       ? (ass.playResY - marginV) * scaleY
@@ -366,19 +485,23 @@ const subtitles = ass.events.map((event, i) => {
 
   const lineCount = event.text.split('\n').length;
   const blockHeight = lineCount * fontSizePx * lineHeightEm;
-  const top = anchor === 'bottom' ? posY - blockHeight : anchor === 'top' ? posY : posY - blockHeight / 2;
-  const bottom = top + blockHeight;
-  if (top + EPS < safeZone.top || bottom > height - safeZone.bottom + EPS) {
-    die(`${where}: renders at y ${top.toFixed(0)}-${bottom.toFixed(0)}px, outside the safe zone (${safeZone.top}-${height - safeZone.bottom}px) — fix the .ass margins and re-run scripts/validate_subtitles.py`);
+  const startFrame = toFrame(event.start);
+  const endFrame = toFrame(event.end);
+  const placements = cardPlacements(event, placementsFile.events[i], startFrame, endFrame, blockHeight, where);
+  const opening = placements[0];
+  if (opening.anchorY !== anchor || Math.abs(opening.posY - assPosY) > 1) {
+    die(`${where}: the .ass opens at ${anchor} ${assPosY.toFixed(0)}px but ${placementsPath} at ${opening.anchorY} ${opening.posY.toFixed(0)}px — re-run scripts/align_subtitles.py`);
   }
 
+  const { styledSpans, words } = karaokeWords(event, where);
+
   return {
-    startFrame: toFrame(event.start),
-    endFrame: toFrame(event.end),
+    startFrame,
+    endFrame,
     text: event.text,
-    styledSpans: event.spans.map((s) => ({ text: s.text, color: s.color, bold: s.bold, italic: s.italic })),
-    posY,
-    anchorY: anchor,
+    styledSpans,
+    words,
+    placements,
     alignX: alignX(event.alignment),
   };
 });
@@ -388,12 +511,17 @@ const subtitles = ass.events.map((event, i) => {
 for (const segment of segments.filter((s) => s.credit !== null)) {
   const segEnd = segment.startFrame + segment.durationInFrames;
   for (const event of subtitles) {
-    if (event.endFrame <= segment.startFrame || event.startFrame >= segEnd) continue;
-    const floor = height - safeZone.bottom - CREDIT_RESERVE_PX;
-    const bottomEdge = event.anchorY === 'bottom' ? event.posY : event.posY + fontSizePx * lineHeightEm;
-    if (bottomEdge > floor + EPS) {
-      die(`subtitle at frame ${event.startFrame} sits at y ${bottomEdge.toFixed(0)}px and collides with the ${segment.id} credit line (floor ${floor}px) — raise the .ass MarginV for that line`);
-    }
+    event.placements.forEach((placement, k) => {
+      const from = event.startFrame + placement.fromFrame;
+      const to = k + 1 < event.placements.length ? event.startFrame + event.placements[k + 1].fromFrame : event.endFrame;
+      if (to <= segment.startFrame || from >= segEnd) return;
+      const floor = height - safeZone.bottom - CREDIT_RESERVE_PX;
+      const blockHeight = event.text.split('\n').length * fontSizePx * lineHeightEm;
+      const bottomEdge = placement.anchorY === 'bottom' ? placement.posY : placement.anchorY === 'middle' ? placement.posY + blockHeight / 2 : placement.posY + blockHeight;
+      if (bottomEdge > floor + EPS) {
+        die(`subtitle at frame ${from} sits at y ${bottomEdge.toFixed(0)}px and collides with the ${segment.id} credit line (floor ${floor}px) — raise the .ass MarginV for that line`);
+      }
+    });
   }
 }
 
@@ -427,6 +555,8 @@ const props = {
     fontFamily: family,
     fontWeight: 600,
     emphasisFontWeight: 700,
+    activeColor,
+    activeFontWeight,
     fontSizePx,
     lineHeightEm,
     outlineWidthPx: firstStyle.outline * scaleY,

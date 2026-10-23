@@ -39,7 +39,17 @@ class SubtitleConfig(Loose):
     font: str
     font_fallbacks: list[str] = Field(default_factory=list)
     base_color: str
+    #: Karaoke highlight: the word being spoken is drawn in this colour at this weight
+    #: (read by align_subtitles.py for fit-to-width and by remotion/gen-props.mjs for drawing).
+    active_color: str
+    active_font_weight: int
+    #: seeds clip.yaml subtitles.emphasis_palette (freeze_picks.py)
+    emphasis_color: str
+    #: caption type size as a fraction of frame height — the fit's target and cap (align_subtitles.py)
+    font_height_fraction: float
     max_lines: int
+    #: rows a card may take ONLY when no split into max_lines-row cards meets max_chars_per_second
+    reading_speed_max_lines: int
     max_chars_per_line: int
     max_chars_per_second: float
     min_display_seconds: float

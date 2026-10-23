@@ -10,6 +10,7 @@
     "typecheck": "npx tsc --noEmit"
   },
   "dependencies": {
+    "@remotion/captions": "4.0.506",
     "@remotion/cli": "4.0.506",
     "@remotion/fonts": "4.0.506",
     "js-yaml": "4.1.0",

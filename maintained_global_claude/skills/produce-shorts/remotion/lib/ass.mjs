@@ -8,8 +8,7 @@
 /** Override tags that carry no information this renderer needs (documented no-ops). */
 const IGNORED_TAGS = [
   'fad', 'fade', 'blur', 'be', 'fsp', 'fn', 'fs', 'bord', 'shad', 'xbord', 'ybord',
-  'xshad', 'yshad', '3c', '4c', '2c', 'alpha', '1a', '2a', '3a', '4a', 'q', 'k', 'K',
-  'kf', 'ko', 't', 'move', 'org', 'clip', 'iclip', 'p', 'pbo', 'fr', 'frx', 'fry',
+  'xshad', 'yshad', '3c', '4c', '2c', 'alpha', '1a', '2a', '3a', '4a', 'q', 't', 'move', 'org', 'clip', 'iclip', 'p', 'pbo', 'fr', 'frx', 'fry',
   'frz', 'fax', 'fay', 'fscx', 'fscy', 'u', 's',
 ];
 
@@ -48,21 +47,28 @@ const splitFormat = (line, section) => {
 /**
  * Split a Dialogue text field into styled spans, honouring the override tags
  * this renderer supports and throwing on any tag it does not.
+ *
+ * Karaoke tags (`\k`, `\K`, `\kf`, `\ko` — all centiseconds) open a syllable that
+ * starts where the previous one ended (offsets are from the event start). Every
+ * span records the syllable it belongs to (`syllable`, null before the first one).
  */
 const parseDialogueText = (raw, style) => {
   const base = { color: style.primaryColour, bold: style.bold, italic: style.italic };
   let current = { ...base };
   let override = { align: null, posX: null, posY: null };
   const spans = [];
+  const syllables = [];
+  let syllable = null;
+  let cursorCs = 0;
 
   const push = (text) => {
     if (text === '') return;
     const last = spans[spans.length - 1];
-    if (last !== undefined && last.color === current.color && last.bold === current.bold && last.italic === current.italic) {
+    if (last !== undefined && last.syllable === syllable && last.color === current.color && last.bold === current.bold && last.italic === current.italic) {
       last.text += text;
       return;
     }
-    spans.push({ text, ...current });
+    spans.push({ text, ...current, syllable });
   };
 
   const applyTag = (tag) => {
@@ -74,6 +80,12 @@ const parseDialogueText = (raw, style) => {
     if (/^r.+/.test(tag)) fail(`style-reset-to-named-style (\\${tag}) is not supported`);
 
     let m;
+    if ((m = /^(?:k|K|kf|ko)(\d+)$/.exec(tag)) !== null) {
+      syllables.push({ offsetCs: cursorCs, durationCs: Number(m[1]) });
+      cursorCs += Number(m[1]);
+      syllable = syllables.length - 1;
+      return;
+    }
     if ((m = /^b(\d+)$/.exec(tag)) !== null) {
       current = { ...current, bold: Number(m[1]) !== 0 };
       return;
@@ -113,7 +125,7 @@ const parseDialogueText = (raw, style) => {
   }
 
   if (spans.length === 0) fail(`dialogue event has no visible text: ${JSON.stringify(raw)}`);
-  return { spans, override };
+  return { spans, override, syllables };
 };
 
 /**
@@ -191,7 +203,7 @@ export function parseAss(content) {
       const row = Object.fromEntries(eventFormat.map((f, i) => [f.toLowerCase(), i === eventFormat.length - 1 ? text : head[i]]));
       const style = styles.get(row.style);
       if (style === undefined) fail(`Dialogue references unknown style ${JSON.stringify(row.style)}`);
-      const { spans, override } = parseDialogueText(row.text, style);
+      const { spans, override, syllables } = parseDialogueText(row.text, style);
       events.push({
         start: assTime(row.start),
         end: assTime(row.end),
@@ -202,6 +214,7 @@ export function parseAss(content) {
         posX: override.posX,
         posY: override.posY,
         text: spans.map((s) => s.text).join(''),
+        syllables,
       });
     }
   }

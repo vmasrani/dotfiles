@@ -21,7 +21,8 @@ done with `pysubs2`, not a hand-rolled reader.
 Checks performed (every one, always — a check that cannot run raises, it never passes
 quietly):
 
-    max_lines            <= subtitles.max_lines lines per event
+    max_lines            <= subtitles.max_lines lines per event; up to reading_speed_max_lines only
+                         on a card whose text cannot fit max_lines rows (the reading-speed exception)
     max_chars_per_line   <= subtitles.max_chars_per_line per rendered line
     reading_speed        visible chars / display seconds <= subtitles.max_chars_per_second
     min_display          display duration >= subtitles.min_display_seconds
@@ -29,6 +30,10 @@ quietly):
     manifest_coverage    every clip.yaml subtitles.lines[].text lands in EXACTLY one event
     safe_zones           rendered text band and wrap box inside the profile's safe region
     within_duration      every event inside [0, clip.output.duration_s]
+    layout_positions     the .placements.json sidecar gives every card a position for EVERY layout run
+                         (solo / split) it spans, inside the safe region; on a split screen the band
+                         clears every mouth (mouth_clearance) — the renderer switches position on
+                         exactly the frame the layout switches
 
 `qc_render.py` imports `validate()` from this module to re-run the same checks against
 the final rendered timing; keep the two in lockstep by changing only this file.
@@ -36,6 +41,7 @@ the final rendered timing; keep the two in lockstep by changing only this file.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -217,11 +223,38 @@ def _where(ev: Event) -> str:
 # --------------------------------------------------------------------------------------
 
 
+def _rows_needed(text: str, max_chars: int) -> float:
+    """Fewest rows of <= max_chars holding the words in order (greedy is optimal); inf if a word is too long."""
+    rows, width = 0, None
+    for word in text.split():
+        if len(word) > max_chars:
+            return float("inf")
+        if width is not None and width + 1 + len(word) <= max_chars:
+            width += 1 + len(word)
+        else:
+            rows, width = rows + 1, len(word)
+    return rows
+
+
 def check_max_lines(script: Script, limits: SubtitleConfig) -> list[Finding]:
+    """<= max_lines rows; up to reading_speed_max_lines ONLY on a card whose text cannot fit max_lines rows.
+
+    The extra row exists for one reason: align_subtitles.py gives it to a card only when no split into
+    max_lines-row cards meets the reading-speed limit (it re-checks that per card from the word timings).
+    Here the visible consequence is enforced: an extra row on a card that would fit in fewer is a finding.
+    """
+    def ok(ev: Event) -> bool:
+        if len(ev.lines) <= limits.max_lines:
+            return True
+        return (len(ev.lines) <= limits.reading_speed_max_lines
+                and _rows_needed(ev.visible_text, limits.max_chars_per_line) > limits.max_lines)
+
     return [
-        Finding("max_lines", _where(ev), f"<= {limits.max_lines} lines", f"{len(ev.lines)} lines: {ev.lines}")
+        Finding("max_lines", _where(ev),
+                f"<= {limits.max_lines} lines ({limits.reading_speed_max_lines} only for a card too long for {limits.max_lines})",
+                f"{len(ev.lines)} lines: {ev.lines}")
         for ev in script.events
-        if len(ev.lines) > limits.max_lines
+        if not ok(ev)
     ]
 
 
@@ -486,29 +519,51 @@ def check_safe_zones(script: Script, zones: SafeZones, profile: PlatformProfile)
 # --------------------------------------------------------------------------------------
 
 
-def check_mouth_clearance(
-    script: Script, clip: Clip, mouths: list[capplace.Zone], zones: SafeZones, profile: PlatformProfile
+def check_layout_positions(
+    script: Script, ass_path: Path, clip: Clip, mouths: list[capplace.Zone], zones: SafeZones, profile: PlatformProfile
 ) -> list[Finding]:
-    """A caption on screen during a split screen must not cover any visible mouth (measured by extract_segments.py)."""
+    """Every card has a position for every layout run it is on screen across (the `.placements.json` sidecar), each
+    inside the safe region, the first matching the .ass, and on a split screen clear of every visible mouth."""
+    path = capplace.placements_path(Path(ass_path))
+    if not path.is_file():
+        return [Finding("layout_positions", path.name, "a position per layout run for every card",
+                        "the sidecar is missing — re-run scripts/align_subtitles.py")]
+    events = json.loads(path.read_text())["events"]
+    if len(events) != len(script.events):
+        return [Finding("layout_positions", path.name, f"{len(script.events)} cards (as in the .ass)", f"{len(events)} cards")]
     region = safe_region(zones, profile)
     out: list[Finding] = []
-    for ev in script.events:
-        if ev.legacy_alignment_tag is not None or not 1 <= ev.alignment <= 9 or not capplace.overlaps_split(clip, ev.start, ev.end):
+    for ev, side in zip(script.events, events):
+        where = _where(ev)
+        if abs(side["start"] - ev.start) > 0.005 or abs(side["end"] - ev.end) > 0.005:
+            out.append(Finding("layout_positions", where, f"sidecar card at {ev.start:.2f}-{ev.end:.2f}s",
+                               f"{side['start']:.2f}-{side['end']:.2f}s — the sidecar is for another .ass"))
             continue
-        band = event_band(ev, script, region)
-        seconds, covered = capplace.exposure(band.top, band.bottom, ev.start, ev.end, mouths)
-        if seconds > capplace.tolerated_s(ev.start, ev.end):
-            out.append(
-                Finding(
-                    "mouth_clearance",
-                    _where(ev),
-                    f"caption band clear of every mouth during a split screen (<= {capplace.tolerated_s(ev.start, ev.end):.2f}s of contact "
-                    f"across a cut, {capplace.MOUTH_MARGIN_PX:.0f}px margin)",
-                    f"band {band.top:.0f}-{band.bottom:.0f}px (an{ev.alignment}"
-                    + (f", pos={ev.pos}" if ev.pos else f", MarginV={ev.margin_v:g}") + f") covers {seconds:.2f}s of "
-                    + ", ".join(f"{z.who} {z.top:.0f}-{z.bottom:.0f}px" for z in covered),
-                )
-            )
+        want = [(round(r.t0, 4), round(r.t1, 4), r.layout) for r in capplace.layout_runs(clip, ev.start, ev.end, profile.fps)]
+        got = [(round(r["t0"], 4), round(r["t1"], 4), r["layout"]) for r in side["runs"]]
+        if got != want:
+            out.append(Finding("layout_positions", where, f"a position for every layout run {want}", f"positions for {got}"))
+            continue
+        block_h = max(len(ev.lines), 1) * ev.font_size * LINE_HEIGHT_FACTOR
+        first = event_band(ev, script, region)
+        if abs(first.top - side["runs"][0]["top"]) > 1:
+            out.append(Finding("layout_positions", where, f"opening position {first.top:.0f}px (the .ass)",
+                               f"{side['runs'][0]['top']:.0f}px in the sidecar"))
+        for r in side["runs"]:
+            at = f"{r['layout']} {r['t0']:.2f}-{r['t1']:.2f}s {r['placement']} {r['top']:.0f}-{r['bottom']:.0f}px"
+            if abs(r["bottom"] - r["top"] - block_h) > 1:
+                out.append(Finding("layout_positions", where, f"band {block_h:.0f}px tall ({len(ev.lines)} rows)", at))
+            if r["top"] < region.top - EPSILON or r["bottom"] > region.bottom + EPSILON:
+                out.append(Finding("safe_zones", where, f"text inside {region.top:.0f}-{region.bottom:.0f}px", at))
+            if r["layout"] != "split":
+                continue
+            seconds, covered = capplace.exposure(r["top"], r["bottom"], r["t0"], r["t1"], mouths)
+            if seconds > capplace.tolerated_s(r["t0"], r["t1"]):
+                out.append(Finding(
+                    "mouth_clearance", where,
+                    f"caption band clear of every mouth during a split screen (<= {capplace.tolerated_s(r['t0'], r['t1']):.2f}s "
+                    f"of contact, {capplace.MOUTH_MARGIN_PX:.0f}px margin)",
+                    f"{at} covers {seconds:.2f}s of " + ", ".join(f"{z.who} {z.top:.0f}-{z.bottom:.0f}px" for z in covered)))
     return out
 
 
@@ -526,9 +581,9 @@ def validate(
         if clip_dir is None:
             raise ValueError("validate(): the clip has a split screen — pass clip_dir so caption clearance can be checked")
         mouths = capplace.load_zones(clip_dir, clip, int(profile.resolution.lower().partition("x")[2]))
-        clearance = check_mouth_clearance(script, clip, mouths, config.safe_zones, profile)
     else:
-        clearance = []
+        mouths = []
+    positions = check_layout_positions(script, Path(ass_path), clip, mouths, config.safe_zones, profile)
     return [
         *check_max_lines(script, limits),
         *check_max_chars_per_line(script, limits),
@@ -538,7 +593,7 @@ def validate(
         *check_manifest_coverage(script, clip),
         *check_safe_zones(script, config.safe_zones, profile),
         *check_within_duration(script, clip),
-        *clearance,
+        *positions,
     ]
 
 

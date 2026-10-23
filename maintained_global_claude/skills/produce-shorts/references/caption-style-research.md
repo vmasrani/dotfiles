@@ -119,6 +119,12 @@ face/head framing in talking-head footage.
 - **Recommendation given the gap**: per-word (or per-2-3-word) highlight in a single bright accent
   color is the norm — treat this as a MUST-HAVE for matching top performers, but leave the exact
   hex as a configurable/brand choice rather than inventing a "standard" color.
+- **Adopted (2026-10-23, user request):** yellow text (`subtitles.base_color: "#FFD400"`) with the
+  word being spoken drawn bold and bright green (`active_color: "#39E75F"`, `active_font_weight: 800`;
+  v3 used white; the user asked for stronger contrast), stroke + shadow unchanged; designed emphasis
+  is white (`emphasis_color`). Type size 70px (`font_height_fraction: 0.0365`), which needs
+  `max_chars_per_line: 22` to fit at the bold width. All are one-line changes in `config/defaults.yaml`;
+  mechanics in `remotion/README.md`.
 
 ### 7. Font families
 
