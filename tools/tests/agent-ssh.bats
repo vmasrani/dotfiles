@@ -1,16 +1,16 @@
 #!/usr/bin/env bats
-# Behaviour tests for `agent-ssh`, the tool that SSHes into a fresh agent-image
-# job and opens a plain terminal.
+# Behaviour tests for `agent-ssh`, the dispatcher for the headless Claude agent
+# workflow (claude-agent.yml).
 #
 # HERMETIC BY CONSTRUCTION
-#   The tests exercise factored-out helpers through hidden dispatch hooks, so
-#   nothing here touches the network or GitHub. Fake `gh` programs are placed
-#   first on PATH and return only the exact API state under test.
+#   Pure helpers are exercised through hidden dispatch hooks; the gh-backed
+#   commands run against a fake `gh` placed first on PATH that records its
+#   arguments. Nothing touches the network or GitHub, and no workflow is
+#   dispatched.
 #
 #   ZDOTDIR points at an empty dir so the tool's zsh skips the user's ~/.zshenv
-#   (which, among other things, does a macOS keychain lookup on every start and
-#   prepends dirs to PATH) — that keeps the fake `gh` first on PATH and the run
-#   fast and deterministic. NO_GUM=1 forces plain-text output.
+#   (keeps the fake `gh` first on PATH and the run fast). NO_GUM=1 forces
+#   plain-text output.
 #
 #   Run:  bats tools/tests/agent-ssh.bats
 
@@ -25,113 +25,55 @@ setup() {
     mkdir -p "$BIN"
     export PATH="$BIN:$PATH"
 
-    # Empty startup dir → tool's zsh reads no user rc files.
     export ZDOTDIR="${BATS_TEST_TMPDIR}/zdot"
     mkdir -p "$ZDOTDIR"
 
     export NO_GUM=1
-}
+    export GH_LOG="${BATS_TEST_TMPDIR}/gh.log"
+    : >"$GH_LOG"
 
-# A fake `gh` whose `api .../contents/...?ref=<ref>` succeeds only when <ref>
-# equals $GH_OK_REF. Everything else exits non-zero. Records nothing else.
-write_fake_gh() {
-    cat >"$BIN/gh" <<'EOF'
-#!/usr/bin/env bash
-if [[ "$*" == *"ref=${GH_OK_REF:-__none__}"* ]]; then
-    exit 0
-fi
-exit 1
-EOF
-    chmod +x "$BIN/gh"
-}
-
-# A fake `gh` that satisfies preflight and returns a chosen response for the
-# packages-versions endpoint. $GH_PKG_MODE picks 403 | 404 | ok | empty so the
-# status command's case discrimination can be exercised without the network.
-write_fake_gh_pkgs() {
-    cat >"$BIN/gh" <<'EOF'
-#!/usr/bin/env bash
-args="$*"
-case "$args" in
-    "auth status"*) exit 0 ;;
-    *packages/container*versions*)
-        case "${GH_PKG_MODE:-empty}" in
-            403) echo '{"message":"You need at least read:packages scope.","status":"403"}'
-                 echo "gh: You need at least read:packages scope to get a package's versions. (HTTP 403)" >&2
-                 exit 1 ;;
-            404) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
-            ok)  echo '[{"metadata":{"container":{"tags":["latest","15116e78"]}},"created_at":"2026-09-18T06:34:00Z"}]'; exit 0 ;;
-            *)   echo '[]'; exit 0 ;;
-        esac ;;
-    "api repos/"*) echo '{}'; exit 0 ;;
-    "run list"*)   echo '[]'; exit 0 ;;
-    *) exit 0 ;;
-esac
-EOF
-    chmod +x "$BIN/gh"
-}
-
-# A fake `gh` for the in-progress check-annotation protocol. It models a job
-# appearing after GH_READY_AFTER polls, then returns the annotation selected by
-# the real command's --jq expression. GH_ANNOTATION_MODE picks success | missing
-# | malformed | completed | jobs-error | annotations-error.
-write_fake_gh_annotations() {
-    export GH_ANNOTATION_STATE="${BATS_TEST_TMPDIR}/annotation-state"
-    : >"$GH_ANNOTATION_STATE"
-    cat >"$BIN/gh" <<'EOF'
-#!/usr/bin/env bash
-args="$*"
-case "$args" in
-    *"/actions/runs/"*"/jobs"*)
-        if [[ "${GH_ANNOTATION_MODE:-success}" == "jobs-error" ]]; then
-            echo "gh: API unavailable (HTTP 503)" >&2
-            exit 1
-        fi
-        count="$(wc -l <"$GH_ANNOTATION_STATE" | tr -d ' ')"
-        printf 'poll\n' >>"$GH_ANNOTATION_STATE"
-        if (( count < ${GH_READY_AFTER:-0} )); then
-            exit 0
-        fi
-        echo "https://api.github.com/repos/test/repo/check-runs/777"
-        ;;
-    *"check-runs/777/annotations"*)
-        case "${GH_ANNOTATION_MODE:-success}" in
-            success) echo "ssh Ready_9@uptermd.upterm.dev" ;;
-            missing|completed) ;;
-            malformed) echo "connect at https://upterm.dev/not-an-ssh-command" ;;
-            annotations-error)
-                echo "gh: annotation API forbidden (HTTP 403)" >&2
-                exit 1
-                ;;
-        esac
-        ;;
-    *"/actions/runs/"*)
-        if [[ "${GH_ANNOTATION_MODE:-success}" == "completed" ]]; then
-            printf 'completed\tfailure\n'
-        else
-            printf 'in_progress\t\n'
-        fi
-        ;;
-    *) echo "unexpected gh call: $args" >&2; exit 99 ;;
-esac
-EOF
-    chmod +x "$BIN/gh"
-
-    cat >"$BIN/sleep" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
+    # sleep is a no-op so polling loops are instant.
+    printf '#!/usr/bin/env bash\nexit 0\n' >"$BIN/sleep"
     chmod +x "$BIN/sleep"
 }
 
-# ── help / usage ──────────────────────────────────────────────────────────────
+RUNS_JSON='[
+ {"databaseId":300,"displayTitle":"agent acme/here #1932","status":"completed","conclusion":"success"},
+ {"databaseId":299,"displayTitle":"agent acme/here #1900","status":"in_progress","conclusion":""},
+ {"databaseId":298,"displayTitle":"agent other/repo #1932","status":"completed","conclusion":"failure"}]'
 
-@test "help: prints usage and describes the plain terminal" {
+# Fake gh: records every call to $GH_LOG; `run list` answers by --json fields.
+write_fake_gh() {
+    cat >"$BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >>"$GH_LOG"
+case "$*" in
+    "auth status"*|"api repos/"*) exit 0 ;;
+    "repo view"*) [[ "${GH_NOT_REPO:-}" == 1 ]] && exit 1; echo "${GH_CWD_REPO:-acme/here}" ;;
+    "workflow run"*) exit "${GH_DISPATCH_RC:-0}" ;;
+    "run list"*"createdAt"*)
+        if [[ "${GH_NO_NEW_RUN:-}" == 1 ]]; then echo null; else echo '{"createdAt":"2999-01-01T00:00:00Z","databaseId":4242}'; fi ;;
+    "run list"*) printf '%s\n' "$GH_RUNS_JSON" ;;
+    "pr list"*) printf '%s\n' "${GH_PR_ROWS:-}" ;;
+    "run cancel"*) exit "${GH_CANCEL_RC:-0}" ;;
+    "run watch"*) exit 0 ;;
+    *) echo "unexpected gh call: $*" >&2; exit 99 ;;
+esac
+EOF
+    chmod +x "$BIN/gh"
+    export GH_RUNS_JSON="$RUNS_JSON"
+}
+
+# ── help ──────────────────────────────────────────────────────────────────────
+
+@test "help: lists every subcommand and the workflow, no ssh connect" {
     run "$AGENT_SSH" help
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Usage:"* ]]
-    [[ "$output" == *"plain terminal"* ]]
-    [[ "$output" != *"tmux attach"* ]]
+    for w in "Usage:" "claude-agent.yml" "--repo" "run <issue>" "status [issue]" "watch <run-id>" "kill <run-id>"; do
+        [[ "$output" == *"$w"* ]] || { echo "missing: $w" >&2; return 1; }
+    done
+    [[ "$output" != *"upterm"* ]]
+    [[ "$output" != *"connect"*"SSH address"* ]]
 }
 
 @test "help: unknown command fails loud" {
@@ -140,166 +82,197 @@ EOF
     [[ "$output" == *"Unknown command"* ]]
 }
 
-# ── ssh-address extraction ────────────────────────────────────────────────────
-
-@test "extract: pulls the ssh address out of a log line" {
-    run "$AGENT_SSH" __extract-ssh "::notice::SSH: ssh aB3xZ9qPkL7@uptermd.upterm.dev"
-    [ "$status" -eq 0 ]
-    [ "$output" = "ssh aB3xZ9qPkL7@uptermd.upterm.dev" ]
-}
-
-@test "extract: picks the SSH command, not an Upterm web URL, and tolerates _/- tokens" {
-    local log="Service: https://upterm.dev
-SSH: ssh To_ken-9@uptermd.upterm.dev"
-    run "$AGENT_SSH" __extract-ssh "$log"
-    [ "$status" -eq 0 ]
-    [ "$output" = "ssh To_ken-9@uptermd.upterm.dev" ]
-}
-
-@test "extract: reads from stdin when given no argument" {
-    run bash -c 'printf "noise\nSSH: ssh Zz9@uptermd.upterm.dev\n" | "'"$AGENT_SSH"'" __extract-ssh'
-    [ "$status" -eq 0 ]
-    [ "$output" = "ssh Zz9@uptermd.upterm.dev" ]
-}
-
-@test "extract: no address present returns non-zero and prints nothing" {
-    run "$AGENT_SSH" __extract-ssh "nothing to see here"
+@test "help: the removed connect command is now unknown" {
+    run "$AGENT_SSH" connect
     [ "$status" -eq 1 ]
-    [ -z "$output" ]
+    [[ "$output" == *"Unknown command"* ]]
 }
 
-# ── live check-annotation address protocol (stubbed gh) ──────────────────────
+# ── pure helpers ──────────────────────────────────────────────────────────────
 
-@test "annotation: returns a valid SSH command from the titled check annotation" {
-    write_fake_gh_annotations
-    export GH_ANNOTATION_MODE="success"
-    run "$AGENT_SSH" __fetch-annotation 12345
+@test "issue: accepts whole numbers, rejects the rest" {
+    for v in 1 1932 20000; do
+        run "$AGENT_SSH" __valid-issue "$v"; [ "$status" -eq 0 ] || { echo "expected $v valid" >&2; return 1; }
+    done
+    for v in 0 -3 abc 1.5 "#12" ""; do
+        run "$AGENT_SSH" __valid-issue "$v"; [ "$status" -eq 1 ] || { echo "expected '$v' rejected" >&2; return 1; }
+    done
+}
+
+@test "effort: accepts low/medium/high only" {
+    for v in low medium high; do
+        run "$AGENT_SSH" __valid-effort "$v"; [ "$status" -eq 0 ] || { echo "expected $v valid" >&2; return 1; }
+    done
+    for v in max Low "" "low medium" xhigh; do
+        run "$AGENT_SSH" __valid-effort "$v"; [ "$status" -eq 1 ] || { echo "expected '$v' rejected" >&2; return 1; }
+    done
+}
+
+@test "title: pulls the issue number out of a run title" {
+    run "$AGENT_SSH" __issue-from-title "agent acme/here #1932"
     [ "$status" -eq 0 ]
-    [ "$output" = "ssh Ready_9@uptermd.upterm.dev" ]
+    [ "$output" = "1932" ]
 }
 
-@test "annotation: waits while the job is absent, then returns its address" {
-    write_fake_gh_annotations
-    export GH_ANNOTATION_MODE="success"
-    export GH_READY_AFTER=2
-    run "$AGENT_SSH" __wait-annotation 12345 5 1
-    [ "$status" -eq 0 ]
-    [ "$output" = "ssh Ready_9@uptermd.upterm.dev" ]
-    [ "$(wc -l <"$GH_ANNOTATION_STATE" | tr -d ' ')" -eq 3 ]
-}
-
-@test "annotation: times out when the address annotation stays missing" {
-    write_fake_gh_annotations
-    export GH_ANNOTATION_MODE="missing"
-    run "$AGENT_SSH" __wait-annotation 12345 2 1
-    [ "$status" -eq 1 ]
-    [ -z "$output" ]
-}
-
-@test "annotation: stops immediately when the run completes without an address" {
-    write_fake_gh_annotations
-    export GH_ANNOTATION_MODE="completed"
-    run "$AGENT_SSH" __wait-annotation 12345 8 1
-    [ "$status" -eq 3 ]
-    [[ "$output" == *"completed"* ]]
-    [[ "$output" == *"failure"* ]]
-    [ "$(wc -l <"$GH_ANNOTATION_STATE" | tr -d ' ')" -eq 1 ]
-}
-
-@test "annotation: rejects malformed and missing annotation messages" {
-    write_fake_gh_annotations
-    for mode in malformed missing; do
-        export GH_ANNOTATION_MODE="$mode"
-        run "$AGENT_SSH" __fetch-annotation 12345
-        [ "$status" -eq 1 ]
+@test "title: no issue in the title returns non-zero" {
+    for t in "Claude agent" "agent issue #" "agent issue #abc" ""; do
+        run "$AGENT_SSH" __issue-from-title "$t"
+        [ "$status" -eq 1 ] || { echo "expected '$t' rejected" >&2; return 1; }
         [ -z "$output" ]
     done
 }
 
-@test "annotation: fails loud when either GitHub API request errors" {
-    write_fake_gh_annotations
-    for mode in jobs-error annotations-error; do
-        export GH_ANNOTATION_MODE="$mode"
-        run "$AGENT_SSH" __fetch-annotation 12345
-        [ "$status" -eq 2 ]
-        [[ "$output" == *"GitHub API failed"* ]]
-        [[ "$output" == *"HTTP"* ]]
-    done
-}
-
-# ── minutes validation ────────────────────────────────────────────────────────
-
-@test "minutes: accepts 5, 15 and 360" {
-    for m in 5 15 360; do
-        run "$AGENT_SSH" __valid-minutes "$m"
-        [ "$status" -eq 0 ] || {
-            echo "expected $m to be valid" >&2
-            return 1
-        }
-    done
-}
-
-@test "minutes: rejects out-of-range, non-integer and empty" {
-    for m in 4 361 0 -5 abc 20.5 ""; do
-        run "$AGENT_SSH" __valid-minutes "$m"
-        [ "$status" -eq 1 ] || {
-            echo "expected '$m' to be rejected" >&2
-            return 1
-        }
-    done
-}
-
-# ── workflow-ref resolution (stubbed gh) ──────────────────────────────────────
-
-@test "resolve: returns the first candidate ref that exists" {
-    write_fake_gh
-    export GH_OK_REF="agent-image-full-shell"
-    run "$AGENT_SSH" __resolve-ref some/repo path/to/wf.yml dev agent-image-full-shell agent-image-ssh-workflow
+@test "format-runs: one row per run with id, issue, status, conclusion" {
+    run bash -c 'printf "%s" "$1" | "$2" __format-runs' _ "$RUNS_JSON" "$AGENT_SSH"
     [ "$status" -eq 0 ]
-    [ "$output" = "agent-image-full-shell" ]
+    [ "${lines[0]}" = "300  #1932  completed  success" ]
+    [ "${lines[1]}" = "299  #1900  in_progress  -" ]
+    [ "${lines[2]}" = "298  #1932  completed  failure" ]
 }
 
-@test "resolve: prefers the earliest candidate when several would match" {
-    write_fake_gh
-    export GH_OK_REF="dev"   # dev is tried first, so it wins
-    run "$AGENT_SSH" __resolve-ref some/repo path/to/wf.yml dev agent-image-full-shell
+@test "format-runs: filters by target repo as well as issue" {
+    run bash -c 'printf "%s" "$1" | "$2" __format-runs 1932 other/repo' _ "$RUNS_JSON" "$AGENT_SSH"
+    [ "$output" = "298  #1932  completed  failure" ]
+    run bash -c 'printf "%s" "$1" | "$2" __format-runs "" acme/here' _ "$RUNS_JSON" "$AGENT_SSH"
+    [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "format-runs: filters to one issue; no match prints nothing" {
+    run bash -c 'printf "%s" "$1" | "$2" __format-runs 1900' _ "$RUNS_JSON" "$AGENT_SSH"
     [ "$status" -eq 0 ]
-    [ "$output" = "dev" ]
-}
-
-@test "resolve: returns non-zero when no candidate has the workflow" {
-    write_fake_gh
-    export GH_OK_REF="__none__"
-    run "$AGENT_SSH" __resolve-ref some/repo path/to/wf.yml dev agent-image-full-shell agent-image-ssh-workflow
-    [ "$status" -eq 1 ]
+    [ "$output" = "299  #1900  in_progress  -" ]
+    run bash -c 'printf "%s" "$1" | "$2" __format-runs 7' _ "$RUNS_JSON" "$AGENT_SSH"
+    [ "$status" -eq 0 ]
     [ -z "$output" ]
 }
 
-# ── status: 403 / 404 / 200 discrimination ────────────────────────────────────
-
-@test "status: a packages 403 names the read:packages fix and fails loud" {
-    write_fake_gh_pkgs
-    export GH_PKG_MODE="403"
-    run "$AGENT_SSH" status
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"read:packages"* ]]
-    [[ "$output" == *"gh auth refresh"* ]]
+@test "dispatch-fields: repo/issue/effort always; base and brief only when given" {
+    run "$AGENT_SSH" __dispatch-fields 12 high acme/w "" ""
+    [ "$output" = $'-f\nrepo=acme/w\n-f\nissue=12\n-f\neffort=high' ]
+    run "$AGENT_SSH" __dispatch-fields 12 low acme/w pre-dev "do X, then Y"
+    [[ "$output" == *$'-f\nbase=pre-dev\n-f\nbrief=do X, then Y' ]]
 }
 
-@test "status: a packages 404 tells you to build an image" {
-    write_fake_gh_pkgs
-    export GH_PKG_MODE="404"
-    run "$AGENT_SSH" status
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"No image is published yet"* ]]
-    [[ "$output" == *"agent-ssh build"* ]]
+# ── run ───────────────────────────────────────────────────────────────────────
+
+@test "run: auto-detects the repo of the current directory; base is left to the workflow" {
+    write_fake_gh
+    GH_CWD_REPO=acme/here run "$AGENT_SSH" run 1932
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"https://github.com/sophiaconsulting/cartridge/actions/runs/4242"* ]]
+    grep -qx 'workflow run claude-agent.yml --repo sophiaconsulting/cartridge --ref dev -f repo=acme/here -f issue=1932 -f effort=medium' "$GH_LOG"
+    ! grep -q 'base=' "$GH_LOG"
 }
 
-@test "status: a 200 with versions shows the published tags" {
-    write_fake_gh_pkgs
-    export GH_PKG_MODE="ok"
+@test "run: explicit --repo wins and skips auto-detect; effort, --base, --brief pass through; AGENT_SSH_REPO is the hub" {
+    write_fake_gh
+    export AGENT_SSH_REPO="acme/hub"
+    run "$AGENT_SSH" run 7 high --repo octo/thing --base pre-dev --brief "touch only src/a.rs"
+    [ "$status" -eq 0 ]
+    grep -qx 'workflow run claude-agent.yml --repo acme/hub --ref dev -f repo=octo/thing -f issue=7 -f effort=high -f base=pre-dev -f brief=touch only src/a.rs' "$GH_LOG"
+    ! grep -q '^repo view' "$GH_LOG"
+}
+
+@test "run: outside a GitHub repo without --repo fails loud before any dispatch" {
+    write_fake_gh
+    GH_NOT_REPO=1 run "$AGENT_SSH" run 5
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Not inside a GitHub repo"* ]]
+    ! grep -q '^workflow run' "$GH_LOG"
+}
+
+@test "run: a malformed --repo fails loud" {
+    write_fake_gh
+    run "$AGENT_SSH" run 5 --repo notarepo
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"OWNER/NAME"* ]]
+    ! grep -q '^workflow run' "$GH_LOG"
+}
+
+@test "run: bad issue, bad effort, missing issue and unknown flag fail loud before any dispatch" {
+    write_fake_gh
+    run "$AGENT_SSH" run abc;            [ "$status" -eq 1 ]; [[ "$output" == *"whole number"* ]]
+    run "$AGENT_SSH" run 5 extreme;      [ "$status" -eq 1 ]; [[ "$output" == *"low medium high"* ]]
+    run "$AGENT_SSH" run;                [ "$status" -eq 1 ]; [[ "$output" == *"Usage"* ]]
+    run "$AGENT_SSH" run 5 --bogus;      [ "$status" -eq 1 ]; [[ "$output" == *"Unknown option"* ]]
+    run "$AGENT_SSH" run 5 --base;       [ "$status" -eq 1 ]; [[ "$output" == *"--base needs"* ]]
+    run "$AGENT_SSH" run 5 --repo;       [ "$status" -eq 1 ]; [[ "$output" == *"--repo needs"* ]]
+    ! grep -q '^workflow run' "$GH_LOG"
+}
+
+@test "run: a refused dispatch and a missing new run both fail loud" {
+    write_fake_gh
+    GH_DISPATCH_RC=1 run "$AGENT_SSH" run 5
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Could not dispatch"* ]]
+    GH_NO_NEW_RUN=1 run "$AGENT_SSH" run 5
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"no run appeared"* ]]
+}
+
+# ── status / watch / kill ─────────────────────────────────────────────────────
+
+@test "status: lists the latest runs across repos with issue, status and conclusion" {
+    write_fake_gh
     run "$AGENT_SSH" status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"latest"* ]]
-    [[ "$output" == *"15116e78"* ]]
+    [[ "$output" == *"300  #1932  completed  success"* ]]
+    [[ "$output" == *"299  #1900  in_progress  -"* ]]
+    ! grep -q '^pr list' "$GH_LOG"
+    ! grep -q '^repo view' "$GH_LOG"
+}
+
+@test "status <issue>: filters runs to the current repo and shows its PR" {
+    write_fake_gh
+    export GH_PR_ROWS='#1940  OPEN  https://github.com/x/y/pull/1940'
+    GH_CWD_REPO=acme/here run "$AGENT_SSH" status 1932
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"300  #1932"* ]]
+    [[ "$output" != *"#1900"* ]]
+    [[ "$output" != *"298"* ]]
+    [[ "$output" == *"#1940  OPEN  https://github.com/x/y/pull/1940"* ]]
+    grep -q 'pr list --repo acme/here .*--head issue-1932' "$GH_LOG"
+}
+
+@test "status <issue> --repo: uses the named repo" {
+    write_fake_gh
+    run "$AGENT_SSH" status 1932 --repo other/repo
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"298  #1932  completed  failure"* ]]
+    [[ "$output" != *"300"* ]]
+    grep -q 'pr list --repo other/repo ' "$GH_LOG"
+}
+
+@test "status <issue>: no PR yet says so; bad issue and no repo fail loud" {
+    write_fake_gh
+    run "$AGENT_SSH" status 1900
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"none yet"* ]]
+    run "$AGENT_SSH" status abc
+    [ "$status" -eq 1 ]
+    GH_NOT_REPO=1 run "$AGENT_SSH" status 1900
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Not inside a GitHub repo"* ]]
+}
+
+@test "watch: runs gh run watch on the id; non-numeric id fails loud" {
+    write_fake_gh
+    run "$AGENT_SSH" watch 4242
+    [ "$status" -eq 0 ]
+    grep -qx 'run watch 4242 --repo sophiaconsulting/cartridge' "$GH_LOG"
+    run "$AGENT_SSH" watch
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"numeric run id"* ]]
+}
+
+@test "kill: cancels the run; a failed cancel and a bad id fail loud" {
+    write_fake_gh
+    run "$AGENT_SSH" kill 4242
+    [ "$status" -eq 0 ]
+    grep -qx 'run cancel 4242 --repo sophiaconsulting/cartridge' "$GH_LOG"
+    GH_CANCEL_RC=1 run "$AGENT_SSH" kill 4242
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Could not cancel"* ]]
+    run "$AGENT_SSH" kill nope
+    [ "$status" -eq 1 ]
 }
