@@ -111,6 +111,18 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact|fork)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/vmasrani/.claude/hooks/herdr-agent-state.sh' session",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
@@ -133,13 +145,20 @@
     "claude-mem@thedotmack": false,
     "skill-creator@claude-plugins-official": true,
     "telegram@claude-plugins-official": false,
-    "cloudflare@cloudflare": true
+    "cloudflare@cloudflare": true,
+    "typesafe@typesafe-ai": true
   },
   "extraKnownMarketplaces": {
     "cloudflare": {
       "source": {
         "source": "github",
         "repo": "cloudflare/skills"
+      }
+    },
+    "typesafe-ai": {
+      "source": {
+        "source": "github",
+        "repo": "typesafe-ai/skills"
       }
     }
   },
