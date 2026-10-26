@@ -7,15 +7,15 @@
 # This tool dispatches that workflow and follows its runs.
 #
 # No args -> interactive menu. Subcommands:
-#   run <issue> [effort] [--base B] [--brief TEXT]   dispatch, print the run URL
-#   status [issue]    latest agent runs (+ the PR for an issue)
+#   run <issue> [effort] [--repo O/N] [--base B] [--brief TEXT]   dispatch, print the run URL
+#   status [issue] [--repo O/N]   latest agent runs (+ the PR for an issue)
 #   watch <run-id>    follow a run until it ends
 #   kill <run-id>     cancel a run
 #   build             rebuild the CI agent image (build-agent-image.yml)
 #   help
 #
 # Env overrides:
-#   AGENT_SSH_REPO   repo hosting the workflows (default sophiaconsulting/cartridge)
+#   AGENT_SSH_REPO   hub repo hosting the workflows (default sophiaconsulting/cartridge)
 #   AGENT_SSH_REF    branch to dispatch from    (default dev)
 #
 # Fails loud: every error names what failed and how to fix it. No silent fallbacks.
@@ -56,21 +56,25 @@ issue_from_title() {
 
 # Read `gh run list --json databaseId,displayTitle,status,conclusion` on stdin
 # and print "<id>  #<issue>  <status>  <conclusion>" rows; $1 (optional) keeps
-# only runs for that issue. Prints nothing when no run matches.
+# only runs for that issue, $2 (optional) only runs for that target repo (run
+# titles look like "agent OWNER/NAME #N"). Prints nothing when no run matches.
 format_runs() {
-    jq -r --arg issue "${1:-}" '
+    jq -r --arg issue "${1:-}" --arg repo "${2:-}" '
         .[]
         | (.displayTitle | capture("#(?<n>[0-9]+)") | .n) as $n
         | select($issue == "" or $n == $issue)
+        | select($repo == "" or (.displayTitle | contains(" " + $repo + " ")))
         | "\(.databaseId)  #\($n)  \(.status)  \(if .conclusion == "" or .conclusion == null then "-" else .conclusion end)"
     '
 }
 
 # The `gh workflow run` flags for a dispatch, one argument per line.
-# Usage: dispatch_fields <issue> <effort> <base> <brief>
+# Usage: dispatch_fields <issue> <effort> <repo> <base> <brief>
+# An empty base is not sent: the workflow picks dev, else the default branch.
 dispatch_fields() {
-    local issue="$1" effort="$2" base="$3" brief="$4"
-    printf '%s\n' -f "issue=${issue}" -f "effort=${effort}" -f "base=${base}"
+    local issue="$1" effort="$2" repo="$3" base="$4" brief="$5"
+    printf '%s\n' -f "repo=${repo}" -f "issue=${issue}" -f "effort=${effort}"
+    [[ -z "$base" ]] || printf '%s\n' -f "base=${base}"
     [[ -z "$brief" ]] || printf '%s\n' -f "brief=${brief}"
 }
 
@@ -108,6 +112,16 @@ ask() {
     printf '%s' "${val:-$default}"
 }
 
+# OWNER/NAME of the GitHub repo in the current directory; fails loud outside one.
+current_repo() {
+    local r
+    r="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)" && [[ -n "$r" ]] \
+        || die "Not inside a GitHub repo. Run from a clone, or pass --repo OWNER/NAME."
+    printf '%s\n' "$r"
+}
+
+valid_repo() { [[ "$1" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
+
 # Fail loud unless the argument is a numeric run id.
 need_run_id() {
     [[ "$1" == <1-> ]] || die "Expected a numeric run id, got '${1:-}'. List runs with: agent-ssh status"
@@ -124,27 +138,30 @@ preflight() {
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 cmd_run() {
-    local issue="" effort="medium" base="dev" brief=""
+    local issue="" effort="medium" base="" brief="" target=""
     local -a pos
     while (( $# > 0 )); do
         case "$1" in
+            --repo)  (( $# >= 2 )) || die "--repo needs OWNER/NAME."; target="$2"; shift 2 ;;
             --base)  (( $# >= 2 )) || die "--base needs a branch name."; base="$2"; shift 2 ;;
             --brief) (( $# >= 2 )) || die "--brief needs text."; brief="$2"; shift 2 ;;
-            -*)      die "Unknown option: $1. Usage: agent-ssh run <issue> [effort] [--base B] [--brief TEXT]" ;;
+            -*)      die "Unknown option: $1. Usage: agent-ssh run <issue> [effort] [--repo O/N] [--base B] [--brief TEXT]" ;;
             *)       pos+=("$1"); shift ;;
         esac
     done
     (( ${#pos[@]} >= 1 && ${#pos[@]} <= 2 )) \
-        || die "Usage: agent-ssh run <issue> [effort] [--base B] [--brief TEXT]"
+        || die "Usage: agent-ssh run <issue> [effort] [--repo O/N] [--base B] [--brief TEXT]"
     issue="${pos[1]}"
     (( ${#pos[@]} == 2 )) && effort="${pos[2]}"
     valid_issue "$issue" || die "Issue must be a whole number like 1932, got '${issue}'."
     valid_effort "$effort" || die "Effort must be one of: ${EFFORTS[*]} (got '${effort}')."
+    [[ -z "$target" ]] || valid_repo "$target" || die "--repo must look like OWNER/NAME, got '${target}'."
     preflight
+    [[ -n "$target" ]] || target="$(current_repo)" || exit 1
 
-    local -a fields; fields=("${(@f)$(dispatch_fields "$issue" "$effort" "$base" "$brief")}")
+    local -a fields; fields=("${(@f)$(dispatch_fields "$issue" "$effort" "$target" "$base" "$brief")}")
     local since; since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    gum_info "Dispatching the agent on issue #${issue} (effort ${effort}, base ${base})..."
+    gum_info "Dispatching the agent on ${target}#${issue} (effort ${effort}, base ${base:-auto})..."
     gh workflow run "$AGENT_WF" --repo "$REPO" --ref "$REF" "${fields[@]}" \
         || die "Could not dispatch ${AGENT_WF} on ${REF}. Run 'gh auth status', confirm you can dispatch workflows in ${REPO}, and that the file exists on ${REF}."
 
@@ -156,14 +173,24 @@ cmd_run() {
 }
 
 cmd_status() {
-    local issue="${1:-}"
+    local issue="" target=""
+    while (( $# > 0 )); do
+        case "$1" in
+            --repo) (( $# >= 2 )) || die "--repo needs OWNER/NAME."; target="$2"; shift 2 ;;
+            -*)     die "Unknown option: $1. Usage: agent-ssh status [issue] [--repo O/N]" ;;
+            *)      issue="$1"; shift ;;
+        esac
+    done
     [[ -z "$issue" ]] || valid_issue "$issue" || die "Issue must be a whole number, got '${issue}'."
+    [[ -z "$target" ]] || valid_repo "$target" || die "--repo must look like OWNER/NAME, got '${target}'."
     preflight
+    # An issue number means nothing without its repo: default to the current one.
+    [[ -z "$issue" || -n "$target" ]] || target="$(current_repo)" || exit 1
     local runs
-    runs="$(gh run list --repo "$REPO" --workflow "$AGENT_WF" --limit 30 \
-        --json databaseId,displayTitle,status,conclusion | format_runs "$issue")" \
+    runs="$(gh run list --repo "$REPO" --workflow "$AGENT_WF" --limit 100 \
+        --json databaseId,displayTitle,status,conclusion | format_runs "$issue" "$target")" \
         || die "Could not list ${AGENT_WF} runs in ${REPO}. Check your connection and 'gh auth status'."
-    gum_info "Latest agent runs${issue:+ for issue #${issue}}:"
+    gum_info "Latest agent runs${target:+ for ${target}}${issue:+ issue #${issue}}:"
     if [[ -z "$runs" ]]; then
         gum_dim "  none"
     else
@@ -172,7 +199,7 @@ cmd_status() {
     [[ -n "$issue" ]] || return 0
 
     local prs
-    prs="$(gh pr list --repo "$REPO" --state all --head "issue-${issue}" \
+    prs="$(gh pr list --repo "$target" --state all --head "issue-${issue}" \
         --json number,state,url --jq '.[] | "#\(.number)  \(.state)  \(.url)"')" \
         || die "Could not look up the PR for issue #${issue}."
     gum_info "PR for issue #${issue}:"
@@ -234,20 +261,27 @@ agent-ssh - dispatch and track the headless Claude agent (claude-agent.yml).
 
 Usage:
   agent-ssh                 Open the interactive menu.
-  agent-ssh run <issue> [effort] [--base B] [--brief TEXT]
-                            Start the agent on an issue (effort low|medium|high,
-                            default medium; base default dev) and print the run URL.
-  agent-ssh status [issue]  Latest agent runs; with an issue, also its PR.
+  agent-ssh run <issue> [effort] [--repo O/N] [--base B] [--brief TEXT]
+                            Start the agent on an issue and print the run URL.
+                            --repo   target repo (default: the repo of the current
+                                     directory; fails outside a GitHub repo)
+                            effort   low|medium|high (default medium)
+                            --base   branch to cut from / PR into (default: dev if
+                                     the target has it, else its default branch)
+  agent-ssh status [issue] [--repo O/N]
+                            Latest agent runs; with an issue, only that issue of
+                            the target repo (default: current repo) and its PR.
   agent-ssh watch <run-id>  Follow a run until it ends.
   agent-ssh kill <run-id>   Cancel a run.
   agent-ssh build           Rebuild the CI agent image.
   agent-ssh help            Show this help.
 
-The agent works issue N on branch issue-N, opens a PR into the base branch and
-comments the link on the issue. There is no terminal to connect to.
+The agent works on ANY repo your token reaches, with no per-repo setup: it works
+issue N on branch issue-N, opens a PR into the base branch and comments the link
+on the issue. The workflow itself lives in the hub repo. There is no terminal to connect to.
 
 Environment:
-  AGENT_SSH_REPO   repo hosting the workflows (default sophiaconsulting/cartridge)
+  AGENT_SSH_REPO   hub repo hosting the workflows (default sophiaconsulting/cartridge)
   AGENT_SSH_REF    branch to dispatch from    (default dev)
 EOF
 }
@@ -265,10 +299,12 @@ cmd_menu() {
         run*)
             issue="$(ask "Issue number:" "")" || return 0
             effort="$(gum_choose --header "Effort:" "${EFFORTS[@]}")" || return 0
-            base="$(ask "Base branch:" "dev")" || return 0
+            base="$(ask "Base branch (blank = auto):" "")" || return 0
             brief="$(ask "Brief (optional):" "")" || return 0
-            if [[ -n "$brief" ]]; then cmd_run "$issue" "$effort" --base "$base" --brief "$brief"
-            else cmd_run "$issue" "$effort" --base "$base"; fi ;;
+            local -a extra; extra=()
+            [[ -z "$base" ]] || extra+=(--base "$base")
+            [[ -z "$brief" ]] || extra+=(--brief "$brief")
+            cmd_run "$issue" "$effort" "${extra[@]}" ;;
         status*)  cmd_status "$(ask "Issue number (blank for all):" "")" ;;
         watch*)   id="$(ask "Run id:" "")" || return 0; cmd_watch "$id" ;;
         kill*)    id="$(ask "Run id:" "")" || return 0; cmd_kill "$id" ;;
@@ -296,6 +332,7 @@ main() {
         __valid-effort)     valid_effort "$1" ;;
         __issue-from-title) issue_from_title "$1" ;;
         __format-runs)      format_runs "$@" ;;
+        __valid-repo)       valid_repo "$1" ;;
         __dispatch-fields)  dispatch_fields "$@" ;;
         *)
             gum_error "Unknown command: ${cmd}"

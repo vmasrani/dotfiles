@@ -38,9 +38,9 @@ setup() {
 }
 
 RUNS_JSON='[
- {"databaseId":300,"displayTitle":"agent issue #1932","status":"completed","conclusion":"success"},
- {"databaseId":299,"displayTitle":"agent issue #1900","status":"in_progress","conclusion":""},
- {"databaseId":298,"displayTitle":"agent issue #1932","status":"completed","conclusion":"failure"}]'
+ {"databaseId":300,"displayTitle":"agent acme/here #1932","status":"completed","conclusion":"success"},
+ {"databaseId":299,"displayTitle":"agent acme/here #1900","status":"in_progress","conclusion":""},
+ {"databaseId":298,"displayTitle":"agent other/repo #1932","status":"completed","conclusion":"failure"}]'
 
 # Fake gh: records every call to $GH_LOG; `run list` answers by --json fields.
 write_fake_gh() {
@@ -49,6 +49,7 @@ write_fake_gh() {
 echo "$*" >>"$GH_LOG"
 case "$*" in
     "auth status"*|"api repos/"*) exit 0 ;;
+    "repo view"*) [[ "${GH_NOT_REPO:-}" == 1 ]] && exit 1; echo "${GH_CWD_REPO:-acme/here}" ;;
     "workflow run"*) exit "${GH_DISPATCH_RC:-0}" ;;
     "run list"*"createdAt"*)
         if [[ "${GH_NO_NEW_RUN:-}" == 1 ]]; then echo null; else echo '{"createdAt":"2999-01-01T00:00:00Z","databaseId":4242}'; fi ;;
@@ -68,7 +69,7 @@ EOF
 @test "help: lists every subcommand and the workflow, no ssh connect" {
     run "$AGENT_SSH" help
     [ "$status" -eq 0 ]
-    for w in "Usage:" "claude-agent.yml" "run <issue>" "status [issue]" "watch <run-id>" "kill <run-id>"; do
+    for w in "Usage:" "claude-agent.yml" "--repo" "run <issue>" "status [issue]" "watch <run-id>" "kill <run-id>"; do
         [[ "$output" == *"$w"* ]] || { echo "missing: $w" >&2; return 1; }
     done
     [[ "$output" != *"upterm"* ]]
@@ -108,7 +109,7 @@ EOF
 }
 
 @test "title: pulls the issue number out of a run title" {
-    run "$AGENT_SSH" __issue-from-title "agent issue #1932"
+    run "$AGENT_SSH" __issue-from-title "agent acme/here #1932"
     [ "$status" -eq 0 ]
     [ "$output" = "1932" ]
 }
@@ -129,6 +130,13 @@ EOF
     [ "${lines[2]}" = "298  #1932  completed  failure" ]
 }
 
+@test "format-runs: filters by target repo as well as issue" {
+    run bash -c 'printf "%s" "$1" | "$2" __format-runs 1932 other/repo' _ "$RUNS_JSON" "$AGENT_SSH"
+    [ "$output" = "298  #1932  completed  failure" ]
+    run bash -c 'printf "%s" "$1" | "$2" __format-runs "" acme/here' _ "$RUNS_JSON" "$AGENT_SSH"
+    [ "${#lines[@]}" -eq 2 ]
+}
+
 @test "format-runs: filters to one issue; no match prints nothing" {
     run bash -c 'printf "%s" "$1" | "$2" __format-runs 1900' _ "$RUNS_JSON" "$AGENT_SSH"
     [ "$status" -eq 0 ]
@@ -138,29 +146,47 @@ EOF
     [ -z "$output" ]
 }
 
-@test "dispatch-fields: always issue/effort/base; brief only when given" {
-    run "$AGENT_SSH" __dispatch-fields 12 high dev ""
-    [ "$output" = $'-f\nissue=12\n-f\neffort=high\n-f\nbase=dev' ]
-    run "$AGENT_SSH" __dispatch-fields 12 low pre-dev "do X, then Y"
+@test "dispatch-fields: repo/issue/effort always; base and brief only when given" {
+    run "$AGENT_SSH" __dispatch-fields 12 high acme/w "" ""
+    [ "$output" = $'-f\nrepo=acme/w\n-f\nissue=12\n-f\neffort=high' ]
+    run "$AGENT_SSH" __dispatch-fields 12 low acme/w pre-dev "do X, then Y"
     [[ "$output" == *$'-f\nbase=pre-dev\n-f\nbrief=do X, then Y' ]]
 }
 
 # ── run ───────────────────────────────────────────────────────────────────────
 
-@test "run: dispatches claude-agent.yml on dev with defaults and prints the URL" {
+@test "run: auto-detects the repo of the current directory; base is left to the workflow" {
     write_fake_gh
-    run "$AGENT_SSH" run 1932
+    GH_CWD_REPO=acme/here run "$AGENT_SSH" run 1932
     [ "$status" -eq 0 ]
     [[ "$output" == *"https://github.com/sophiaconsulting/cartridge/actions/runs/4242"* ]]
-    grep -qx 'workflow run claude-agent.yml --repo sophiaconsulting/cartridge --ref dev -f issue=1932 -f effort=medium -f base=dev' "$GH_LOG"
+    grep -qx 'workflow run claude-agent.yml --repo sophiaconsulting/cartridge --ref dev -f repo=acme/here -f issue=1932 -f effort=medium' "$GH_LOG"
+    ! grep -q 'base=' "$GH_LOG"
 }
 
-@test "run: passes effort, --base and --brief through; AGENT_SSH_REPO is honoured" {
+@test "run: explicit --repo wins and skips auto-detect; effort, --base, --brief pass through; AGENT_SSH_REPO is the hub" {
     write_fake_gh
-    export AGENT_SSH_REPO="acme/widgets"
-    run "$AGENT_SSH" run 7 high --base pre-dev --brief "touch only src/a.rs"
+    export AGENT_SSH_REPO="acme/hub"
+    run "$AGENT_SSH" run 7 high --repo octo/thing --base pre-dev --brief "touch only src/a.rs"
     [ "$status" -eq 0 ]
-    grep -qx 'workflow run claude-agent.yml --repo acme/widgets --ref dev -f issue=7 -f effort=high -f base=pre-dev -f brief=touch only src/a.rs' "$GH_LOG"
+    grep -qx 'workflow run claude-agent.yml --repo acme/hub --ref dev -f repo=octo/thing -f issue=7 -f effort=high -f base=pre-dev -f brief=touch only src/a.rs' "$GH_LOG"
+    ! grep -q '^repo view' "$GH_LOG"
+}
+
+@test "run: outside a GitHub repo without --repo fails loud before any dispatch" {
+    write_fake_gh
+    GH_NOT_REPO=1 run "$AGENT_SSH" run 5
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Not inside a GitHub repo"* ]]
+    ! grep -q '^workflow run' "$GH_LOG"
+}
+
+@test "run: a malformed --repo fails loud" {
+    write_fake_gh
+    run "$AGENT_SSH" run 5 --repo notarepo
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"OWNER/NAME"* ]]
+    ! grep -q '^workflow run' "$GH_LOG"
 }
 
 @test "run: bad issue, bad effort, missing issue and unknown flag fail loud before any dispatch" {
@@ -170,6 +196,7 @@ EOF
     run "$AGENT_SSH" run;                [ "$status" -eq 1 ]; [[ "$output" == *"Usage"* ]]
     run "$AGENT_SSH" run 5 --bogus;      [ "$status" -eq 1 ]; [[ "$output" == *"Unknown option"* ]]
     run "$AGENT_SSH" run 5 --base;       [ "$status" -eq 1 ]; [[ "$output" == *"--base needs"* ]]
+    run "$AGENT_SSH" run 5 --repo;       [ "$status" -eq 1 ]; [[ "$output" == *"--repo needs"* ]]
     ! grep -q '^workflow run' "$GH_LOG"
 }
 
@@ -185,33 +212,47 @@ EOF
 
 # ── status / watch / kill ─────────────────────────────────────────────────────
 
-@test "status: lists the latest runs with issue, status and conclusion" {
+@test "status: lists the latest runs across repos with issue, status and conclusion" {
     write_fake_gh
     run "$AGENT_SSH" status
     [ "$status" -eq 0 ]
     [[ "$output" == *"300  #1932  completed  success"* ]]
     [[ "$output" == *"299  #1900  in_progress  -"* ]]
     ! grep -q '^pr list' "$GH_LOG"
+    ! grep -q '^repo view' "$GH_LOG"
 }
 
-@test "status <issue>: filters runs and shows the linked PR" {
+@test "status <issue>: filters runs to the current repo and shows its PR" {
     write_fake_gh
     export GH_PR_ROWS='#1940  OPEN  https://github.com/x/y/pull/1940'
-    run "$AGENT_SSH" status 1932
+    GH_CWD_REPO=acme/here run "$AGENT_SSH" status 1932
     [ "$status" -eq 0 ]
     [[ "$output" == *"300  #1932"* ]]
     [[ "$output" != *"#1900"* ]]
+    [[ "$output" != *"298"* ]]
     [[ "$output" == *"#1940  OPEN  https://github.com/x/y/pull/1940"* ]]
-    grep -q 'pr list .*--head issue-1932' "$GH_LOG"
+    grep -q 'pr list --repo acme/here .*--head issue-1932' "$GH_LOG"
 }
 
-@test "status <issue>: no PR yet says so; bad issue fails loud" {
+@test "status <issue> --repo: uses the named repo" {
+    write_fake_gh
+    run "$AGENT_SSH" status 1932 --repo other/repo
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"298  #1932  completed  failure"* ]]
+    [[ "$output" != *"300"* ]]
+    grep -q 'pr list --repo other/repo ' "$GH_LOG"
+}
+
+@test "status <issue>: no PR yet says so; bad issue and no repo fail loud" {
     write_fake_gh
     run "$AGENT_SSH" status 1900
     [ "$status" -eq 0 ]
     [[ "$output" == *"none yet"* ]]
     run "$AGENT_SSH" status abc
     [ "$status" -eq 1 ]
+    GH_NOT_REPO=1 run "$AGENT_SSH" status 1900
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Not inside a GitHub repo"* ]]
 }
 
 @test "watch: runs gh run watch on the id; non-numeric id fails loud" {
