@@ -84,12 +84,65 @@ class FramingSettings(Loose):
     max_upscale: float = 2.0
 
 
+class TextPlacement(Loose):
+    x: int
+    y: int
+    anchor: str
+    max_width: int
+
+
+class BrollTextStyle(Loose):
+    font: str
+    colors: dict[str, str]
+    weight: int
+    bold_weight: int
+    plate_color: str
+    plate_opacity: float
+    plate_radius: int
+    plate_pad_v: int
+    plate_pad_h: int
+    accent_bar_px: int
+    line_gap: float
+    rule_color: str
+    text_shadow: str
+    sizes: dict[str, int]
+    fade_frames: int
+    pop_frames: int
+    rule_frames: int
+    placements: dict[str, TextPlacement]
+
+
+class BrollPip(Loose):
+    border_px: int
+    border_color: str
+    label_gap_px: int
+
+
+class BrollGrid(Loose):
+    gap_px: int
+    background: str
+    tile_pop_frames: int
+
+
+class BrollRender(Loose):
+    card_concurrency: int
+
+
+class BrollConfig(Loose):
+    text: BrollTextStyle
+    pip: BrollPip
+    grid: BrollGrid
+    render: BrollRender
+
+
 class PipelineConfig(Loose):
     transcription: TranscriptionConfig
     subtitles: SubtitleConfig
     safe_zones: SafeZones
     render: RenderConfig
     framing: FramingSettings = Field(default_factory=FramingSettings)
+    #: horizontal-clip overlays; required only when a clip has `overlays:` (render_horizontal.py checks)
+    broll: BrollConfig | None = None
 
 
 def load_config(path: str | Path | None = None) -> PipelineConfig:
@@ -249,6 +302,18 @@ def run_checked(cmd: list[str], what: str, env: dict[str, str] | None = None) ->
 def ff_time(seconds: float) -> str:
     """Seconds → a plain ffmpeg time string with microsecond resolution."""
     return f"{seconds:.6f}"
+
+
+def frame_exact(output_in: float, output_out: float, fps: float) -> str:
+    """Filter chain (after decode) that makes one cut segment exactly the frames its OUTPUT-timeline
+    span owns. `-ss/-t` + `fps` rounds every segment up to a whole frame, so a concat of N cuts
+    drifts ~N/2 frames from the sample-exact audio (measured: +6 frames over 15 cuts). Snapping
+    both boundaries to the output frame grid keeps the total error under one frame; `tpad` clones
+    the last frame so a segment that rounded down still reaches its count."""
+    frames = round(output_out * fps) - round(output_in * fps)
+    if frames < 1:
+        raise ValueError(f"segment {output_in:.3f}-{output_out:.3f}s spans no frame at {fps:g} fps")
+    return f"fps={fps:g},tpad=stop_mode=clone:stop=1,trim=end_frame={frames},setpts=PTS-STARTPTS"
 
 
 def parse_hex_color(value: str) -> tuple[int, int, int]:

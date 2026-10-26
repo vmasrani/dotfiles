@@ -133,13 +133,20 @@
     "claude-mem@thedotmack": false,
     "skill-creator@claude-plugins-official": true,
     "telegram@claude-plugins-official": false,
-    "cloudflare@cloudflare": true
+    "cloudflare@cloudflare": true,
+    "typesafe@typesafe-ai": true
   },
   "extraKnownMarketplaces": {
     "cloudflare": {
       "source": {
         "source": "github",
         "repo": "cloudflare/skills"
+      }
+    },
+    "typesafe-ai": {
+      "source": {
+        "source": "github",
+        "repo": "typesafe-ai/skills"
       }
     }
   },

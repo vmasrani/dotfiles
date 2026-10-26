@@ -195,7 +195,9 @@ class ClipMeta(Strict):
 
 
 class VisualSpec(Strict):
-    kind: Literal["aroll", "broll"]  # broll is rejected by validate_clip; kept so the error is specific
+    #: aroll = the episode; insert = a timeline segment cut from a credited non-episode source (format clip
+    #: only). `broll` as a timeline kind is rejected by validate_clip — B-roll lives in `overlays:`.
+    kind: Literal["aroll", "broll", "insert"]
     treatment: str
     #: splitscreen only: exactly two speaker ids [top, bottom]
     speakers: list[str] | None = None
@@ -211,6 +213,23 @@ class VisualSpec(Strict):
     crop: str | None = None
 
 
+class InsertSpec(Strict):
+    """A timeline segment whose picture AND sound come from a credited third-party source.
+
+    `source_file` (on the segment) is relative to the episode root like every segment, and must
+    point into this clip's `broll/` directory; the file needs a provenance entry.
+    """
+
+    #: Who is speaking in the insert (shown nowhere; recorded for captions/credits review).
+    speaker_name: str
+    #: Word timings for the insert's audio, IN THE INSERT FILE'S OWN TIME (transcript.json-shaped
+    #: `{"words": [{w, start, end}]}`), relative to the clip dir. The sidecar .srt is aligned from these.
+    words: str
+    #: Loudness handling in assemble_audio.py. `match-hosts` gains the insert to the integrated
+    #: loudness of the episode segments around it, so the final loudnorm does not pump.
+    loudness: Literal["match-hosts"] = "match-hosts"
+
+
 class TimelineSegment(Strict):
     id: str
     source_file: str
@@ -223,6 +242,12 @@ class TimelineSegment(Strict):
     audio: Literal["as-recorded", "duck", "mute"]
     visual: VisualSpec
     transition: str
+    #: Present exactly when `visual.kind == "insert"` (a non-episode source spliced into the timeline).
+    insert: InsertSpec | None = None
+
+    @property
+    def is_insert(self) -> bool:
+        return self.visual.kind == "insert"
 
     @property
     def source_duration(self) -> float:
@@ -304,14 +329,145 @@ class RenderSpec(Strict):
     versions: list[RenderVersion] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------------------
+# clip.yaml overlays (B-roll over the hosts; format: clip only) — schemas.md § Overlays
+# ---------------------------------------------------------------------------
+
+OVERLAY_MODES = ("fullscreen", "pip", "lowerthird", "card")
+PICTURE_MODES = ("fullscreen", "pip")
+TEXT_MODES = ("lowerthird", "card")
+
+
+class Box(Strict):
+    """A rectangle in OUTPUT pixels (top-left origin)."""
+
+    x: int
+    y: int
+    w: int
+    h: int
+
+
+class GridTile(Strict):
+    asset: str
+    #: seconds after the GRID SHOT starts that this tile appears (pops in)
+    at: float = 0.0
+    crop: str | None = None
+    #: small text drawn on the tile (rendered by the Remotion card layer)
+    label: str | None = None
+
+
+class Grid(Strict):
+    cols: int
+    rows: int
+    #: gutter and background come from config broll.grid (one source of truth)
+    tiles: list[GridTile]
+
+
+class Shot(Strict):
+    """One picture inside an overlay window: a video range, a still, or a grid of stills."""
+
+    #: file name inside the clip's broll/ dir (video or still); exactly one of asset / grid
+    asset: str | None = None
+    grid: Grid | None = None
+    #: seconds after the overlay starts that this shot takes over (first shot: 0.0)
+    at: float = 0.0
+    #: video only: source range inside the asset file
+    src_in: float | None = None
+    src_out: float | None = None
+    #: video only: source seconds per output second (2.4 = 18 s of source in 7.5 s)
+    speed: float = 1.0
+    #: video only: when the range runs out before the shot's slot ends, hold the last frame.
+    #: Without it a short range is a validation error, never a silent freeze.
+    hold_last: bool = False
+    crop: str | None = None
+    #: push-in across the shot: [start_zoom, end_zoom], e.g. [1.0, 1.05]
+    zoom: list[float] | None = None
+    #: cross-dissolve from the previous shot, in frames (0 = cut)
+    dissolve_frames: int = 0
+
+
+class TextRun(Strict):
+    text: str
+    #: colour key from config broll.text.colors (default: text)
+    color: str | None = None
+    weight: int | None = None
+    #: seconds after the overlay starts that this run appears (default: with the overlay)
+    at: float | None = None
+    #: seconds after the overlay starts that an underline / strike-through draws across it
+    underline_at: float | None = None
+    strike_at: float | None = None
+
+
+class TextLine(Strict):
+    runs: list[TextRun]
+
+
+class Overlay(Strict):
+    id: str
+    mode: Literal["fullscreen", "pip", "lowerthird", "card"]
+    #: OUTPUT time window
+    start: float
+    end: float
+    #: picture modes
+    shots: list[Shot] = Field(default_factory=list)
+    #: pip only: where it sits; `from_box` + `move_frames` animate a scale/move into `box`
+    #: (`from_box: fullscreen` is spelled as the full output frame)
+    box: Box | None = None
+    from_box: Box | None = None
+    move_frames: int = 0
+    #: picture modes: a caption under/over the picture (rendered by the Remotion card layer)
+    label: str | None = None
+    #: text modes: the lines of text; `reveal: words` types them on word by word over `reveal_s`
+    lines: list[TextLine] = Field(default_factory=list)
+    reveal: Literal["none", "words"] = "none"
+    reveal_s: float = 0.0
+    #: text modes: placement preset from config broll.text.placements (default per mode)
+    placement: str | None = None
+    fade_in_frames: int = 0
+    fade_out_frames: int = 0
+    note: str | None = None
+
+    @property
+    def layer(self) -> str:
+        return "picture" if self.mode in PICTURE_MODES else "text"
+
+    @property
+    def duration(self) -> float:
+        return self.end - self.start
+
+    def assets(self) -> list[str]:
+        """Every broll/ file this overlay composites."""
+        out: list[str] = []
+        for shot in self.shots:
+            if shot.asset:
+                out.append(shot.asset)
+            if shot.grid:
+                out += [t.asset for t in shot.grid.tiles]
+        return out
+
+
+class BrollSpec(Strict):
+    #: provenance ledger for every overlay/insert asset, relative to the clip dir
+    provenance: str = "broll/provenance.json"
+    #: the final N output seconds (the payoff): no fullscreen cutaway and no insert may touch it
+    protected_tail_s: float
+
+
 class Clip(Strict):
     clip: ClipMeta
     timeline: list[TimelineSegment]
     subtitles: SubtitleSpec
     assets: list[Asset] = Field(default_factory=list)
+    #: horizontal clips only: real, credited B-roll composited over the cut (schemas.md § Overlays)
+    broll: BrollSpec | None = None
+    overlays: list[Overlay] = Field(default_factory=list)
     output: OutputSpec
     review: ClipReview = Field(default_factory=ClipReview)
     render: RenderSpec
+
+    @property
+    def inserts(self) -> list[TimelineSegment]:
+        return [s for s in self.timeline if s.is_insert]
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +503,17 @@ def load_clip(path: str | Path) -> Clip:
 
 
 def save_clip(path: str | Path, clip: Clip) -> None:
-    _write_yaml(Path(path), _dump(clip))
+    payload = _dump(clip)
+    # B-roll keys exist only on clips that use them, so a shorts manifest keeps the exact shape
+    # remotion/lib/clip-schema.mjs validates strictly.
+    if payload.get("broll") is None:
+        payload.pop("broll", None)
+    if not payload.get("overlays"):
+        payload.pop("overlays", None)
+    for seg in payload["timeline"]:
+        if seg.get("insert") is None:
+            seg.pop("insert", None)
+    _write_yaml(Path(path), payload)
 
 
 def load_transcript(path: str | Path) -> Transcript:

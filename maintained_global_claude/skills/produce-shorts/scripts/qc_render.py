@@ -71,6 +71,7 @@ from pslib import (
     load_episode,
     sha256_file,
 )
+from broll import build_index
 from psmedia import PipelineConfig, episode_root_for, load_config, profile_dims, resolve_profile
 from validate_subtitles import validate as validate_subtitle_script
 
@@ -170,7 +171,7 @@ FONT_CANDIDATES = [
 #: or `visual.treatment`, and it must say so
 #: with one of these words — an overlapping interval passes only on an explicit match.
 #: The vocabulary is deliberately narrow: a vague Visual cell must not excuse a defect.
-BLACK_INTENT_WORDS = ("black",)
+BLACK_INTENT_WORDS = ("black", "dip-")
 FREEZE_INTENT_WORDS = ("freeze", "frozen", "still", "black")
 
 
@@ -446,6 +447,7 @@ def measure_clipping(render: Path) -> tuple[int, float]:
 
 
 _CROSSFADE_RE = re.compile(r"^crossfade-(\d+)f$")
+_DIP_RE = re.compile(r"^dip-(\d+)f$")
 
 
 def transition_ramp_seconds(transition: str, fps: float, where: str) -> float:
@@ -462,11 +464,11 @@ def transition_ramp_seconds(transition: str, fps: float, where: str) -> float:
     value = transition.strip().lower()
     if value == "cut":
         return 0.0
-    match = _CROSSFADE_RE.match(value)
+    match = _CROSSFADE_RE.match(value) or _DIP_RE.match(value)
     if match is None:
         raise ValueError(
-            f"{where}: unknown transition {transition!r} — clip.yaml allows `cut` or "
-            f"`crossfade-<N>f` (schemas.md). Fix the manifest; QC will not guess."
+            f"{where}: unknown transition {transition!r} — clip.yaml allows `cut`, "
+            f"`crossfade-<N>f` or (horizontal clips) `dip-<N>f` (schemas.md). Fix the manifest; QC will not guess."
         )
     if fps <= 0:
         raise ValueError(f"{where}: clip.output.fps is {fps}, cannot convert a frame count to seconds")
@@ -550,8 +552,20 @@ class Timeline:
 
     def visual_text(self, segment_id: str) -> str:
         seg = next(s for s in self.clip.timeline if s.id == segment_id)
-        parts = [seg.visual.treatment, seg.visual.motion or ""]
+        # The transition is part of the plan: a `dip-<N>f` fades through black on purpose.
+        parts = [seg.visual.treatment, seg.visual.motion or "", seg.transition]
         return " ".join(parts).lower()
+
+    def overlay_holds(self, interval: Interval) -> str | None:
+        """A fullscreen overlay that deliberately shows a still (a still, a grid, or a held last
+        frame) over this interval — the hosts are hidden, so freezedetect sees a planned freeze."""
+        for ov in self.clip.overlays:
+            if ov.mode != "fullscreen" or not interval.overlaps(ov.start, ov.end):
+                continue
+            if any(sh.grid is not None or sh.hold_last or (sh.asset or "").lower().endswith((".png", ".jpg", ".jpeg"))
+                   for sh in ov.shots):
+                return f"overlay {ov.id}"
+        return None
 
     def planned_by(self, interval: Interval, words: tuple[str, ...]) -> str | None:
         """The segment id whose plan uses one of `words` over this interval, if any."""
@@ -631,7 +645,8 @@ def _planned_split(
     """Shared verdict for the two detectors whose intervals the manifest may authorise."""
     if not intervals:
         return Check(name, True, f"none ({probe_detail})")
-    tagged = [(iv, timeline.planned_by(iv, words)) for iv in intervals]
+    tagged = [(iv, timeline.planned_by(iv, words) or (timeline.overlay_holds(iv) if name == "frozen_frames" else None))
+              for iv in intervals]
     bad = [iv for iv, seg in tagged if seg is None]
     planned = [f"{iv} (planned by {seg})" for iv, seg in tagged if seg is not None]
     if bad:
@@ -903,8 +918,13 @@ def check_assets(clip: Clip, clip_dir: Path) -> Check:
             problems.append(f"{asset.id}: sha256 {actual[:12]}… != manifest {asset.sha256[:12]}…")
     broll = [seg.id for seg in clip.timeline if seg.visual.kind == "broll"]
     if broll:
-        problems.append(f"B-roll segments {broll} — this pipeline has no B-roll")
-    detail = f"{len(clip.assets)} asset(s) present with matching sha256"
+        problems.append(f"B-roll timeline segments {broll} — B-roll goes in overlays:, never the timeline")
+    # Overlay / insert media: every file on disk and in the provenance ledger (real, credited, never AI).
+    index = build_index(clip, clip_dir)
+    problems += [f"broll/{name}: missing on disk" for name, info in index.items() if not info.exists]
+    problems += [f"broll/{name}: no provenance entry" for name, info in index.items() if info.exists and info.provenance is None]
+    detail = (f"{len(clip.assets)} asset(s) present with matching sha256; {len(index)} B-roll file(s) "
+              f"on disk with provenance entries ({len(clip.overlays)} overlay(s), {len(clip.inserts)} insert(s))")
     return Check("assets_tracked", not problems, detail if not problems else "; ".join(problems))
 
 
@@ -955,6 +975,12 @@ def contact_frames(timeline: Timeline, duration: float) -> list[tuple[float, str
     if segments:
         end = segments[-1].output_out
         frames.append((end, f"END {fmt_mmss(end)}"))
+    # Every overlay window, so a stills review shows every cutaway / pip / card on screen.
+    for ov in timeline.clip.overlays:
+        settle = min(0.6, (ov.end - ov.start) / 3)
+        frames.append((ov.start + settle, f"{ov.id} {ov.mode} {fmt_mmss(ov.start)}"))
+        frames.append(((ov.start + ov.end) / 2, f"{ov.id} mid {fmt_mmss((ov.start + ov.end) / 2)}"))
+    frames.sort(key=lambda f: f[0])
     # Nudge samples off the exact boundary so each lands inside the segment it labels.
     nudged: list[tuple[float, str]] = []
     for at, label in frames:

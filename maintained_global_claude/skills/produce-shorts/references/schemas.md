@@ -154,7 +154,8 @@ timeline:                     # ordered by output_in; the edit decision list
     speaker: host1
     audio: as-recorded        # as-recorded | duck | mute
     visual:
-      kind: aroll             # always aroll — no B-roll in this pipeline
+      kind: aroll             # aroll = the episode; insert = a credited non-episode source (clips only, § Inserts).
+                              #  B-roll is never a timeline segment — it lives in `overlays:` (§ Overlays)
       treatment: closeup-host1   # short: closeup-<speaker> | splitscreen ; clip: source-frame
       speakers: null          # splitscreen only: exactly two speaker ids [top, bottom]
       locked: false           # true = user override by comment; plan_framing.py never changes it
@@ -191,12 +192,100 @@ render:
 2. Segment durations match across time systems: `output_out - output_in == source_out - source_in` (±ε). No speed changes.
 3. Every `source_in/source_out` lies within the probed duration of `source_file` (from `episode.yaml media.probes`).
 4. `clip.output.duration_s == timeline[-1].output_out` (±ε) and ≤ the `max_duration_s` of every profile for the clip's format (clips have no maximum).
-5. Every `broll` segment names an `asset_id` present in `assets[]` (vacuous: no B-roll).
+5. Every `broll` segment names an `asset_id` present in `assets[]` (vacuous: B-roll is in `overlays:`).
 6. Every asset's `used_in_segments` matches the timeline exactly (vacuous: `assets: []`).
 7. Every asset file exists on disk and its `sha256` matches (vacuous).
 8. Subtitle `output_range`s lie within `[0, duration_s]`, do not overlap, and each range's text words appear (in order) in the union of `dialogue` of the segments it spans.
 9. `format: short` uses only `closeup-*` / `splitscreen`; a `splitscreen` names exactly two distinct speakers; `format: clip` uses only `source-frame`. `output.aspect` matches the format.
-10. Speaker IDs and `treatment` speaker references exist in `episode.yaml speakers[]`.
+10. Speaker IDs and `treatment` speaker references exist in `episode.yaml speakers[]` (an insert's speaker is exempt — it is named by `insert.speaker_name`).
+11. Every segment's `dialogue` accounts for every transcript word audible in its range (inserts are checked against their own words file by 12).
+12. **Inserts** (§ Inserts): `visual.kind: insert` ⇔ an `insert:` block; `format: clip` only; a `broll:` block exists; `source_file` lies under `clips/<id>/broll/`; `treatment: letterbox`; the file exists, has an audio stream and a provenance entry; `source_in/out` lie inside its duration; the segment does not touch the protected tail; `dialogue` tokens equal the audible tokens of the insert's words file.
+13. **Overlays** (§ Overlays): `format: clip` only; a `broll:` block exists; ids unique; window inside `[0, duration_s]`; fades fit the window; picture modes have `shots` and no `lines`, text modes the reverse; `pip` needs a `box` (inside the frame, even width and height), `fullscreen` has none; `from_box` ⇔ `move_frames`; shots start at 0 and ascend inside the window, each names exactly one of `asset`/`grid`; dissolves fit both shots; zoom within 1–2; crops parse and lie inside the asset; grid tiles are stills and fit `cols×rows`; a video range lies inside the asset's duration and plays at least its slot (or says `hold_last`); every asset exists and has a provenance entry; no picture overlay over an insert; no fullscreen overlay past the start of the protected tail; text-run times lie inside the window; overlays in the same layer (picture: fullscreen+pip; text: lowerthird+card) never overlap.
+
+### Inserts (horizontal clips)
+
+An insert is a timeline segment whose picture AND sound come from a credited third-party file in
+the clip's `broll/` (e.g. the guest saying the line in a talk the hosts are discussing):
+
+```yaml
+  - id: I01
+    source_file: clips/<slug>/broll/talk_insert_ext.mp4   # relative to the episode root, inside broll/
+    source_in: 0.80          # in the insert FILE's own time
+    source_out: 23.65
+    output_in: 37.125
+    output_out: 59.975
+    dialogue: "That's not a dog. …"     # = the audible words of insert.words, token for token
+    speaker: guest
+    audio: as-recorded
+    transition: dip-6f        # cut | crossfade-<N>f | dip-<N>f (horizontal only: fade through black, N frames each side)
+    visual: {kind: insert, treatment: letterbox}
+    insert:
+      speaker_name: David Deutsch
+      words: broll/talk_insert_ext.words.json   # transcribe_insert.py; times in the file's own clock
+      loudness: match-hosts   # assemble_audio.py gains it to the hosts' integrated LUFS (+ true-peak limiter)
+```
+
+Splice an insert with `broll.insert_segment(clip, at, segment, words)`: it splits the host segment
+at a word gap (never inside a word), renumbers the tail, shifts every later segment, overlay and
+subtitle line by the insert's length, and refuses overlays or lines that straddle the cut. The `.srt`
+of a clip with inserts is aligned from the episode words outside inserts and each insert's own words.
+
+### Overlays (horizontal clips)
+
+Real, credited footage and stills composited over the finished cut (render_horizontal.py, after
+the concat), plus lower-thirds and cards. Never AI-generated. Times are OUTPUT seconds.
+
+```yaml
+broll:
+  provenance: broll/provenance.json     # the ledger; every overlay/insert file needs an entry
+  protected_tail_s: 62.0                # final N s: no fullscreen cutaway, no insert
+overlays:
+  - id: B2
+    mode: fullscreen          # fullscreen | pip (picture layer) ; lowerthird | card (text layer)
+    start: 15.10
+    end: 22.60
+    fade_in_frames: 8
+    fade_out_frames: 8
+    shots:
+      - asset: talk_canvas_build.mp4     # file in broll/ (video or .png/.jpg still)
+        at: 0.0                          # seconds after the overlay starts
+        src_in: 0.4                      # video: range in the file
+        src_out: 8.4
+        speed: 1.0                       # source s per output s
+        hold_last: false                 # hold the last frame if the range ends before the slot
+        crop: "x=0:y=238:w=896:h=504"    # in asset pixels; must match the box aspect
+        zoom: [1.0, 1.05]                # slow push-in across the shot
+      - grid:                            # a grid of stills (tiles pop in at `at` after the shot)
+          cols: 3
+          rows: 3
+          tiles: [{asset: dog_01.jpg, at: 0.0, label: null}, …]
+        at: 4.0
+        dissolve_frames: 10              # cross-dissolve from the previous shot
+  - id: B3
+    mode: pip
+    start: 22.60
+    end: 30.00
+    box: {x: 1184, y: 72, w: 672, h: 378}      # output px; pip gets the config border
+    from_box: {x: 0, y: 0, w: 1920, h: 1080}   # optional animated scale/move into `box`
+    move_frames: 18
+    label: "David Deutsch, 'Knowledge Creation' talk"   # caption under the pip
+    shots: [{asset: talk_hero.png, zoom: [1.0, 1.04]}]
+  - id: B4
+    mode: lowerthird          # card: kinetic type; placement presets in config broll.text.placements
+    start: 48.0
+    end: 53.0
+    placement: lowerthird
+    reveal: none              # none | words (type on over reveal_s)
+    lines:
+      - runs: [{text: Jake Orthwein}]
+      - runs: [{text: "podcast host", color: muted, at: 0.4, underline_at: null, strike_at: null}]
+```
+
+The look of every card, lower-third and label (font = `subtitles.font`, colours, plate, sizes,
+placements, pip border, grid gutter) lives ONLY in config `broll:`; the Remotion `Card` composition
+renders each text layer as transparent ProRes 4444. QC samples every overlay window into the contact
+sheet and treats a fullscreen still / grid / held frame as a planned freeze, and a `dip-<N>f` as
+planned black.
 
 ## qc.json (written by qc_render.py)
 
@@ -238,3 +327,10 @@ render:
 ```
 
 `generated_media` must always be `"none"` — AI-generated video/imagery is prohibited in this pipeline.
+
+### broll/provenance.json (horizontal clips with overlays or inserts)
+
+A top-level JSON list, one entry per file in `broll/` that the clip composites. Required keys:
+`file`, `source_url`, `licence`, `permission`; also recorded: `source_in`, `source_out`, `author`,
+`attribution`, `downloaded`, `notes`. `broll/ATTRIBUTION.txt` carries the human-readable credits for
+the video description. Real, credited media only — an AI-generated file never gets an entry.

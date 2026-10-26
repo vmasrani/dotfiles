@@ -45,6 +45,7 @@ import typer
 from loguru import logger
 from rich.console import Console
 
+from psmedia import frame_exact
 from storyboard_lib import (
     SCRIPTS_DIR,
     SKILL_DIR,
@@ -477,10 +478,14 @@ def preview_clip(ctx: Ctx, rev_dir: Path) -> Path:
     for i, seg in enumerate(ctx.clip["timeline"]):
         d = seg["source_out"] - seg["source_in"]
         inputs += ["-ss", f"{seg['source_in']:.3f}", "-t", f"{d:.3f}", "-i", str(ctx.root / seg["source_file"])]
-        filters += [f"[{i}:v]scale=-2:{CLIP_PREVIEW_H},setsar=1,fps=30[v{i}]", f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo[a{i}]"]
-        labels.append(f"[v{i}][a{i}]")
+        filters += [f"[{i}:v]scale=-2:{CLIP_PREVIEW_H},setsar=1,{frame_exact(seg['output_in'], seg['output_out'], 30)}[v{i}]",
+                    f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS[a{i}]"]
+    n = len(ctx.clip["timeline"])
+    vs, aus = "".join(f"[v{i}]" for i in range(n)), "".join(f"[a{i}]" for i in range(n))
     out = rev_dir / "preview.mp4"
-    run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", ";".join(filters) + f";{''.join(labels)}concat=n={len(labels)}:v=1:a=1[v][a]",
+    # video and audio concatenated separately: a joint concat pads each cut to its longer stream.
+    run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex",
+         ";".join(filters) + f";{vs}concat=n={n}:v=1:a=0[v];{aus}concat=n={n}:v=0:a=1[a]",
          "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(out)], what="building the 480p straight cut")
     return out

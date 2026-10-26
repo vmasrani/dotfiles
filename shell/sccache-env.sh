@@ -23,7 +23,8 @@ if [ -z "${SCCACHE_DIR:-}" ]; then
   fi
 fi
 # 1 GiB (the old launchctl value) was 100% full and thrashing -- Rust hit rate 1.39%.
-SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-100G}"
+# 2026-10-21: 100G -> 40G to free space on the 94%-full external drive.
+SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-40G}"
 export SCCACHE_DIR SCCACHE_CACHE_SIZE
 
 # Server request log (macOS only: it is what tools/sccache-watchdog reads and rotates).

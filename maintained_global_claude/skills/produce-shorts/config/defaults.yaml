@@ -118,3 +118,53 @@ framing:                      # plan_framing.py (shorts)
 render:
   internal_cut_crossfade_ms: 8   # audio micro-crossfade at internal cuts
   qc_loudness_tolerance_lu: 1.0
+
+# B-roll overlays on horizontal clips (clip.yaml `overlays:`; schemas.md § Overlays).
+# This block is the ONE source of truth for the card / lower-third / label style: overlay_text.py
+# turns it into the Remotion `Card` props, and render_horizontal.py reads pip/grid from it.
+# Pixel values are for a 1920x1080 frame.
+broll:
+  text:
+    font: "Inter Semibold"          # must equal subtitles.font — cards and captions share one family
+    colors:                         # run colour keys usable in clip.yaml (`color: accent`)
+      text: "#FFFFFF"
+      accent: "#FFD400"             # = subtitles.base_color, the series yellow
+      muted: "#C9CDD3"
+      red: "#FF5A5F"
+      blue: "#4EA8FF"
+    weight: 600
+    bold_weight: 800
+    plate_color: "#0E0F12"
+    plate_opacity: 0.80
+    plate_radius: 10
+    plate_pad_v: 16
+    plate_pad_h: 26
+    accent_bar_px: 6
+    line_gap: 1.22
+    rule_color: "#FF5A5F"           # strike-through
+    text_shadow: "0 2px 10px rgba(0,0,0,0.85)"
+    sizes:                          # px
+      lowerthird: 44
+      lowerthird_sub: 30
+      card: 56
+      label: 28
+      tile_label: 26
+    fade_frames: 8
+    pop_frames: 6
+    rule_frames: 12
+    placements:                     # anchor point + max width per placement name
+      lowerthird:  {x: 96,   y: 960, anchor: bottom-left,   max_width: 1300}
+      upper-left:  {x: 96,   y: 96,  anchor: top-left,      max_width: 1100}
+      card:        {x: 960,  y: 120, anchor: top-center,    max_width: 1500}
+      side-panel:  {x: 1824, y: 540, anchor: center-right,  max_width: 640}
+      top-right:   {x: 1824, y: 96,  anchor: top-right,     max_width: 760}
+  pip:
+    border_px: 4
+    border_color: "#FFFFFF"
+    label_gap_px: 12                # label sits this far under the pip box
+  grid:
+    gap_px: 8
+    background: "#0E0F12"
+    tile_pop_frames: 5
+  render:
+    card_concurrency: 3             # Remotion workers per card render (CPU bound, see render-qc.md)

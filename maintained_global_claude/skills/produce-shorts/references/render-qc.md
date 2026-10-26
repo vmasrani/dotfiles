@@ -16,7 +16,7 @@ A pick reaches stage 3 only with `clip.status: approved_render` (approved by com
 
 ### Clips (`format: clip`, horizontal)
 
-`scripts/render_horizontal.py CLIP_DIR` — cuts every timeline segment from the 16:9 source, joins them with the configured micro-crossfade, normalizes loudness to the `youtube` profile, writes `renders/v<N>-youtube.mp4` plus `subtitles/v<N>.srt` (from forced alignment — uploaded as YouTube captions, not burned in). No Remotion. Then `qc_render.py --profile youtube`.
+`scripts/render_horizontal.py CLIP_DIR` — cuts every timeline segment from the 16:9 source, joins them with the configured micro-crossfade, normalizes loudness to the `youtube` profile, writes `renders/v<N>-youtube.mp4` plus `subtitles/v<N>.srt` (from forced alignment — uploaded as YouTube captions, not burned in). It runs validate_clip.py first and stops on red. Clips with `inserts` / `overlays:` (schemas.md § Inserts, § Overlays) add: per-insert loudness matching in assemble_audio.py, `dip-<N>f` fades, picture layers built by ffmpeg (`overlay_picture.py`: crop, cover-fit, push-in, dissolves, grids, pip border and move) and text layers rendered once by the Remotion `Card` composition (`overlay_text.py` → `remotion/render-cards.mjs`, transparent ProRes 4444, style from config `broll:`), all overlaid on the joined cut in one final pass. Captions are never burned into a horizontal clip. Then `qc_render.py --profile youtube` — its contact sheet samples every overlay window (entry + midpoint), and its asset check requires every `broll/` file on disk with a provenance entry.
 
 ### Shorts (`format: short`, vertical)
 

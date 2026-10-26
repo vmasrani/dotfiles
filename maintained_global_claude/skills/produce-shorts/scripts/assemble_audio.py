@@ -25,10 +25,18 @@ timeline by the crossfade length at every internal cut and desync the video, whi
 is cut to exact per-segment lengths by extract_segments.py.
 
 Truly contiguous source audio is concatenated with no processing at all.
+
+Insert segments (`visual.kind: insert`, horizontal clips only — a credited non-episode source
+such as a guest's talk) are cut the same way from their own file, then gained so their
+integrated loudness matches the episode (host) pieces of this clip (`insert.loudness:
+match-hosts`), with a true-peak limiter so the gain can never clip. The final per-profile
+loudnorm then sees one consistent level instead of pumping across the splice.
 """
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -133,7 +141,10 @@ def check_sources(clip: Clip, episode: Episode, episode_root: Path) -> None:
     """Every source range must exist on disk and lie inside the probed duration."""
     problems: list[str] = []
     for seg in clip.timeline:
-        duration = probed_duration(episode, seg.source_file)
+        duration = (
+            ffprobe_media(media_path(episode_root, seg.source_file)).duration_s
+            if seg.is_insert else probed_duration(episode, seg.source_file)
+        )
         if seg.source_in < -EPSILON or seg.source_out > duration + EPSILON:
             problems.append(
                 f"{seg.id}: source range {fmt_range(seg.source_in, seg.source_out)} is outside "
@@ -218,6 +229,58 @@ def extract_piece(piece: Piece, episode_root: Path, out_path: Path, crossfade_s:
     return faded_duration
 
 
+INSERT_PEAK_LIMIT = 0.891  # -1 dBFS: the limiter after the loudness-match gain
+
+
+def integrated_lufs(path: Path) -> float:
+    """EBU R128 integrated loudness of a wav (loudnorm's measurement pass)."""
+    out = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-nostdin", "-i", str(path), "-af",
+         "loudnorm=I=-23:TP=-1:LRA=11:print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        raise RuntimeError(f"loudness measurement of {path} failed (exit {out.returncode}): {out.stderr[-1500:]}")
+    blob = out.stderr[out.stderr.rindex("{"):]
+    value = float(json.loads(blob[: blob.index("}") + 1])["input_i"])
+    if value < -70:
+        raise RuntimeError(f"{path} measures {value} LUFS — silence; an insert or host piece has no audio")
+    return value
+
+
+def match_insert_loudness(pieces: list[Piece], paths: dict[str, Path], work: Path) -> dict[str, float]:
+    """Gain every insert piece to the hosts' integrated loudness. Returns the gain per insert (dB)."""
+    inserts = [p for p in pieces if p.segment.is_insert]
+    if not inserts:
+        return {}
+    hosts = [paths[p.segment.id] for p in pieces if not p.segment.is_insert]
+    if not hosts:
+        raise ValueError("every segment is an insert — there is no host audio to match the insert loudness to")
+    hosts_wav = work / "hosts-only.wav"
+    concat_pieces(hosts, hosts_wav, work)
+    target = integrated_lufs(hosts_wav)
+    gains: dict[str, float] = {}
+    for piece in inserts:
+        seg = piece.segment
+        if seg.insert is None or seg.insert.loudness != "match-hosts":
+            raise ValueError(f"{seg.id}: insert segment without insert.loudness: match-hosts")
+        src = paths[seg.id]
+        gain = target - integrated_lufs(src)
+        matched = work / f"{seg.id}-matched.wav"
+        run_ffmpeg(
+            ["-i", str(src), "-af",
+             f"volume={gain:.3f}dB,alimiter=limit={INSERT_PEAK_LIMIT}:level=false:latency=1",
+             "-c:a", "pcm_s16le", "-ar", "48000", "-ac", "2", str(matched)],
+            what=f"loudness-matching insert {seg.id} ({gain:+.2f} dB to {target:.2f} LUFS)",
+        )
+        if abs(ffprobe_media(matched).duration_s - ffprobe_media(src).duration_s) > EPSILON:
+            raise RuntimeError(f"{seg.id}: the loudness-match pass changed the piece's length")
+        paths[seg.id] = matched
+        gains[seg.id] = gain
+        logger.info(f"{seg.id}: insert gained {gain:+.2f} dB to the hosts' {target:.2f} LUFS")
+    return gains
+
+
 def concat_pieces(paths: list[Path], out_path: Path, work: Path) -> None:
     listing = work / "concat.txt"
     listing.write_text("".join(f"file '{p}'\n" for p in paths))
@@ -297,7 +360,7 @@ def main(
 
     with TemporaryDirectory(prefix="ps-audio-") as tmp:
         work = Path(tmp)
-        paths = []
+        paths: dict[str, Path] = {}
         measured: dict[str, float] = {}
         for piece in pieces:
             piece_path = work / f"{piece.segment.id}.wav"
@@ -308,8 +371,9 @@ def main(
                     f"{piece.segment.id}: extracted {duration:.3f}s but the timeline says "
                     f"{piece.segment.source_duration:.3f}s — the source range is not decodable as written"
                 )
-            paths.append(piece_path)
-        concat_pieces(paths, out_path, work)
+            paths[piece.segment.id] = piece_path
+        match_insert_loudness(pieces, paths, work)
+        concat_pieces([paths[p.segment.id] for p in pieces], out_path, work)
 
     result = ffprobe_media(out_path)
     expected = clip.output.duration_s

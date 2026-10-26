@@ -217,13 +217,23 @@ area for the duration of any segment whose asset has `credit_required: true`
 (`"Video by <creator> on <Provider>"`). `gen-props.mjs` refuses to generate
 props when a subtitle would sit on top of that line.
 
+## Card layers (horizontal clips)
+
+Horizontal clips do not render through `Short`. `scripts/overlay_text.py` copies this template into
+`CLIP_DIR/remotion` (npm ci once), writes a jobs file of `Card` props — one per `lowerthird` /
+`card` overlay plus one per labelled picture overlay — and runs `node render-cards.mjs <jobs.json>`.
+Each job becomes a transparent ProRes 4444 `.mov` (png frames, yuva444p10le) that
+`render_horizontal.py` overlays on the cut. The card style is config `broll.text` and nothing else;
+`Card.tsx` has no default style of its own and uses the same bundled Inter as the captions.
+
 ## Determinism rules this template keeps
 
 - No `Date.now()`, no `Math.random()`, no animation that is not a pure function
   of the frame number.
 - No network access at render time — fonts and media are local files.
 - **No AI-generated imagery of any kind**, ever. Visuals come from the source
-  footage and from licensed assets listed in `clip.yaml assets[]`.
+  footage and from real, credited assets — `clip.yaml assets[]` for shorts, the
+  clip's `broll/provenance.json` ledger for horizontal-clip overlays.
 - Nothing is composited that is not named in `props.json`.
 - A file the manifest promised but that is not on disk fails the render, with
   the path, instead of rendering a black hole.
@@ -240,7 +250,10 @@ gen-props.mjs         clip.yaml (+ episode, audio, .ass) -> props.json
 lib/clip-schema.mjs   zod mirrors of clip.yaml / episode.yaml
 lib/ass.mjs           strict .ass reader (styles, events, override tags)
 src/index.ts          registerRoot
-src/Root.tsx          the Short composition + calculateMetadata
+src/Root.tsx          the Short and Card compositions + calculateMetadata
+src/Card.tsx          transparent text layer for horizontal-clip overlays (lower-thirds, cards, labels)
+src/cardSchema.ts     the Card props contract (zod); style comes from config `broll.text`
+render-cards.mjs      bundle once, render every Card job -> ProRes 4444 with alpha
 src/Short.tsx         one Sequence per segment; treatments, motion, transitions
 src/Subtitles.tsx     .ass-derived subtitle events
 src/Credits.tsx       attribution line for credit_required assets

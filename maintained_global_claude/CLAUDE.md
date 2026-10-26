@@ -18,6 +18,7 @@ Context is re-read every turn (~6× effective price) and never shrinks.
 # Overall guidelines
 
 - Always search for the latest modern libraries; never write a function yourself when a library provides it.
+- **TypeSafe skill** (`typesafe@typesafe-ai` plugin, user scope): load it whenever a feature needs semantic judgment (routing, ranking, extraction, verification) or an LLM prompt-and-parse step could become a typed decision; read the live docs at https://docs.typesafe.ai/llms.txt before writing integration code.
 - NEVER include `Co-Authored-By` lines in git commit messages.
 
 # Fail loud — never write slow defensive fallbacks
@@ -35,11 +36,11 @@ Context is re-read every turn (~6× effective price) and never shrinks.
 # Orchestration
 
 - **HARD RULE: when the session model is Fable, Fable never writes, edits, or patches code** — not scripts, tests, one-line fixes, or Bash heredocs. All code comes from subagents (Agent tool / Workflow `agent()`). Fable scopes, designs, writes prompts, dispatches, reviews diffs, integrates; it may write non-code text directly (plans, prompts, docs, commit messages, memory/context files).
-- **Model selection — orchestrator: Opus 5.5 (`claude-opus-5-5`) at medium effort. The default code worker is also Opus 5.5; Sonnet 5.5 (`claude-sonnet-5-5`) workers are only for easy tasks.** Opus 5 and Opus 4.8 are BANNED (worker, orchestrator, or session model) unless the user explicitly requests them in the live conversation; Sonnet 5 is superseded — never dispatch it. Worker grades (owner decision 2026-10-20, replacing the Sonnet-only rule of 2026-10-01):
+- **Model selection — orchestrator: Opus 5.5 (`claude-opus-5-5`) at medium effort. EVERY worker is Sonnet 5.5 (`claude-sonnet-5-5`); `opus55-worker*` agents are never dispatched** unless the user explicitly asks for an Opus worker in the live conversation (owner decision 2026-10-26, replacing the Opus-default rule of 2026-10-20; incident: six Opus audit workers dispatched for a LinkedIn fact-check). Opus 5 and Opus 4.8 are BANNED (worker, orchestrator, or session model) unless the user explicitly requests them in the live conversation; Sonnet 5 is superseded — never dispatch it. Worker grades:
   - lookups, trivial scouting, one-line mechanical edits → `haiku`;
-  - easy tasks: small, well-specified, mechanical work with a direct check (a rename, a help-text fix, a snapshot refresh, a fixture tweak, a single bounded measurement run by a fixed recipe) → `sonnet55-worker-low` / `-medium`;
-  - all other worker tasks — plumbing, ports, consolidations, concurrency, perf paths, regressions, research → `opus55-worker-low` / `-medium` / `opus55-worker` (high) by size and by the cost of an undetected error (weak or indirect checks → high). In doubt, it is not easy: use Opus;
-  - a worker failed or came back wrong once → re-dispatch a fresh worker one level higher (Sonnet → Opus at the same effort, then Opus one effort higher), with the failure and the orchestrator's diagnosis in the brief; never re-send the same brief at the same level.
+  - small, well-specified, mechanical work with a direct check → `sonnet55-worker-low` / `-medium`;
+  - everything else — plumbing, ports, consolidations, concurrency, perf paths, regressions, research, fact-checking, AWS runs → `sonnet55-worker-medium` / `sonnet55-worker-high` by size and by the cost of an undetected error (weak or indirect checks → high);
+  - a worker failed or came back wrong once → re-dispatch a fresh Sonnet worker one effort higher, with the failure and the orchestrator's diagnosis in the brief; never re-send the same brief at the same level. If `sonnet55-worker-high` fails, tell the owner before escalating to Opus.
   - The orchestrator still checks every diff and gate itself, and red tests must be shown to fail with the fix reverted.
 - **Grade per FEATURE, not per wave.** Dispatch workers by `subagent_type` (the agent frontmatter pins model AND effort) and OMIT the `model` parameter — an explicit `model` overrides the frontmatter pin. Pass `model: "haiku"` explicitly for haiku work. Never pass a bare `model: "opus"` (alias resolution has silently picked the wrong Opus before, 2026-09-02). Never let a subagent inherit the session model.
 - **omp harness:** the generic `task` agent's model comes from `task.agentModelOverrides.task` in `~/dotfiles/omp/agent/config.yml`, not from any frontmatter; it must be `anthropic/claude-opus-5-5`. Check `cfg://task/agentModelOverrides` before the first dispatch of a session; a wrong value (2026-10-01: `claude-opus-4-8`) means stop, fix it, and re-dispatch.

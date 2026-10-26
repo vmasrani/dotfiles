@@ -36,6 +36,8 @@ Default cleanup:
   * old paired OMP agent session files/directories (recent/current kept)
   * inactive OMP headless-browser profiles, abandoned Darwin temporary families,
     stale /private/tmp Rust target directories, and obsolete Cursor server builds
+  * orphaned Google Chrome code-sign clones (full Chrome.app copies leaked by
+    every Chrome launch that did not exit cleanly; running Chrome's kept)
 
 The command never removes source/worktree roots, ~/.cargo/bin, Cargo config or
 credentials, installed Rust toolchains, user application data, or active Docker
@@ -319,6 +321,38 @@ clean_cursor_server_versions() {
     done < <(find "$bin_root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
 }
 
+process_start_epoch() {
+    local started
+    started=$(ps -o lstart= -p "$1" 2>/dev/null | sed 's/[[:space:]]*$//') || return 1
+    [[ -n "$started" ]] || return 1
+    LC_ALL=C date -j -f '%a %b %d %T %Y' "$started" +%s 2>/dev/null
+}
+
+# Chrome on macOS clones its whole .app into <darwin-user-dir>/X at every launch
+# (so a mid-session update cannot break its code signature) and deletes the
+# clone only on a clean exit. Killed/crashed/headless runs leak one clone each.
+# A clone is live iff a running Chrome started at or before it was created.
+clean_chrome_code_sign_clones() {
+    local root path pid start oldest="" clone_mtime
+    note "Orphaned Google Chrome code-sign clones:"
+    [[ "$DARWIN_TEMP_ROOT" == */T ]] || { note "  skipped (Darwin temp directory unavailable)"; return; }
+    root="${DARWIN_TEMP_ROOT%/T}/X/com.google.Chrome.code_sign_clone"
+    [[ -d "$root" ]] || { note "  skipped (missing): $root"; return; }
+    while IFS= read -r pid; do
+        [[ -n "$pid" ]] || continue
+        start=$(process_start_epoch "$pid") || { report_failure "could not read start time of Chrome pid $pid; keeping all clones"; return; }
+        [[ -z "$oldest" || "$start" -lt "$oldest" ]] && oldest=$start
+    done < <(pgrep -f 'Google Chrome\.app/Contents/MacOS/Google Chrome( |$)' 2>/dev/null)
+    while IFS= read -r -d '' path; do
+        clone_mtime=$(stat_mtime "$path") || { report_failure "could not read modification time: $path"; continue; }
+        if [[ -n "$oldest" ]] && (( clone_mtime >= oldest - 60 )); then
+            note "  preserved (running Chrome): $path"
+        else
+            safe_remove "$path" "$root" || true
+        fi
+    done < <(find "$root" -mindepth 1 -maxdepth 1 -name 'code_sign_clone.*' -print0 2>/dev/null)
+}
+
 run_external_cleanup() {
     local label=$1
     shift
@@ -341,6 +375,7 @@ note "  • ~/Library/Caches contents"
 note "  • uv, npm, Bun, and regenerative Cargo caches"
 note "  • Claude and OMP sessions older than $DAYS day(s)"
 note "  • inactive OMP browser profiles, abandoned temporary data, stale Rust targets, and Cursor server builds"
+note "  • orphaned Google Chrome code-sign clones"
 if [[ "$WITH_DOCKER" == true ]]; then
     if [[ "$AGGRESSIVE" == true ]]; then
         note "  • unused Docker resources including unused volumes"
@@ -387,6 +422,7 @@ clean_omp_browser_profiles
 clean_temp_families
 clean_private_tmp_targets
 clean_cursor_server_versions
+clean_chrome_code_sign_clones
 
 if [[ "$WITH_DOCKER" == true ]]; then
     if command -v docker >/dev/null 2>&1; then

@@ -39,8 +39,12 @@ Detail docs — read each when you reach its stage, not upfront:
   transcript ambiguously is a question for the user, never a guess.
 - **Rights.** The user must own or be authorized to edit the source (`ingest.py --authorized`).
   Material cut before publication is never used (`rights_mask.py`, raw multitrack only).
-- **No AI-generated video or imagery, no B-roll.** Shorts are the speakers, framed well, with
-  captions.
+- **Real, credited B-roll only — never AI-generated.** No AI-generated video or imagery, ever.
+  Shorts carry no B-roll: they are the speakers, framed well, with captions. Horizontal clips may
+  composite real footage and stills over the cut (`overlays:`, `inserts`; schemas.md § Overlays), and
+  every such file has a provenance entry (source URL, licence, permission) in the clip's
+  `broll/provenance.json` — validate_clip and QC fail on a file without one. Hosts stay on screen
+  for the argument; full-screen cutaways are the exception the storyboard names.
 - **State lives on disk and in the docs.** On resume, read `episode.yaml` (`status`, `review`)
   and each `clip.yaml` first, then the open comments, and continue from there.
 
@@ -103,7 +107,9 @@ All are uv single-file scripts (`uv run scripts/<name> --help`); shared code in 
 | `storyboard.py` | 2 | Render prep + real stills per beat + rough preview mp4 |
 | `build_storyboard_doc.py` | 2 | Stills + preview link → storyboard doc revision in Drive |
 | `assemble_audio.py`, `align_subtitles.py`, `validate_subtitles.py`, `extract_segments.py`, `remotion/` | 2–3 | Render path (shorts) |
-| `render_horizontal.py` | 3 | Render path (clips): straight 16:9 cut + `.srt` |
+| `render_horizontal.py` | 3 | Render path (clips): 16:9 cut + inserts + B-roll overlays + `.srt` |
+| `broll.py`, `overlay_picture.py`, `overlay_text.py` | 3 | Not run directly: B-roll index/provenance + insert splicing; picture layers (ffmpeg); text layers (Remotion `Card`) |
+| `transcribe_insert.py` | 2–3 | Word times for an insert's own audio → `broll/<stem>.words.json` |
 | `qc_render.py` | 3 | Render QC → `qc-v<N>.json` + contact sheet |
 
 ## Failure playbook
