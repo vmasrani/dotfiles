@@ -1,6 +1,6 @@
 ---
 name: sonnet55-worker-low
-description: Worker pinned to Sonnet 5.5 (claude-sonnet-5-5) at low effort. Only for easy tasks — small, well-specified, mechanical work with a direct check; everything else goes to an opus55-worker variant.
+description: Worker pinned to Sonnet 5.5 (claude-sonnet-5-5) at low effort. The only worker type to dispatch (owner decision 2026-10-24: all workers are Sonnet 5.5, never Opus); pick low / medium / high by task size and how weak its check is.
 model: claude-sonnet-5-5
 effort: low
 ---
