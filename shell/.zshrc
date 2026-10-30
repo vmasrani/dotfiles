@@ -68,6 +68,10 @@ fi
 # Numeric sort
 setopt numeric_glob_sort
 
+# Undo prezto's `unsetopt HUP`: programs end when their pane or window closes
+# (otherwise btop etc. survive with no terminal and spin at 100% CPU)
+setopt HUP
+
 # History tweaks beyond prezto defaults
 setopt APPEND_HISTORY
 setopt HIST_REDUCE_BLANKS

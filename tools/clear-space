@@ -31,7 +31,7 @@ Options:
   -h, --help       Show this help.
 
 Default cleanup:
-  * contents of ~/Library/Caches; uv, npm, Bun, and regenerative Cargo caches
+  * contents of ~/Library/Caches; npm, Bun, and regenerative Cargo caches
   * old Claude project JSONL transcripts (memory paths and recent files kept)
   * old paired OMP agent session files/directories (recent/current kept)
   * inactive OMP headless-browser profiles, abandoned Darwin temporary families,
@@ -372,7 +372,7 @@ run_external_cleanup() {
 
 note "Planned cleanup categories:"
 note "  • ~/Library/Caches contents"
-note "  • uv, npm, Bun, and regenerative Cargo caches"
+note "  • npm, Bun, and regenerative Cargo caches"
 note "  • Claude and OMP sessions older than $DAYS day(s)"
 note "  • inactive OMP browser profiles, abandoned temporary data, stale Rust targets, and Cursor server builds"
 note "  • orphaned Google Chrome code-sign clones"
@@ -383,7 +383,7 @@ if [[ "$WITH_DOCKER" == true ]]; then
         note "  • unused Docker resources"
     fi
 fi
-note "Preserved: worktrees/source roots, user application data, current sessions, Cargo binaries/config/credentials/toolchains, and active Docker resources."
+note "Preserved: uv cache, worktrees/source roots, user application data, current sessions, Cargo binaries/config/credentials/toolchains, and active Docker resources."
 
 if [[ "$DRY_RUN" != true && "$ASSUME_YES" != true ]]; then
     if [[ ! -t 0 ]]; then
@@ -398,11 +398,6 @@ show_capacity before
 note "Library cache contents:"
 remove_children "$HOME_ROOT/Library/Caches"
 
-if command -v uv >/dev/null 2>&1; then
-    run_external_cleanup "uv cache" uv cache clean
-else
-    note "uv cache: skipped (uv unavailable)"
-fi
 if command -v npm >/dev/null 2>&1; then
     run_external_cleanup "npm cache" npm cache clean --force
 else
