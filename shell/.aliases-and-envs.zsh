@@ -169,6 +169,11 @@ export NOTMUCH_CONFIG="$HOME/.config/notmuch/notmuchrc"
 export NODE_OPTIONS="--dns-result-order=ipv4first"
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 export CLAUDE_CODE_NO_FLICKER=1
+# Claude scratch/task dirs live on the external drive (rm -rf it to reclaim space)
+if [[ -d /Volumes/external ]]; then
+    export CLAUDE_CODE_TMPDIR=/Volumes/external/claude-tmp
+    [[ -d $CLAUDE_CODE_TMPDIR ]] || mkdir -m 700 -p "$CLAUDE_CODE_TMPDIR"
+fi
 
 # ── sccache (shared compiler cache) ────────────────────────────────────
 # `rustc-wrapper = sccache` is set in ~/.cargo/config.toml. SCCACHE_DIR and
