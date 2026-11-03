@@ -69,10 +69,11 @@ from pslib import (
     fmt_mmss,
     load_clip,
     load_episode,
+    save_clip,
     sha256_file,
 )
 from broll import build_index
-from psmedia import PipelineConfig, episode_root_for, load_config, profile_dims, resolve_profile
+from psmedia import PipelineConfig, episode_root_for, ffmpeg_tool, load_config, profile_dims, resolve_profile
 from validate_subtitles import validate as validate_subtitle_script
 
 console = Console()
@@ -228,12 +229,12 @@ def _run(cmd: list[str]) -> Run:
 
 def ffmpeg_analyse(render: Path, args: list[str]) -> Run:
     """Run an analysis-only ffmpeg pass (null muxer) and hand back its full output."""
-    return _run(["ffmpeg", "-nostdin", "-hide_banner", "-v", "info", "-i", str(render), *args, "-f", "null", "-"])
+    return _run([ffmpeg_tool("ffmpeg"), "-nostdin", "-hide_banner", "-v", "info", "-i", str(render), *args, "-f", "null", "-"])
 
 
 def ffprobe_json(path: Path) -> dict:
     run = _run(
-        ["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)]
+        [ffmpeg_tool("ffprobe"), "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)]
     )
     return json.loads(run.stdout)
 
@@ -337,7 +338,7 @@ def detect_silence(
 ) -> list[Interval]:
     pre = ["-ss", f"{window[0]:.3f}", "-t", f"{window[1] - window[0]:.3f}"] if window else []
     cmd = [
-        "ffmpeg", "-nostdin", "-hide_banner", "-v", "info", *pre, "-i", str(render),
+        ffmpeg_tool("ffmpeg"), "-nostdin", "-hide_banner", "-v", "info", *pre, "-i", str(render),
         "-af", f"silencedetect=n={noise_db}:d={min_duration}", "-vn", "-f", "null", "-",
     ]
     run = _run(cmd)
@@ -356,7 +357,7 @@ def scene_scores(render: Path) -> list[tuple[float, float]]:
     """
     run = _run(
         [
-            "ffmpeg", "-nostdin", "-hide_banner", "-v", "info", "-i", str(render),
+            ffmpeg_tool("ffmpeg"), "-nostdin", "-hide_banner", "-v", "info", "-i", str(render),
             "-vf", "select='gte(scene,0)',metadata=print", "-an", "-f", "null", "-",
         ]
     )
@@ -394,7 +395,7 @@ def confirm_threshold(scores: list[tuple[float, float]], boundaries: list[float]
 def detect_scene_changes(render: Path, threshold: float = SCENE_THRESHOLD) -> list[float]:
     run = _run(
         [
-            "ffmpeg", "-nostdin", "-hide_banner", "-v", "error", "-i", str(render),
+            ffmpeg_tool("ffmpeg"), "-nostdin", "-hide_banner", "-v", "error", "-i", str(render),
             "-vf", f"select='gt(scene,{threshold})',metadata=print:file=-",
             "-an", "-f", "null", "-",
         ]
@@ -547,6 +548,11 @@ class Timeline:
         for a, b in self._hard_cut_pairs():
             gap = b.source_in - a.source_out
             why = "motion-only split" if abs(gap) <= EPSILON else f"{gap:.2f}s jump within one shot"
+            covering = self.overlay_covering(a.output_out)
+            if covering:
+                # Hidden (clip) or reduced to the speaker panel under a quote (short): no guaranteed scene change.
+                out.append((a.output_out, f"{a.id}->{b.id}", f"under fullscreen overlay {covering}"))
+                continue
             out.append((a.output_out, f"{a.id}->{b.id}", why if self._is_unverifiable(a, b) else ""))
         return out
 
@@ -555,6 +561,10 @@ class Timeline:
         # The transition is part of the plan: a `dip-<N>f` fades through black on purpose.
         parts = [seg.visual.treatment, seg.visual.motion or "", seg.transition]
         return " ".join(parts).lower()
+
+    def overlay_covering(self, at: float) -> str | None:
+        """Id of the fullscreen overlay on screen at output time `at`, if any."""
+        return next((ov.id for ov in self.clip.overlays if ov.mode == "fullscreen" and ov.start < at < ov.end), None)
 
     def overlay_holds(self, interval: Interval) -> str | None:
         """A fullscreen overlay that deliberately shows a still (a still, a grid, or a held last
@@ -1001,7 +1011,7 @@ def build_contact_sheet(render: Path, out_path: Path, frames: list[tuple[float, 
         )
         _run(
             [
-                "ffmpeg", "-nostdin", "-hide_banner", "-v", "error", "-y",
+                ffmpeg_tool("ffmpeg"), "-nostdin", "-hide_banner", "-v", "error", "-y",
                 "-ss", f"{at:.3f}", "-i", str(render), "-frames:v", "1",
                 "-vf", f"scale={CONTACT_TILE_WIDTH}:-2,{drawtext}",
                 str(work / f"frame_{n:03d}.png"),
@@ -1012,7 +1022,7 @@ def build_contact_sheet(render: Path, out_path: Path, frames: list[tuple[float, 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _run(
         [
-            "ffmpeg", "-nostdin", "-hide_banner", "-v", "error", "-y",
+            ffmpeg_tool("ffmpeg"), "-nostdin", "-hide_banner", "-v", "error", "-y",
             "-framerate", "1", "-i", str(work / "frame_%03d.png"),
             "-vf", f"tile={cols}x{rows}:padding={CONTACT_TILE_PADDING}:margin={CONTACT_TILE_PADDING}:color=black",
             "-frames:v", "1", str(out_path),
@@ -1095,6 +1105,17 @@ def render_table(checks: list[Check]) -> None:
     console.print(table)
 
 
+def record_qc(clip: Clip, clip_path: Path, version: int, passed: bool) -> None:
+    """Point render.versions[N].qc at the report; a green QC of the newest version moves the clip to `qc_passed`."""
+    entry = next((e for e in clip.render.versions if e.version == version), None)
+    if entry is None:
+        return  # QC of an unrecorded encode (--render before the manifest knows it): nothing to point at
+    entry.qc = f"qc-v{version}.json"
+    if passed and version == clip.render.versions[-1].version and clip.clip.status in ("frozen", "rendered"):
+        clip.clip.status = "qc_passed"
+    save_clip(clip_path, clip)
+
+
 @app.command()
 def main(
     clip_dir: Path = typer.Argument(..., help="Clip directory containing clip.yaml"),
@@ -1124,7 +1145,7 @@ def main(
         raise typer.BadParameter(f"missing required file: {clip_path}")
 
     root = episode_root_for(clip_dir, episode_root)
-    settings = load_config(config)
+    settings = load_config(config, root)
     target = resolve_profile(load_episode(root / "episode.yaml"), profile)
     clip = load_clip(clip_path)
     render_path = resolve_render(clip, clip_dir, version, profile, render)
@@ -1175,6 +1196,7 @@ def main(
     }
     qc_path = clip_dir / f"qc-v{version}.json"
     qc_path.write_text(json.dumps(report, indent=2) + "\n")
+    record_qc(clip, clip_path, version, passed)
 
     render_table(checks)
     console.print(f"contact sheet: [cyan]{clip_dir / sheet_rel}[/]")

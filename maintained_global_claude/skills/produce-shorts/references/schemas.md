@@ -1,8 +1,8 @@
 # Canonical schemas — the machine-readable source of truth
 
 Before the freeze, the **pick doc** (a Google Doc) is the only record of what is picked — there is
-no YAML for picks. From the freeze on, `clip.yaml` is the machine truth; storyboard docs are
-generated *from* it and never parsed back. `scripts/validate_clip.py` enforces the invariants
+no YAML for picks. From the freeze on, `clip.yaml` is the machine truth (stage-2 refinement edits it
+directly); there is no per-pick review doc — the owner reviews the final video. `scripts/validate_clip.py` enforces the invariants
 below after the freeze and before any render.
 
 ## Units and time systems
@@ -24,18 +24,19 @@ episode-<slug>/
     transcript.json
     transcript.md
   published-overlap.json  # published_shorts.py match output
+  dropped-clips/          # picks the owner dropped after the freeze (moved, never deleted)
   review/
     draft-picks.json      # editor's one-shot input to build_pick_doc.py; never read again
     pick-doc.html         # what was uploaded (debug only — the Google Doc is the truth)
   clips/
     <clip-slug>/
       clip.yaml           # canonical manifest (schema below)
-      storyboard/rev<N>/  # beats.json, beat-<k>.png, cover-<k>.png, preview.mp4, storyboard.docx
-      assets/aroll/       # extracted source segments
+      remotion/           # shorts only: template copy + props.json (prep_short.py)
+      assets/framing.json # shorts: per-segment crop geometry + mouth bands (frame_segments.py); no pre-cut video
       assets/faces/       # per-segment face detections (cache for the computed crops)
       subtitles/          # aligned .ass (shorts) / .srt (clips), validation report
-      renders/            # versioned, never overwritten
-      qc-v<N>.json
+      renders/            # versioned, never overwritten: v<N>-audio.wav, -master.mp4, -<profile>.mp4, -render.log
+      qc-v<N>.json, qc-v<N>.log
       provenance.json
 ```
 
@@ -72,9 +73,21 @@ platform_profiles:            # copied from config/defaults.yaml profiles at ing
     audio_codec: aac
     loudness_lufs: -14.0
     true_peak_dbtp: -1.0
+show:                         # intro card + name tags (intro_overlays.py); guest appearance or own show
+  name: "The Bayesian Conspiracy"
+  hosts: ["Eneasz Brodsky", "Steven Zuber"]   # full names, card order
+  guest: "Vaden Masrani"      # omit for the owner's own episodes
+  own_show: false             # true = the owner's Increments episode (Increments branding, no "with ..." line)
+layout_timeline:              # gallery tile layout over SOURCE time (3-up Zoom-style sources)
+  - from_s: 0                 # first span starts at 0; strictly ascending from_s; each span ends where the next begins
+    tiles: {left: host1, mid: guest1, right: host2}    # tile -> speaker id
+  - from_s: 2800              # the tiles reordered here (detected from face tracks, confirmed on source frames)
+    tiles: {left: guest1, mid: host2, right: host1}
 speakers:
   - id: host1                 # referenced by transcript + clip timelines
-    name: "Vaden"
+    name: "Eneasz"            # short label (pick doc, speaker headers)
+    full_name: "Eneasz Brodsky"                  # name tags / intro card (default: name)
+    role: "co-host, Bayesian Conspiracy"         # name-tag subline
     camera_file: null         # optional isolated footage (multitrack only)
     preferred_crop: null      # legacy, unused: shorts crops are computed per segment from face detection
 media:
@@ -102,13 +115,19 @@ review:                       # written by build_pick_doc.py / doc_ops.py
   folder_id: "1AbC…"          # this episode's Drive folder
   pick_doc: {id: "1XyZ…", url: "https://docs.google.com/document/d/1XyZ…/edit"}
   log_comment_id: "AAAA…"     # the revision-log thread
+  finals_folder_id: "1dSB…"   # the Drive `finals/` subfolder (stage 4)
   round: 2
   picks:                      # pick id → colour + status; colours never reused in one doc
     S1: {format: short, color: "#FFE08A", status: approved, title: "…"}
     C1: {format: clip,  color: "#B6E3F4", status: proposed, title: "…"}
 status:
-  stage: ingested             # ingested → picking → frozen → storyboarding → rendering → delivered
+  stage: ingested             # ingested → picking → frozen → rendering → delivered   (legacy `storyboarding` reads as `frozen`)
+config_overrides: {}          # optional per-episode pipeline overrides, shaped like config/defaults.yaml (e.g. subtitles.max_chars_per_second)
 ```
+
+`show:` and `layout_timeline:` are optional in the model (absent on old episodes) but `intro_overlays.py`
+fails loud without them. `layout_timeline` spans are validated: first `from_s` is 0, strictly ascending,
+every tile names a known speaker id. `Episode.tile_of(speaker_id, source_s)` answers "which tile".
 
 ## transcript.json
 
@@ -132,7 +151,7 @@ transcription step maps diarization labels (e.g. `SPEAKER_00`) to speaker IDs an
 
 ## clip.yaml — the canonical per-clip manifest
 
-Written by `freeze_picks.py`; refined by `plan_framing.py` and stage-2 comment edits.
+Written by `freeze_picks.py`; refined by `plan_framing.py`.
 
 ```yaml
 clip:
@@ -140,7 +159,8 @@ clip:
   pick: S1                    # pick id in the pick doc
   format: short               # short (9:16, < 180 s) | clip (16:9, any length)
   title: "Why incentives backfire"
-  status: frozen              # frozen → storyboarded → approved_render → rendered → qc_passed → delivered
+  status: frozen              # frozen → rendered (render_short/render_horizontal) → qc_passed (qc_render, green) → delivered (uploaded private)
+                              #   (legacy `storyboarded`/`approved_render` read as `frozen`)
   why: "The pick's why line from the doc."
   ends_on: "verbatim last line"
 timeline:                     # ordered by output_in; the edit decision list
@@ -152,16 +172,16 @@ timeline:                     # ordered by output_in; the edit decision list
     output_out: 7.35
     dialogue: "exact verbatim words spoken in this range"
     speaker: host1
-    audio: as-recorded        # as-recorded | duck | mute
+    audio: as-recorded        # as-recorded | duck | mute  (mute = video-only hold, e.g. the muted tail that lets a too-short last caption finish)
     visual:
       kind: aroll             # aroll = the episode; insert = a credited non-episode source (clips only, § Inserts).
                               #  B-roll is never a timeline segment — it lives in `overlays:` (§ Overlays)
       treatment: closeup-host1   # short: closeup-<speaker> | splitscreen ; clip: source-frame
       speakers: null          # splitscreen only: exactly two speaker ids [top, bottom]
-      locked: false           # true = user override by comment; plan_framing.py never changes it
+      locked: false           # true = owner override from stage-2 chat (solo close-up to hide a reaction, restored pause split); plan_framing.py never changes it
       reason: null            # why: the framing rule, or the user's comment text
       crop: null              # optional hand override "x=..:y=..:w=..:h=.." for a closeup; normally absent —
-                              # crops are computed per segment from face detection (extract_segments.py)
+                              # crops are computed per segment from face detection (frame_segments.py)
       asset_id: null
       motion: null
     transition: cut           # transition INTO next segment: cut | crossfade-<N>f
@@ -173,17 +193,17 @@ subtitles:
   lines: []                   # optional design-time overrides; final timing comes from forced alignment
 assets: []                    # always empty — kept so the asset invariants hold vacuously
 review:
-  storyboard_docs: []         # [{rev, id, url}] — append-only
-  cover: null                 # chosen cover still index (from a stage-2 comment)
-  final_url: null             # Drive link of the delivered render
+  # legacy `storyboard_docs` / `cover` keys in old manifests are ignored on read and dropped on write
+  final_url: null             # Drive link of the finals-folder upload (doc_ops.py final)
+  youtube_url: null           # the PRIVATE/unlisted YouTube upload (doc_ops.py youtube; the owner publishes)
 output:                       # short: 9:16 1080x1920 ; clip: 16:9 1920x1080
   aspect: "9:16"
   resolution: "1080x1920"
   fps: 30
   duration_s: 41.70           # must equal last timeline output_out
 render:
-  versions: []                # append-only: {version, preview, finals: {profile: path},
-                              #  rendered_at, qc: qc-v1.json}
+  versions: []                # append-only: {version, preview: renders/v1-master.mp4 (shorts), finals: {profile: path},
+                              #  rendered_at: real UTC time of the render, qc: qc-v1.json (set by qc_render.py)}
 ```
 
 ## Timeline invariants (enforced by validate_clip.py)
@@ -200,7 +220,25 @@ render:
 10. Speaker IDs and `treatment` speaker references exist in `episode.yaml speakers[]` (an insert's speaker is exempt — it is named by `insert.speaker_name`).
 11. Every segment's `dialogue` accounts for every transcript word audible in its range (inserts are checked against their own words file by 12).
 12. **Inserts** (§ Inserts): `visual.kind: insert` ⇔ an `insert:` block; `format: clip` only; a `broll:` block exists; `source_file` lies under `clips/<id>/broll/`; `treatment: letterbox`; the file exists, has an audio stream and a provenance entry; `source_in/out` lie inside its duration; the segment does not touch the protected tail; `dialogue` tokens equal the audible tokens of the insert's words file.
-13. **Overlays** (§ Overlays): `format: clip` only; a `broll:` block exists; ids unique; window inside `[0, duration_s]`; fades fit the window; picture modes have `shots` and no `lines`, text modes the reverse; `pip` needs a `box` (inside the frame, even width and height), `fullscreen` has none; `from_box` ⇔ `move_frames`; shots start at 0 and ascend inside the window, each names exactly one of `asset`/`grid`; dissolves fit both shots; zoom within 1–2; crops parse and lie inside the asset; grid tiles are stills and fit `cols×rows`; a video range lies inside the asset's duration and plays at least its slot (or says `hold_last`); every asset exists and has a provenance entry; no picture overlay over an insert; no fullscreen overlay past the start of the protected tail; text-run times lie inside the window; overlays in the same layer (picture: fullscreen+pip; text: lowerthird+card) never overlap.
+13. **Overlays** (§ Overlays): `format: clip`, or `format: short` with fullscreen still pictures only (§ Overlays (shorts); anything else is a finding "not implemented for shorts"); a `broll:` block exists; ids unique; window inside `[0, duration_s]`; fades fit the window; picture modes have `shots` and no `lines`, text modes the reverse; `pip` needs a `box` (inside the frame, even width and height), `fullscreen` has none; `from_box` ⇔ `move_frames`; shots start at 0 and ascend inside the window, each names exactly one of `asset`/`grid`; dissolves fit both shots; zoom within 1–2; crops parse and lie inside the asset; grid tiles are stills and fit `cols×rows`; a video range lies inside the asset's duration and plays at least its slot (or says `hold_last`); every asset exists and has a provenance entry; no picture overlay over an insert; no fullscreen overlay past the start of the protected tail; text-run times lie inside the window; overlays in the same layer (picture: fullscreen+pip; text: lowerthird+card) never overlap.
+
+### Overlays (shorts): the quote layout
+
+A short takes the SAME `broll:` / `overlays:` schema, restricted to what the vertical frame draws: `mode: fullscreen`,
+shots that are stills (`asset` png/jpg/webp, `at`, `zoom`, `dissolve_frames`), `fade_in_frames`, `fade_out_frames`. Times are
+OUTPUT seconds. pip, `lowerthird`/`card`, video ranges, grids, `crop`, `label` are refused ("not implemented for shorts").
+Every file has a provenance entry; the screenshot is the RAW capture (`broll/orig/...`), the renderer does the compositing.
+
+While an overlay is up the frame is two 1080x960 panels (geometry decided by `scripts/frame_segments.py` /
+`scripts/quotelayout.py`, written to `assets/framing.json` `quotes` + each segment's `quote` panel, copied into props.json by
+`gen-props.mjs`, drawn by `remotion/src/Short.tsx`):
+
+* TOP — the screenshot fitted to the panel (40 px margin) on a blurred, darkened copy of itself, slow push-in per `zoom`,
+  cross-dissolve per `dissolve_frames`, whole layout fades in/out per the overlay's fade frames over the normal picture.
+* BOTTOM — the speaker of the timeline segment on screen (`segment.speaker`, even if the segment's treatment is a closeup
+  of someone else), cropped like a split-screen panel: the crop never leaves that speaker's tile.
+* Captions sit at the top of the bottom panel (or on the seam) and clear both the speaker's mouth and the screenshot as
+  drawn; `validate_subtitles.py` checks both (`mouth_clearance`, `quote_clearance`).
 
 ### Inserts (horizontal clips)
 
@@ -281,6 +319,11 @@ overlays:
       - runs: [{text: "podcast host", color: muted, at: 0.4, underline_at: null, strike_at: null}]
 ```
 
+Placement presets include `title-center` (intro card) and `tile-left|mid|right` (name tags under a face
+in a 3-up gallery source). `scripts/intro_overlays.py` generates the intro card and the tags from
+`episode.yaml show:` / `layout_timeline:`; `references/broll-horizontal.md` is the full recipe with
+a trimmed real overlay track.
+
 The look of every card, lower-third and label (font = `subtitles.font`, colours, plate, sizes,
 placements, pip border, grid gutter) lives ONLY in config `broll:`; the Remotion `Card` composition
 renders each text layer as transparent ProRes 4444. QC samples every overlay window into the contact
@@ -321,14 +364,14 @@ planned black.
   "clip_id": "why-incentives-fail",
   "source": {"url": "…", "downloaded": "2026-08-05", "authorized_by_user": true},
   "pick_doc": "https://docs.google.com/document/d/…",
-  "storyboard_doc": "https://docs.google.com/document/d/…",
+  "final_url": "https://drive.google.com/file/d/…",
   "generated_media": "none"
 }
 ```
 
 `generated_media` must always be `"none"` — AI-generated video/imagery is prohibited in this pipeline.
 
-### broll/provenance.json (horizontal clips with overlays or inserts)
+### broll/provenance.json (clips and shorts with overlays or inserts)
 
 A top-level JSON list, one entry per file in `broll/` that the clip composites. Required keys:
 `file`, `source_url`, `licence`, `permission`; also recorded: `source_in`, `source_out`, `author`,

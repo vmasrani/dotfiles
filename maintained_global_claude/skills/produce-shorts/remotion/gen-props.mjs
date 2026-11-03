@@ -5,7 +5,7 @@
 //   node gen-props.mjs <clip-dir> --audio <path> --ass <path> \
 //        [--fps 30 --width 1080 --height 1920] [--profile youtube-shorts]
 //        [--episode <episode.yaml>] --defaults <config/defaults.yaml>
-//        [--aroll-dir assets/aroll] [--out props.json] [--public-link clip]
+//        [--out props.json] [--public-link clip] [--episode-link episode]
 //        [--safe-top 200 --safe-bottom 320 --safe-left 60 --safe-right 120]
 //
 // Everything it cannot prove is an error. There is no partial props.json: the
@@ -20,6 +20,7 @@ import yaml from 'js-yaml';
 import { ClipSchema, EpisodeSchema, parseOrDie } from './lib/clip-schema.mjs';
 import { parseAss } from './lib/ass.mjs';
 import { parseMotion } from './src/motion.mjs';
+import { panelProblems } from './src/geometry.mjs';
 
 const TEMPLATE_DIR = dirname(fileURLToPath(import.meta.url));
 const EPS = 0.01; // the pipeline-wide comparison epsilon (references/schemas.md)
@@ -28,7 +29,7 @@ const SCHEMA_VERSION = 1;
 // Mirrors config/defaults.yaml `safe_zones` (1080x1920 reference frame).
 const DEFAULT_SAFE_ZONE = { top: 200, bottom: 320, left: 60, right: 120 };
 
-const AROLL_TREATMENTS = ['closeup-<speaker>', 'blur-fill-<speaker>', 'splitscreen', 'source-frame', 'reaction-<speaker>'];
+const AROLL_TREATMENTS = ['closeup-<speaker>', 'splitscreen'];
 const BROLL_TREATMENTS = ['cover', 'contain', 'letterbox'];
 
 /** Vertical room a credit line occupies at the bottom-left of the safe area. */
@@ -60,10 +61,9 @@ const { values: flags, positionals } = parseArgs({
     profile: { type: 'string' },
     episode: { type: 'string' },
     defaults: { type: 'string' },
-    'aroll-dir': { type: 'string', default: 'assets/aroll' },
-    'aroll-ext': { type: 'string', default: '.mp4' },
     out: { type: 'string' },
     'public-link': { type: 'string', default: 'clip' },
+    'episode-link': { type: 'string', default: 'episode' },
     'safe-top': { type: 'string' },
     'safe-bottom': { type: 'string' },
     'safe-left': { type: 'string' },
@@ -191,28 +191,181 @@ const parseTransition = (raw, segId) => {
 
 const assetsById = new Map(clip.assets.map((a) => [a.id, a]));
 
-const arollSources = (segment) => {
-  const dir = flags['aroll-dir'];
-  const ext = flags['aroll-ext'];
+// scripts/frame_segments.py decides the framing of every a-roll segment; this copies its geometry into props.json.
+const framingPath = join(clipDir, 'assets', 'framing.json');
+const framing = existsSync(framingPath)
+  ? JSON.parse(readFileSync(framingPath, 'utf8'))
+  : die(`${framingPath} not found — run scripts/frame_segments.py (prep_short.py does)`);
+
+const episodeRoot = dirname(episodePath);
+
+/** Resolve a path relative to the episode root; the file must exist (Remotion opens it by URL). */
+const inEpisodeRoot = (path, label) => {
+  const abs = resolve(episodeRoot, path);
+  const rel = relative(episodeRoot, abs);
+  if (rel.startsWith('..') || isAbsolute(rel)) die(`${label} must live inside the episode root (${episodeRoot}), got ${abs}`);
+  if (!existsSync(abs)) die(`${label} not found: ${abs}`);
+  return rel.split('\\').join('/');
+};
+
+const rectOf = ([x, y, w, h]) => ({ x, y, w, h });
+
+const arollPanels = (segment) => {
   const treatment = segment.visual.treatment;
   const speakerOf = (prefix) => {
     const speaker = treatment.slice(prefix.length);
     if (!speakerIds.has(speaker)) {
       die(`${segment.id}: treatment "${treatment}" names speaker "${speaker}", which is not in episode.yaml speakers (${[...speakerIds].join(', ')})`);
     }
+    return speaker;
   };
+  const wantSpeakers = treatment.startsWith('closeup-')
+    ? { full: speakerOf('closeup-') }
+    : treatment === 'splitscreen'
+      ? Object.fromEntries(['top', 'bottom'].map((slot, k) => [slot, segment.visual.speakers?.[k]]))
+      : die(`${segment.id}: unsupported aroll treatment ${JSON.stringify(treatment)} — expected one of ${AROLL_TREATMENTS.join(', ')}`);
 
-  if (treatment.startsWith('closeup-')) speakerOf('closeup-');
-  else if (treatment.startsWith('reaction-')) speakerOf('reaction-');
-  else if (treatment.startsWith('blur-fill-')) speakerOf('blur-fill-');
-  else if (treatment !== 'splitscreen' && treatment !== 'source-frame') {
-    die(`${segment.id}: unsupported aroll treatment ${JSON.stringify(treatment)} — expected one of ${AROLL_TREATMENTS.join(', ')}`);
+  const entry = framing.segments[segment.id]
+    ?? die(`${segment.id}: no framing in ${framingPath} — re-run scripts/frame_segments.py`);
+  if (entry.treatment !== treatment) {
+    die(`${segment.id}: ${framingPath} was framed for treatment ${entry.treatment}, clip.yaml now says ${treatment} — re-run scripts/frame_segments.py`);
   }
+  const slots = entry.panels.map((p) => p.slot).join('+');
+  if (slots !== Object.keys(wantSpeakers).join('+')) {
+    die(`${segment.id}: ${framingPath} has panels ${slots}, ${treatment} needs ${Object.keys(wantSpeakers).join('+')} — re-run scripts/frame_segments.py`);
+  }
+  return entry.panels.map((panel) => {
+    if (panel.speaker !== wantSpeakers[panel.slot]) {
+      die(`${segment.id} ${panel.slot}: framed for ${panel.speaker}, clip.yaml wants ${wantSpeakers[panel.slot]} — re-run scripts/frame_segments.py`);
+    }
+    return panelProps(segment, panel);
+  });
+};
 
-  const names = treatment === 'splitscreen'
-    ? [`${segment.id}-top${ext}`, `${segment.id}-bottom${ext}`]
-    : [`${segment.id}${ext}`];
-  return names.map((name) => inClipDir(join(dir, name), `${segment.id}: A-roll clip (staged by scripts/extract_segments.py)`));
+/** One framing.json panel as props: shots in segment-relative frames, source file checked on disk, geometry re-validated. */
+const panelProps = (segment, panel) => {
+  {
+    const startFrame = toFrame(segment.output_in);
+    const first = panel.shots[0];
+    const last = panel.shots[panel.shots.length - 1];
+    if (!near(first.t0, segment.output_in) || !near(last.t1, segment.output_out)) {
+      die(`${segment.id} ${panel.slot}: framed for ${first.t0}-${last.t1}s, clip.yaml has ${segment.output_in}-${segment.output_out}s — re-run scripts/frame_segments.py`);
+    }
+    const shots = panel.shots.map((shot) => ({
+      fromFrame: toFrame(shot.t0) - startFrame,
+      toFrame: toFrame(shot.t1) - startFrame,
+      cropW: shot.crop.w,
+      cropH: shot.crop.h,
+      keys: shot.crop.keys.map(([t, x, y]) => ({ frame: (t - segment.output_in) * fps, x, y })),
+      dst: rectOf(shot.dst),
+      backdrop: shot.backdrop === null ? null : { blurPx: shot.backdrop.blur_px, brightness: shot.backdrop.brightness },
+      tile: shot.tile === null ? null : { x: shot.tile[0], y: shot.tile[1], w: shot.tile[2] - shot.tile[0], h: shot.tile[3] - shot.tile[1] },
+    }));
+    const result = {
+      slot: panel.slot,
+      rect: rectOf(panel.rect),
+      source: inEpisodeRoot(panel.source, `${segment.id} ${panel.slot}: source video`),
+      sourceDims: { w: panel.source_dims[0], h: panel.source_dims[1] },
+      trimBeforeFrame: toFrame(panel.source_start_s),
+      shots,
+    };
+    const problems = panelProblems(result, toFrame(segment.output_out) - startFrame);
+    if (problems.length > 0) die(`${segment.id} ${panel.slot}: bad geometry in ${framingPath}:\n  ${problems.join('\n  ')}`);
+    return result;
+  }
+};
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Quote layout: clip.yaml overlays of a short (fullscreen stills) + scripts/frame_segments.py's quote geometry.
+// ---------------------------------------------------------------------------------------------------------------------
+
+const STILL_EXT = /\.(png|jpe?g|webp)$/i;
+
+/** Why a short cannot draw this overlay (empty = it can). Mirrors scripts/quotelayout.py unsupported(). */
+const unsupportedForShort = (ov) => {
+  if (ov.mode !== 'fullscreen') return [`mode ${JSON.stringify(ov.mode)} (only fullscreen picture overlays)`];
+  const why = [];
+  if (ov.lines.length > 0 || ov.box !== null || ov.from_box !== null) why.push('text lines / box / from_box');
+  if (ov.label !== null) why.push('label');
+  if (ov.shots.length === 0) why.push('no shots');
+  ov.shots.forEach((shot, k) => {
+    if (shot.grid !== null) why.push(`shot ${k + 1}: a grid`);
+    else if (shot.asset === null || !STILL_EXT.test(shot.asset)) why.push(`shot ${k + 1}: ${JSON.stringify(shot.asset)} is not a still image (png/jpg/webp)`);
+    if (shot.crop !== null) why.push(`shot ${k + 1}: crop`);
+    if (shot.src_in !== null || shot.src_out !== null || shot.speed !== 1 || shot.hold_last) why.push(`shot ${k + 1}: video range`);
+  });
+  return why;
+};
+
+/** The provenance ledger entry of a B-roll file (by file name, as scripts/broll.py indexes it); dies without one. */
+const provenanceFor = (() => {
+  let ledger = null;
+  return (asset) => {
+    if (clip.broll === null) die(`clip.yaml has overlays but no broll: block (provenance, protected_tail_s)`);
+    if (ledger === null) {
+      const path = resolve(clipDir, clip.broll.provenance);
+      if (!existsSync(path)) die(`B-roll provenance ledger not found: ${path} — every overlay asset needs an entry (source URL, licence, permission)`);
+      ledger = new Map(JSON.parse(readFileSync(path, 'utf8')).map((e) => [String(e.file).split('/').pop(), e]));
+    }
+    const entry = ledger.get(asset.split('/').pop());
+    if (entry === undefined) die(`broll/${asset}: no entry in ${clip.broll.provenance} — real, credited B-roll only; provenance is mandatory`);
+    for (const key of ['source_url', 'licence', 'permission']) {
+      if (!entry[key]) die(`broll/${asset}: provenance entry lacks ${key}`);
+    }
+    return entry;
+  };
+})();
+
+const quotes = clip.overlays.map((ov) => {
+  const why = unsupportedForShort(ov);
+  if (why.length > 0) die(`overlay ${ov.id}: not implemented for shorts — ${why.join('; ')}`);
+  const record = (framing.quotes ?? []).find((q) => q.id === ov.id)
+    ?? die(`overlay ${ov.id}: no quote geometry in ${framingPath} — re-run scripts/frame_segments.py`);
+  if (!near(record.start, ov.start) || !near(record.end, ov.end) || record.shots.length !== ov.shots.length) {
+    die(`overlay ${ov.id}: ${framingPath} was framed for ${record.start}-${record.end}s with ${record.shots.length} screenshot(s), clip.yaml has ${ov.start}-${ov.end}s with ${ov.shots.length} — re-run scripts/frame_segments.py`);
+  }
+  const startFrame = toFrame(ov.start);
+  const endFrame = toFrame(ov.end);
+  return {
+    id: ov.id,
+    startFrame,
+    endFrame,
+    fadeInFrames: ov.fade_in_frames,
+    fadeOutFrames: ov.fade_out_frames,
+    rect: rectOf(record.rect),
+    backdrop: { blurPx: record.backdrop.blur_px, brightness: record.backdrop.brightness },
+    shots: record.shots.map((shot, k) => {
+      provenanceFor(shot.asset);
+      if (shot.asset !== ov.shots[k].asset) die(`overlay ${ov.id} shot ${k + 1}: framed for ${shot.asset}, clip.yaml has ${ov.shots[k].asset} — re-run scripts/frame_segments.py`);
+      return {
+        fromFrame: k === 0 ? startFrame : toFrame(shot.t0),
+        toFrame: k === record.shots.length - 1 ? endFrame : toFrame(shot.t1),
+        src: inClipDir(`broll/${shot.asset}`, `overlay ${ov.id} shot ${k + 1} screenshot`),
+        srcW: shot.src_dims[0],
+        srcH: shot.src_dims[1],
+        dst: rectOf(shot.dst),
+        zoom: shot.zoom,
+        dissolveFrames: shot.dissolve_frames,
+      };
+    }),
+  };
+});
+
+/** The bottom panel a segment shows while a quote overlay covers it (null when none does). */
+const quotePanelFor = (segment) => {
+  const startFrame = toFrame(segment.output_in);
+  const endFrame = toFrame(segment.output_out);
+  const covered = quotes.some((q) => startFrame < q.endFrame && endFrame > q.startFrame);
+  const panel = framing.segments[segment.id]?.quote ?? null;
+  if (!covered) {
+    if (panel !== null) die(`${segment.id}: ${framingPath} has a quote panel but no overlay covers the segment — re-run scripts/frame_segments.py`);
+    return null;
+  }
+  if (panel === null) die(`${segment.id}: a quote overlay covers it but ${framingPath} has no quote panel — re-run scripts/frame_segments.py`);
+  if (panel.speaker !== segment.speaker) {
+    die(`${segment.id} quote: framed for ${panel.speaker}, the segment's speaker is ${segment.speaker} — re-run scripts/frame_segments.py`);
+  }
+  return panelProps(segment, panel);
 };
 
 const brollSources = (segment) => {
@@ -276,7 +429,9 @@ const segments = clip.timeline.map((segment, i) => {
     kind: segment.visual.kind,
     treatment: segment.visual.treatment,
     motion: segment.visual.motion,
-    sources: segment.visual.kind === 'aroll' ? arollSources(segment) : brollSources(segment),
+    sources: segment.visual.kind === 'aroll' ? [] : brollSources(segment),
+    panels: segment.visual.kind === 'aroll' ? arollPanels(segment) : null,
+    quotePanel: segment.visual.kind === 'aroll' ? quotePanelFor(segment) : null,
     transitionOut: parseTransition(segment.transition, segment.id),
     credit: creditFor(segment),
   };
@@ -417,11 +572,18 @@ const karaokeWords = (event, where) => {
 const fontSizePx = firstStyle.fontSize * scaleY;
 const lineHeightEm = 1.2;
 
-// The screen layout of a timeline segment: captions sit at the bottom over a solo shot and on the seam over a split screen.
-const layoutOf = (segment) => (segment.kind === 'aroll' && segment.treatment === 'splitscreen' ? 'split' : 'solo');
-// Frames on which the layout switches (a cut between two segments of different layout).
-const layoutSwitches = new Set(segments.slice(1).filter((s, k) => layoutOf(s) !== layoutOf(segments[k])).map((s) => s.startFrame));
-const layoutAt = (frame) => layoutOf(segments.find((s) => s.startFrame <= frame && frame < s.startFrame + s.durationInFrames));
+// The screen layout on a frame: captions sit at the bottom over a solo shot, on the seam over a split screen, and under the
+// seam (top of the bottom panel) over a quote layout, whatever the timeline shows beneath it.
+const segmentLayout = (segment) => (segment.kind === 'aroll' && segment.treatment === 'splitscreen' ? 'split' : 'solo');
+const layoutAt = (frame) => (quotes.some((q) => q.startFrame <= frame && frame < q.endFrame)
+  ? 'quote'
+  : segmentLayout(segments.find((s) => s.startFrame <= frame && frame < s.startFrame + s.durationInFrames)));
+// Frames on which the layout switches (a cut between segments of different layout, or an overlay opening / closing).
+const layoutSwitches = new Set(
+  [...segments.map((s) => s.startFrame), ...quotes.flatMap((q) => [q.startFrame, q.endFrame])]
+    .filter((f) => f > 0 && f < segments[segments.length - 1].startFrame + segments[segments.length - 1].durationInFrames)
+    .filter((f) => layoutAt(f) !== layoutAt(f - 1)),
+);
 
 /**
  * One position per layout run of a card: [{fromFrame, layout, posY, anchorY}], fromFrame relative to the card's
@@ -531,14 +693,18 @@ for (const segment of segments.filter((s) => s.credit !== null)) {
 
 const publicDir = join(TEMPLATE_DIR, 'public');
 mkdirSync(publicDir, { recursive: true });
-const linkPath = join(publicDir, flags['public-link']);
-if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false }) !== undefined) {
-  if (!lstatSync(linkPath).isSymbolicLink()) {
-    die(`${linkPath} exists and is not a symlink — refusing to replace it`);
+const linkDir = (name, target) => {
+  const linkPath = join(publicDir, name);
+  if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false }) !== undefined) {
+    if (!lstatSync(linkPath).isSymbolicLink()) {
+      die(`${linkPath} exists and is not a symlink — refusing to replace it`);
+    }
+    rmSync(linkPath);
   }
-  rmSync(linkPath);
-}
-symlinkSync(clipDir, linkPath, 'dir');
+  symlinkSync(target, linkPath, 'dir');
+};
+linkDir(flags['public-link'], clipDir);
+linkDir(flags['episode-link'], episodeRoot);
 
 const props = {
   schemaVersion: SCHEMA_VERSION,
@@ -549,6 +715,7 @@ const props = {
   fps,
   durationInFrames,
   assetRoot: flags['public-link'],
+  episodeRoot: flags['episode-link'],
   audioSrc,
   safeZone,
   subtitleStyle: {
@@ -566,6 +733,7 @@ const props = {
     leftPx: safeZone.left,
   },
   segments,
+  quotes,
   subtitles,
 };
 
@@ -576,5 +744,5 @@ writeFileSync(outPath, `${JSON.stringify(props, null, 2)}\n`);
 process.stdout.write(
   `${outPath}\n  ${segments.length} segments, ${subtitles.length} subtitle events, ` +
   `${durationInFrames} frames @ ${fps}fps (${clip.output.duration_s}s), ${width}x${height}\n` +
-  `  public/${flags['public-link']} -> ${clipDir}\n`,
+  `  public/${flags['public-link']} -> ${clipDir}\n  public/${flags['episode-link']} -> ${episodeRoot}\n`,
 );

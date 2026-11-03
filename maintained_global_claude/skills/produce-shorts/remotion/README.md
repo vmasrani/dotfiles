@@ -9,12 +9,12 @@ workspace per clip, and `npm install` runs there — never in the skill repo.
 
 ## Where it sits in the pipeline
 
-`references/render-qc.md` stage 8 runs, in order:
+`references/render-qc.md` § Stage 3 runs, in order (`prep_short.py` does 1-4 and `gen-props.mjs`; `render_short.py` does the render, the encode and the bookkeeping, always through `queue`):
 
 1. `assemble_audio.py CLIP_DIR` → `renders/v<N>-audio.wav`
 2. lock the timeline
 3. `align_subtitles.py` → `subtitles/v<N>.ass`, then `validate_subtitles.py`
-4. `extract_segments.py CLIP_DIR` → A-roll clips under `assets/aroll/`
+4. `frame_segments.py CLIP_DIR` → `assets/framing.json` (crop geometry per A-roll panel; no video is cut)
 5. **this template** — `gen-props.mjs`, then `npx remotion render`
 6. per-profile ffmpeg encode + loudness normalisation
 7. version the render, never overwrite
@@ -38,7 +38,8 @@ node gen-props.mjs .. \
   --audio "renders/v$N-audio.wav" \
   --ass   "subtitles/v$N.ass"
 
-# 3. render the visual master (h264; loudness/profile encode is step 6)
+# 3. render the visual master by hand (normally: scripts/render_short.py CLIP_DIR, which queues this
+#    with --timeout/--offthreadvideo-cache-size/--concurrency=3 and then encodes)
 npx remotion render Short "../renders/v$N-master.mp4" --props=props.json
 
 # optional: inspect interactively before rendering
@@ -64,10 +65,9 @@ node gen-props.mjs <clip-dir> --audio <path> --ass <path> [flags]
   --episode <path>      episode.yaml                                   (default: <clip-dir>/../../episode.yaml)
   --defaults <path>     config/defaults.yaml, for its `safe_zones`     (default: built-in 200/320/60/120)
   --safe-top/-bottom/-left/-right <px>   override individual insets
-  --aroll-dir <dir>     staged A-roll dir, relative to the clip dir    (default: assets/aroll)
-  --aroll-ext <ext>     staged A-roll extension                        (default: .mp4)
   --out <path>          where to write props                           (default: ./props.json)
   --public-link <name>  name of the clip symlink inside public/        (default: clip)
+  --episode-link <name> name of the episode-root symlink in public/    (default: episode)
 ```
 
 It reads `clip.yaml` and `episode.yaml`, validates both with zod (strictly, the
@@ -100,12 +100,15 @@ template copy concurrently** — copy the template per clip.
 | `../../episode.yaml` | stage 1 | speakers, platform profile |
 | `renders/v<N>-audio.wav` | `assemble_audio.py` | the single audio track |
 | `subtitles/v<N>.ass` | `align_subtitles.py` | subtitle timing truth |
-| `assets/aroll/<SEG>.mp4` | `extract_segments.py` | A-roll, already cropped/normalised |
-| `assets/aroll/<SEG>-top.mp4`, `-bottom.mp4` | `extract_segments.py` | split-screen halves |
+| `assets/framing.json` | `frame_segments.py` | A-roll geometry: per segment the panels, source video, crop windows, blur-fill, speaker tile |
+| `../../<source video>` (episode root) | stage 1 | the one video every A-roll panel is cropped from, served at `public/episode/` |
 | `assets/<asset file>` | stage 5 | B-roll, as named in `assets[].file` |
 
-A-roll file naming is the contract between `extract_segments.py` and this
-template: one file per segment id, two (`-top` / `-bottom`) for `splitscreen`.
+`assets/framing.json` is the contract between `frame_segments.py` and this
+template: per segment id one `full` panel (`closeup-<speaker>`) or `top` + `bottom`
+panels (`splitscreen`). `gen-props.mjs` refuses a framing that is stale against
+`clip.yaml` (treatment, speakers, times) or whose geometry is bad (crop outside
+the source or outside the speaker's tile, stretched or off-panel draw rectangle).
 
 ## What the composition draws
 
@@ -118,16 +121,21 @@ One `<Sequence>` per timeline segment, in manifest order:
 
 | `visual.kind` | `visual.treatment` | Rendered as |
 |---|---|---|
-| `aroll` | `closeup-<speaker>` | the segment's staged clip, full-bleed (cover) |
-| `aroll` | `reaction-<speaker>` | the segment's staged clip, full-bleed (cover) |
-| `aroll` | `splitscreen` | two staged clips, stacked, each half height, cover |
-| `aroll` | `source-frame` | the staged clip letterboxed (contain) on black |
+| `aroll` | `closeup-<speaker>` | one full-frame panel: the source video cropped to the speaker's tile-bounded window (blur-fill backdrop when the tile is too small; the sharp rect is always centred horizontally over the backdrop) |
+| `aroll` | `splitscreen` | two half-height panels, each its own crop of the source video |
 | `broll` | `cover` | the asset, cover-fit |
 | `broll` | `contain` / `letterbox` | the asset, letterboxed on black |
 
+While a clip.yaml `overlays:` entry (fullscreen stills) is up, `props.quotes` turns the frame into the **quote layout**: the
+screenshots on the top half (fit rectangles, zoom, dissolves and fades from props.json; blurred darkened backdrop), and on
+the bottom half each covered A-roll segment's `quotePanel` — its speaker, cropped like a split-screen panel inside their
+tile. Captions switch to the `quote` layout (top of the bottom panel / seam). Geometry is decided by
+`scripts/quotelayout.py` + `scripts/frame_segments.py`; `gen-props.mjs` refuses pip / text / video / grid overlays
+("not implemented for shorts") and any asset without a provenance entry.
+
 Any other treatment throws. B-roll `treatment` values are limited to
-`cover`/`contain`/`letterbox`; the storyboard's editorial intent lives in the
-storyboard, not in a string this renderer would have to guess at.
+`cover`/`contain`/`letterbox`; editorial intent lives in the pick and `clip.yaml`,
+not in a string this renderer would have to guess at.
 
 All video is muted — the audio track is the assembled WAV, whose `duck`/`mute`
 decisions were already baked in by `assemble_audio.py`.

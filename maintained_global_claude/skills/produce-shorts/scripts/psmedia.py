@@ -1,6 +1,6 @@
 """Shared render-stage helpers: pipeline config, platform profiles, ffmpeg driving.
 
-Imported by the stage-8 entry scripts (`assemble_audio.py`, `extract_segments.py`,
+Imported by the stage-8 entry scripts (`assemble_audio.py`, `frame_segments.py`,
 `align_subtitles.py`) the same way they import `pslib` — the script directory is on
 sys.path. This module is not itself executable.
 
@@ -11,11 +11,13 @@ message, never a default that lets a wrong render proceed.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args, get_origin
 
 import yaml
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from pslib import Episode, PlatformProfile
@@ -145,11 +147,64 @@ class PipelineConfig(Loose):
     broll: BrollConfig | None = None
 
 
-def load_config(path: str | Path | None = None) -> PipelineConfig:
+def _deep_merge(base: dict, over: dict, prefix: str = "") -> tuple[dict, list[str]]:
+    """Return (merged, dotted keys whose value came from `over`). Mappings merge per key; anything else is replaced."""
+    merged, changed = dict(base), []
+    for k, v in over.items():
+        key = f"{prefix}{k}"
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            merged[k], sub = _deep_merge(base[k], v, f"{key}.")
+            changed += sub
+        else:
+            merged[k] = v
+            changed.append(key)
+    return merged, changed
+
+
+def _reject_unknown_keys(model: type[BaseModel], over: dict, prefix: str = "") -> None:
+    """Models ignore extras, so a typo'd override would silently do nothing — reject keys no model field declares."""
+    for k, v in over.items():
+        field = model.model_fields.get(k)
+        if field is None:
+            raise ValueError(f"config_overrides.{prefix}{k}: unknown key (valid here: {sorted(model.model_fields)})")
+        if not isinstance(v, dict):
+            continue
+        mapping = next((t for t in (field.annotation, *get_args(field.annotation)) if get_origin(t) is dict), None)
+        if mapping is not None:
+            # dict[str, Model]: the keys are free names (e.g. placements), each value is a Model
+            value_model = _model_in(get_args(mapping)[1])
+            for name, item in v.items():
+                if value_model is not None and isinstance(item, dict):
+                    _reject_unknown_keys(value_model, item, f"{prefix}{k}.{name}.")
+            continue
+        sub = _model_in(field.annotation)
+        if sub is not None:
+            _reject_unknown_keys(sub, v, f"{prefix}{k}.")
+
+
+def _model_in(annotation: object) -> type[BaseModel] | None:
+    """The BaseModel class an annotation names, directly or inside Optional/Union."""
+    return next((t for t in (annotation, *get_args(annotation))
+                 if isinstance(t, type) and issubclass(t, BaseModel)), None)
+
+
+def load_config(path: str | Path | None = None, episode_root: str | Path | None = None) -> PipelineConfig:
+    """Base config (defaults.yaml or `path`) with episode.yaml `config_overrides:` deep-merged over it, then validated."""
     p = Path(path) if path is not None else DEFAULT_CONFIG
     if not p.is_file():
         raise FileNotFoundError(f"missing pipeline config: {p} — pass --config or restore config/defaults.yaml")
-    return PipelineConfig.model_validate(yaml.safe_load(p.read_text()))
+    raw = yaml.safe_load(p.read_text())
+    if episode_root is not None:
+        ep_path = Path(episode_root) / "episode.yaml"
+        overrides = (yaml.safe_load(ep_path.read_text()) or {}).get("config_overrides")
+        if overrides is not None:
+            if not isinstance(overrides, dict):
+                raise ValueError(f"{ep_path}: config_overrides must be a mapping shaped like defaults.yaml")
+            _reject_unknown_keys(PipelineConfig, overrides)
+            raw, changed = _deep_merge(raw, overrides)
+            for key in changed:
+                logger.info(f"config override from {ep_path.name}: {key}")
+    return PipelineConfig.model_validate(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -272,12 +327,30 @@ def validate_crop_within(crop: tuple[int, int, int, int], src_w: int, src_h: int
 # ffmpeg
 # ---------------------------------------------------------------------------
 
-FFMPEG_BASE = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error", "-y"]
+#: The one ffmpeg this pipeline uses. Homebrew's default `ffmpeg` has no drawtext / libass-grade
+#: filters; `ffmpeg-full` does. Every script that shells out to ffmpeg/ffprobe resolves it here, so
+#: the result never depends on what PATH happens to hold.
+FFMPEG_FULL_DIR = Path("/opt/homebrew/opt/ffmpeg-full/bin")
+
+
+def ffmpeg_tool(name: str, bin_dir: Path = FFMPEG_FULL_DIR) -> str:
+    """Absolute path of `name` (ffmpeg | ffprobe) from ffmpeg-full; raises when it is not installed."""
+    path = bin_dir / name
+    if not path.is_file():
+        raise RuntimeError(
+            f"{path} not found — produce-shorts needs ffmpeg-full (drawtext, libass). "
+            "Install it: `brew install ffmpeg-full`"
+        )
+    return str(path)
+
+
+def ffmpeg_base() -> list[str]:
+    return [ffmpeg_tool("ffmpeg"), "-hide_banner", "-nostdin", "-loglevel", "error", "-y"]
 
 
 def run_ffmpeg(args: list[str], what: str) -> None:
     """Run ffmpeg with explicit args. Nonzero exit raises with the command and stderr."""
-    cmd = [*FFMPEG_BASE, *args]
+    cmd = [*ffmpeg_base(), *args]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
@@ -285,6 +358,36 @@ def run_ffmpeg(args: list[str], what: str) -> None:
             f"  command: {' '.join(cmd)}\n"
             f"  stderr: {proc.stderr.strip() or '<empty>'}"
         )
+
+
+TRUE_PEAK_MARGIN_DB = 1.5   # the aac re-encode overshoots the wav's true peak by ~0.8 dB (measured)
+
+
+def loudnorm_pass2_filter(measured: dict[str, str], lufs: float, tp: float) -> str:
+    """Pass-2 linear loudnorm filter from pass 1's `print_format=json` measurements."""
+    return (
+        f"loudnorm=I={lufs}:TP={tp}:LRA=11:measured_I={measured['input_i']}:measured_TP={measured['input_tp']}"
+        f":measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}"
+        f":offset={measured['target_offset']}:linear=true"
+    )
+
+
+def parse_loudnorm_json(stderr: str) -> dict[str, str]:
+    """The JSON block loudnorm prints at the end of its measurement pass."""
+    blob = stderr[stderr.rindex("{"):]
+    return json.loads(blob[: blob.index("}") + 1])
+
+
+def loudnorm_filter(wav: Path, lufs: float, tp: float) -> str:
+    """Measure (pass 1) on the assembled wav and return the pass-2 linear loudnorm filter string."""
+    out = subprocess.run(
+        [ffmpeg_tool("ffmpeg"), "-hide_banner", "-nostdin", "-i", str(wav), "-af",
+         f"loudnorm=I={lufs}:TP={tp}:LRA=11:print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        raise RuntimeError(f"loudnorm measurement failed (exit {out.returncode}): {out.stderr[-2000:]}")
+    return loudnorm_pass2_filter(parse_loudnorm_json(out.stderr), lufs, tp)
 
 
 def run_checked(cmd: list[str], what: str, env: dict[str, str] | None = None) -> str:

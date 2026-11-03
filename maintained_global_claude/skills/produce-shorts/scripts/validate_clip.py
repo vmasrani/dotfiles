@@ -29,6 +29,7 @@ from loguru import logger
 from rich.console import Console
 from rich.table import Table as RichTable
 
+import quotelayout
 from broll import MediaInfo, build_index, load_insert_words
 from pslib import (
     EPSILON,
@@ -504,8 +505,10 @@ def check_13_overlays(clip: Clip, index: dict[str, MediaInfo]) -> list[Finding]:
     out: list[Finding] = []
     fps = clip.output.fps
     dur = clip.output.duration_s
-    if clip.clip.format != "clip":
-        out.append(Finding("13", "overlays", "overlays only on format clip (shorts have no B-roll)", clip.clip.format))
+    if clip.clip.format == "short":   # a short draws only still pictures, fullscreen, as the quote layout (quotelayout.py)
+        for ov in clip.overlays:
+            for reason in quotelayout.unsupported(ov):
+                out.append(Finding("13", ov.id, "a short's overlay is a fullscreen still picture (not implemented for shorts)", reason))
     if clip.broll is None:
         out.append(Finding("13", "broll", "a broll: block (provenance, protected_tail_s)", "absent"))
     tail = _tail_start(clip)

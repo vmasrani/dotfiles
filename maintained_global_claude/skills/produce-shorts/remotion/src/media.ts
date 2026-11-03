@@ -1,5 +1,6 @@
-// Media paths in props.json are relative to the clip dir. gen-props.mjs links
-// the clip dir into public/<assetRoot>, so every path resolves through
+// Media paths in props.json are relative to the clip dir (b-roll, audio) or the episode root (a-roll source
+// videos). gen-props.mjs links the clip dir into public/<assetRoot> and the episode root into
+// public/<episodeRoot>, so every path resolves through
 // staticFile() and nothing is ever fetched over the network at render time.
 
 import { useEffect, useState } from 'react';
@@ -8,6 +9,10 @@ import type { ShortProps } from './schema';
 
 export const mediaUrl = (props: ShortProps, path: string): string =>
   staticFile(`${props.assetRoot}/${path}`);
+
+/** A source video under the episode root (a-roll panels). */
+export const sourceUrl = (props: ShortProps, path: string): string =>
+  staticFile(`${props.episodeRoot}/${path}`);
 
 /**
  * Fail the render — loudly, naming the path — when a file the manifest promised

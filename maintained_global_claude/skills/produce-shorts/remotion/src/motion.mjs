@@ -5,7 +5,7 @@
 // silently rendering a static frame for a motion the manifest asked for would
 // be a wrong-but-plausible result.
 
-/** Leading adverbs the storyboard is allowed to write; they carry no timing. */
+/** Leading adverbs a motion description is allowed to carry; they carry no timing. */
 const ADVERBS = new Set(['slow', 'slowly', 'fast', 'gentle', 'gently', 'subtle', 'steady', 'smooth']);
 
 /** Explicit "no motion" spellings. `null` in YAML means the same thing. */

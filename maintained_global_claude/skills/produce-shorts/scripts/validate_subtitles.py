@@ -28,10 +28,11 @@ quietly):
     min_display          display duration >= subtitles.min_display_seconds
     no_overlap           events never overlap in time
     manifest_coverage    every clip.yaml subtitles.lines[].text lands in EXACTLY one event
+    speaker_break        no event carries words of two timeline segments with different speakers
     safe_zones           rendered text band and wrap box inside the profile's safe region
     within_duration      every event inside [0, clip.output.duration_s]
     layout_positions     the .placements.json sidecar gives every card a position for EVERY layout run
-                         (solo / split) it spans, inside the safe region; on a split screen the band
+                         (solo / split / quote) it spans, inside the safe region; on a split screen the band
                          clears every mouth (mouth_clearance) — the renderer switches position on
                          exactly the frame the layout switches
 
@@ -378,6 +379,31 @@ def check_manifest_coverage(script: Script, clip: Clip) -> list[Finding]:
     return out
 
 
+def check_speaker_breaks(script: Script, clip: Clip) -> list[Finding]:
+    """A speaker change is always a caption break: no event spans words of two different speakers.
+
+    Events are located, in order, as a contiguous run of word tokens in the timeline's dialogue; an event that
+    cannot be located is reported too (the check cannot pass quietly on text it cannot place).
+    """
+    stream = [(tok, seg.speaker) for seg in clip.timeline for tok in tokenize(seg.dialogue)]
+    tokens = [tok for tok, _ in stream]
+    out: list[Finding] = []
+    cursor = 0
+    for ev in sorted(script.events, key=lambda e: (e.start, e.end)):
+        needle = tokenize(ev.visible_text)
+        at = next((k for k in range(cursor, len(tokens) - len(needle) + 1) if tokens[k:k + len(needle)] == needle), None)
+        if at is None:
+            out.append(Finding("speaker_break", _where(ev), "caption words found in the timeline dialogue, in order",
+                               f"cannot locate {ev.visible_text!r}"))
+            continue
+        cursor = at + len(needle)
+        speakers = list(dict.fromkeys(spk for _, spk in stream[at:cursor]))
+        if len(speakers) > 1:
+            out.append(Finding("speaker_break", _where(ev), "one speaker per caption",
+                               f"speakers {speakers} in {ev.visible_text!r}"))
+    return out
+
+
 # --------------------------------------------------------------------------------------
 # Safe zones
 # --------------------------------------------------------------------------------------
@@ -519,8 +545,21 @@ def check_safe_zones(script: Script, zones: SafeZones, profile: PlatformProfile)
 # --------------------------------------------------------------------------------------
 
 
+def quote_clearance(where: str, run: dict, keepouts: list[capplace.Zone]) -> list[Finding]:
+    """A caption on a quote layout never touches the screenshot as drawn (zero tolerance, same margin as a mouth)."""
+    if run["layout"] != "quote":
+        return []
+    covered = capplace.hits(run["top"], run["bottom"], run["t0"], run["t1"], keepouts)
+    if not covered:
+        return []
+    return [Finding("quote_clearance", where, f"caption band clear of the screenshot ({capplace.MOUTH_MARGIN_PX:.0f}px margin)",
+                    f"{run['placement']} {run['top']:.0f}-{run['bottom']:.0f}px covers " + ", ".join(
+                        f"{z.who} {z.top:.0f}-{z.bottom:.0f}px" for z in covered))]
+
+
 def check_layout_positions(
-    script: Script, ass_path: Path, clip: Clip, mouths: list[capplace.Zone], zones: SafeZones, profile: PlatformProfile
+    script: Script, ass_path: Path, clip: Clip, mouths: list[capplace.Zone], zones: SafeZones, profile: PlatformProfile,
+    keepouts: list[capplace.Zone] = (),
 ) -> list[Finding]:
     """Every card has a position for every layout run it is on screen across (the `.placements.json` sidecar), each
     inside the safe region, the first matching the .ass, and on a split screen clear of every visible mouth."""
@@ -555,13 +594,14 @@ def check_layout_positions(
                 out.append(Finding("layout_positions", where, f"band {block_h:.0f}px tall ({len(ev.lines)} rows)", at))
             if r["top"] < region.top - EPSILON or r["bottom"] > region.bottom + EPSILON:
                 out.append(Finding("safe_zones", where, f"text inside {region.top:.0f}-{region.bottom:.0f}px", at))
-            if r["layout"] != "split":
+            if r["layout"] == "solo":
                 continue
+            out += quote_clearance(where, r, keepouts)
             seconds, covered = capplace.exposure(r["top"], r["bottom"], r["t0"], r["t1"], mouths)
             if seconds > capplace.tolerated_s(r["t0"], r["t1"]):
                 out.append(Finding(
                     "mouth_clearance", where,
-                    f"caption band clear of every mouth during a split screen (<= {capplace.tolerated_s(r['t0'], r['t1']):.2f}s "
+                    f"caption band clear of every mouth during a {r['layout']} layout (<= {capplace.tolerated_s(r['t0'], r['t1']):.2f}s "
                     f"of contact, {capplace.MOUTH_MARGIN_PX:.0f}px margin)",
                     f"{at} covers {seconds:.2f}s of " + ", ".join(f"{z.who} {z.top:.0f}-{z.bottom:.0f}px" for z in covered)))
     return out
@@ -572,18 +612,20 @@ def validate(
 ) -> list[Finding]:
     """Run every subtitle check. Returns findings; an empty list means green.
 
-    `clip_dir` locates assets/aroll/layout.json (the measured mouth bands); it is required whenever the clip has a
+    `clip_dir` locates assets/framing.json (the measured mouth bands); it is required whenever the clip has a
     split screen, because the caption-clearance check cannot be skipped silently.
     """
     script = read_script(ass_path)
     limits = config.subtitles
-    if capplace.has_split(clip):
+    if capplace.needs_zones(clip):
         if clip_dir is None:
-            raise ValueError("validate(): the clip has a split screen — pass clip_dir so caption clearance can be checked")
-        mouths = capplace.load_zones(clip_dir, clip, int(profile.resolution.lower().partition("x")[2]))
+            raise ValueError("validate(): the clip has a split screen or a picture overlay — pass clip_dir so caption clearance can be checked")
+        frame_h = int(profile.resolution.lower().partition("x")[2])
+        mouths = capplace.load_zones(clip_dir, clip, frame_h)
+        keepouts = capplace.load_keepouts(clip_dir, clip, frame_h)
     else:
-        mouths = []
-    positions = check_layout_positions(script, Path(ass_path), clip, mouths, config.safe_zones, profile)
+        mouths, keepouts = [], []
+    positions = check_layout_positions(script, Path(ass_path), clip, mouths, config.safe_zones, profile, keepouts)
     return [
         *check_max_lines(script, limits),
         *check_max_chars_per_line(script, limits),
@@ -591,6 +633,7 @@ def validate(
         *check_min_display(script, limits),
         *check_no_overlap(script),
         *check_manifest_coverage(script, clip),
+        *check_speaker_breaks(script, clip),
         *check_safe_zones(script, config.safe_zones, profile),
         *check_within_duration(script, clip),
         *positions,
@@ -629,7 +672,7 @@ def main(
         raise typer.BadParameter(f"missing subtitle file: {ass}")
 
     root = episode_root_for(clip_dir, episode_root)
-    settings = load_config(config)
+    settings = load_config(config, root)
     target = resolve_profile(load_episode(root / "episode.yaml"), profile)
     clip = load_clip(clip_path)
 

@@ -399,15 +399,18 @@ class TimedWord:
     text: str
     start: float
     end: float
+    speaker: str = ""      # the timeline segment's speaker: a change of speaker is always a caption break
 
 
 def timed_dialogue_words(clip: Clip, hyp: list[HypWord]) -> list[TimedWord]:
     """Every dialogue word in output order with its spoken start/end (unmatched words interpolated)."""
-    raws = [w for seg in clip.timeline for w in seg.dialogue.split()]
+    raws = [(w, seg.speaker) for seg in clip.timeline for w in seg.dialogue.split()]
     merged: list[str] = []
-    for raw in raws:          # a bare "\u2014" has no tokens: it rides with the word before it
+    speakers: list[str] = []
+    for raw, speaker in raws:          # a bare "\u2014" has no tokens: it rides with the word before it
         if tokenize(raw) or not merged:
             merged.append(raw)
+            speakers.append(speaker)
         else:
             merged[-1] += f" {raw}"
     tokens = [(i, tok) for i, raw in enumerate(merged) for tok in tokenize(raw)]
@@ -435,7 +438,7 @@ def timed_dialogue_words(clip: Clip, hyp: list[HypWord]) -> list[TimedWord]:
         for n in range(k, j):
             spans[n] = (lo + (n - k) * step, lo + (n - k + 1) * step)
         k = j
-    return [TimedWord(text, *sp) for text, sp in zip(merged, spans)]
+    return [TimedWord(text, *sp, speaker) for text, sp, speaker in zip(merged, spans, speakers)]
 
 
 def rows_needed(texts: list[str], max_chars: int) -> float:
@@ -476,6 +479,8 @@ def derive_caption_lines(clip: Clip, hyp: list[HypWord], cfg: SubtitleConfig) ->
         return chars / window > max_cps + EPSILON or window < cfg.min_display_seconds - EPSILON
 
     def card_cost(i: int, j: int, max_rows: int) -> float | None:
+        if len({w.speaker for w in words[i:j]}) > 1:
+            return None                                    # a speaker change is always a caption break
         texts = [w.text for w in words[i:j]]
         rows = rows_needed(texts, max_chars)
         if rows > max_rows:
@@ -890,6 +895,7 @@ def build_ass(
     style: SubtitleConfig,
     mouths: list[capplace.Zone],
     fps: float,
+    keepouts: list[capplace.Zone] = (),
 ) -> tuple[str, dict]:
     # Two objects, two responsibilities, and they are NOT interchangeable:
     #   `clip.subtitles` (SubtitleSpec, from clip.yaml) owns WHAT the captions say and where —
@@ -948,7 +954,8 @@ def build_ass(
 
     def run_placement(item: AlignedLine, run: capplace.LayoutRun) -> capplace.Placement:
         """Per-layout placement: over a solo shot the style's bottom-centre; over a split screen the seam (or the top
-        of the bottom panel) where it covers neither mouth."""
+        of the bottom panel) where it covers neither mouth; over a quote layout the top of the bottom panel (or the seam)
+        where it covers neither the speaker's mouth nor the screenshot."""
         margin_v = middle_lower if item.line.position == "middle-lower" else zones.bottom
         block = capplace.block_height(len(item.display_lines), font_size)
         if run.layout == "solo":
@@ -959,7 +966,8 @@ def build_ass(
                                f"touches a mouth for {seconds:.2f}s: " + ", ".join(f"{z.who} {z.top:.0f}-{z.bottom:.0f}px" for z in covered))
             return bottom
         return capplace.choose_position(run.t0, run.t1, len(item.display_lines), font_size, play_w, play_h, mouths,
-                                        margin_v, 1.0, zones.top, play_h - zones.bottom)
+                                        margin_v, 1.0, zones.top, play_h - zones.bottom,
+                                        keepouts=keepouts, top_first=run.layout == "quote")
 
     def as_written(seconds: float) -> float:
         """The time the .ass stores (centiseconds) — the frames the renderer draws come from this, not the float."""
@@ -1025,7 +1033,7 @@ def main(
         )
 
     root = episode_root_for(clip_dir, episode_root)
-    config = load_config(config_path)
+    config = load_config(config_path, root)
     clip = load_clip(clip_dir / "clip.yaml")
     episode = load_episode(root / "episode.yaml")
     profile = resolve_profile(episode, profile_name)
@@ -1119,8 +1127,10 @@ def main(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
         logger.info(f"regenerating {out_path} from {audio_path.name}")
-    mouths = capplace.load_zones(clip_dir, clip, play_h) if capplace.has_split(clip) else []
-    ass_text, placements = build_ass(clip, aligned, config.safe_zones, play_w, play_h, font_size, config.subtitles, mouths, profile.fps)
+    zoned = capplace.needs_zones(clip)
+    mouths = capplace.load_zones(clip_dir, clip, play_h) if zoned else []
+    keepouts = capplace.load_keepouts(clip_dir, clip, play_h) if zoned else []
+    ass_text, placements = build_ass(clip, aligned, config.safe_zones, play_w, play_h, font_size, config.subtitles, mouths, profile.fps, keepouts)
     out_path.write_text(ass_text)
     capplace.placements_path(out_path).write_text(json.dumps(placements, indent=1))
 

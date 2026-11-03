@@ -1,5 +1,5 @@
-# Pipeline defaults for produce-shorts. Override per episode by copying the
-# relevant block into episode.yaml (episode values win over these defaults).
+# Pipeline defaults for produce-shorts. Override per episode with a top-level
+# `config_overrides:` mapping in episode.yaml, shaped like this file (episode values win per key).
 
 transcription:
   engine: assemblyai          # assemblyai | mlx-whisper — explicit; scripts fail loud
@@ -104,13 +104,17 @@ review:                       # Google Docs review surfaces
   max_paragraph_s: 45         # long turns split into timestamped paragraphs
   palette:                    # one per pick, never reused in a doc
     ["#FFE08A", "#B6E3F4", "#C8F0C0", "#F9C6D0", "#D9C8F5", "#FFD1A6",
-     "#B8F2E6", "#F5E6A3", "#C9D7F8", "#F2C1E8", "#D4EDB0", "#FFC9C9"]
+     "#B8F2E6", "#F5E6A3", "#C9D7F8", "#F2C1E8", "#D4EDB0", "#FFC9C9",
+     "#E6D3B3", "#A8D8EA", "#FCE38A", "#BFE6C8", "#E0BBE4", "#FFDAC1",
+     "#B5EAD7", "#C7CEEA", "#F7D6E0", "#DCEDC1", "#FFE4B5", "#B0E0E6",
+     "#E8D5F2", "#F0E68C", "#C1E1C1", "#FFCCE5", "#CFE8FF", "#F3D9B1",
+     "#D5F5E3", "#FADBD8", "#D6EAF8", "#FDEBD0", "#E8DAEF", "#D0ECE7"]
 
 framing:                      # plan_framing.py (shorts)
   exchange_gap_s: 2.0         # question→answer within this = both parties live
   exchange_turn_s: 6.0        # back-and-forth of turns shorter than this = split screen
   max_dwell_s: 12.0           # no single treatment held longer
-  # extract_segments.py: a closeup frames head-and-shoulders (face box ~30% of the frame height, eye line ~0.33).
+  # frame_segments.py: a closeup frames head-and-shoulders (face box ~30% of the frame height, eye line ~0.33).
   # The source crop is never magnified past this factor; when the speaker's tile cannot fill 9:16 at that scale the
   # sharp crop is laid over a blurred, darkened copy of itself instead of being zoomed until it turns to mush.
   max_upscale: 2.0
@@ -158,6 +162,11 @@ broll:
       card:        {x: 960,  y: 120, anchor: top-center,    max_width: 1500}
       side-panel:  {x: 1824, y: 540, anchor: center-right,  max_width: 640}
       top-right:   {x: 1824, y: 96,  anchor: top-right,     max_width: 760}
+      title-center: {x: 960, y: 770, anchor: center,        max_width: 1600}   # intro title card
+      # Name tags under a face in a 3-up gallery source (episode.yaml layout_timeline says who sits where)
+      tile-left:   {x: 48,   y: 1016, anchor: bottom-left,  max_width: 560}
+      tile-mid:    {x: 688,  y: 1016, anchor: bottom-left,  max_width: 560}
+      tile-right:  {x: 1328, y: 1016, anchor: bottom-left,  max_width: 560}
   pip:
     border_px: 4
     border_color: "#FFFFFF"

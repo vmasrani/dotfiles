@@ -56,6 +56,7 @@ from pslib import (
     load_episode,
     save_episode,
 )
+from psmedia import ffmpeg_tool
 
 console = Console()
 app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__)
@@ -551,7 +552,7 @@ def verify(
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"verify-{Path(rel).stem}-{ep_t:.3f}s.mp4"
     cmd = [
-        "ffmpeg", "-y", "-v", "error", "-nostdin",
+        ffmpeg_tool("ffmpeg"), "-y", "-v", "error", "-nostdin",
         "-ss", f"{ep_t:.3f}", "-i", str(ep_video),
         "-ss", f"{cam_t:.3f}", "-i", str(cam_path),
         "-filter_complex",

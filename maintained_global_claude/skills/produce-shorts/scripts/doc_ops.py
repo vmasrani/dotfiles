@@ -2,6 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#   "pydantic>=2.9",
 #   "pyyaml>=6.0",
 #   "typer>=0.12",
 #   "loguru>=0.7",
@@ -17,7 +18,8 @@ Every edit is a Docs `batchUpdate` against the live pick doc (colours, strikethr
 status text), never a re-upload, so the user's comments stay anchored. Each edit re-validates
 (no overlapping picks, short < 180 s, nothing outside the published spans) before touching the
 doc, then reads the doc back and verifies it. Word indices are INCLUSIVE; find them with
-`locate`. Storyboard docs use `comments|reply|resolve --doc DOC_ID`. See references/pick-doc.md §5.
+`locate`. See references/pick-doc.md §5. `final` records a render's Drive link in clip.yaml; `youtube`
+records its private YouTube upload and marks the clip delivered.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ import typer
 from loguru import logger
 
 import gdoc
+from pslib import load_clip, save_clip
 from gdoc import (Ctx, Model, PickMeta, die, ends_on, fmt_clock, fmt_dur, kept_duration, kept_segments,
                   load_ctx, load_published, locate_quote, pick_ranges_text)
 
@@ -131,21 +134,9 @@ def show(episode_dir: Path = EPISODE, pick: str = typer.Argument(None, help="Pic
     print(json.dumps({pick: picks[pick]} if pick else picks, indent=2, ensure_ascii=False))
 
 
-def split_args(args: list[str], doc: str | None, usage: str, n_with_episode: int) -> tuple[Path | None, list[str]]:
-    if doc:
-        if len(args) != n_with_episode - 1:
-            die(f"usage with --doc: doc_ops.py {usage.replace('EPISODE_DIR ', '')} --doc DOC_ID")
-        return None, args
-    if len(args) != n_with_episode:
-        die(f"usage: doc_ops.py {usage}  (or without EPISODE_DIR when --doc DOC_ID is given)")
-    return Path(args[0]), args[1:]
-
-
-def google_for(episode_dir: Path | None, account: str | None) -> tuple[gdoc.Google, Ctx | None]:
-    if episode_dir:
-        ctx = load_ctx(episode_dir)
-        return gdoc.Google(ctx.account), ctx
-    return gdoc.Google(account or gdoc.review_defaults()["account"]), None
+def google_for(episode_dir: Path) -> tuple[gdoc.Google, Ctx]:
+    ctx = load_ctx(episode_dir)
+    return gdoc.Google(ctx.account), ctx
 
 
 # ---------------------------------------------------------------------------
@@ -234,20 +225,17 @@ def thread_json(c: dict[str, Any], ctx: Ctx | None, model: Model | None) -> dict
 
 @app.command()
 def comments(
-    args: list[str] = typer.Argument(None, help="EPISODE_DIR (omit with --doc)"),
-    doc: str = typer.Option(None, "--doc", help="Comment on any doc by id (storyboard docs)"),
-    account: str = typer.Option(None, help="Google account for --doc (default: review.account)"),
+    episode_dir: Path = EPISODE,
     all_: bool = typer.Option(False, "--all", help="Include resolved threads"),
 ) -> None:
     """Open comment threads (JSON): quoted text, full reply chain, resolved word range."""
-    ep, _ = split_args(args or [], doc, "comments EPISODE_DIR", 1)
-    g, ctx = google_for(ep, account)
-    doc_id = doc or ctx.doc_id()  # type: ignore[union-attr]
+    g, ctx = google_for(episode_dir)
+    doc_id = ctx.doc_id()
     threads = g.list_comments(doc_id)
-    log_id = ctx.review.get("log_comment_id") if ctx else None
+    log_id = ctx.review.get("log_comment_id")
     threads = [c for c in threads if c["id"] != log_id and (all_ or not c.get("resolved"))]
     model = None
-    if ctx and threads:
+    if threads:
         model = gdoc.read_model(ctx, gdoc.align_doc(gdoc.parse_doc(g.get_doc(doc_id), ctx), ctx))
     out = sorted((thread_json(c, ctx, model) for c in threads), key=lambda t: t["created"] or "")
     if not out:
@@ -256,30 +244,23 @@ def comments(
 
 
 @app.command()
-def reply(
-    args: list[str] = typer.Argument(None, help="EPISODE_DIR COMMENT_ID TEXT  (with --doc: COMMENT_ID TEXT)"),
-    doc: str = typer.Option(None, "--doc"),
-    account: str = typer.Option(None),
-) -> None:
+def reply(episode_dir: Path = EPISODE, comment_id: str = typer.Argument(...), text: str = typer.Argument(...)) -> None:
     """Reply to a comment thread (leave it open — a question back to the user)."""
-    ep, rest = split_args(args or [], doc, "reply EPISODE_DIR COMMENT_ID TEXT", 3)
-    g, ctx = google_for(ep, account)
-    rid = g.reply(doc or ctx.doc_id(), rest[0], rest[1])  # type: ignore[union-attr]
-    print(json.dumps({"comment": rest[0], "reply": rid}))
+    g, ctx = google_for(episode_dir)
+    rid = g.reply(ctx.doc_id(), comment_id, text)
+    print(json.dumps({"comment": comment_id, "reply": rid}))
 
 
 @app.command()
 def resolve(
-    args: list[str] = typer.Argument(None, help="EPISODE_DIR COMMENT_ID  (with --doc: COMMENT_ID)"),
-    doc: str = typer.Option(None, "--doc"),
-    account: str = typer.Option(None),
+    episode_dir: Path = EPISODE,
+    comment_id: str = typer.Argument(...),
     message: str = typer.Option("", help="Optional text posted with the resolve"),
 ) -> None:
     """Resolve a comment thread."""
-    ep, rest = split_args(args or [], doc, "resolve EPISODE_DIR COMMENT_ID", 2)
-    g, ctx = google_for(ep, account)
-    rid = g.reply(doc or ctx.doc_id(), rest[0], message, action="resolve")  # type: ignore[union-attr]
-    print(json.dumps({"comment": rest[0], "resolved_by_reply": rid}))
+    g, ctx = google_for(episode_dir)
+    rid = g.reply(ctx.doc_id(), comment_id, message, action="resolve")
+    print(json.dumps({"comment": comment_id, "resolved_by_reply": rid}))
 
 
 @app.command()
@@ -452,69 +433,37 @@ def status(episode_dir: Path = EPISODE, pick: str = PICK,
 
 
 # ---------------------------------------------------------------------------
-# final render link in a storyboard doc
+# final render link
 # ---------------------------------------------------------------------------
 
 
 @app.command()
 def final(clip_dir: Path = typer.Argument(..., help="clips/<slug> directory"),
           url: str = typer.Option(..., "--url", help="Drive link of the final render")) -> None:
-    """Insert `FINAL RENDER v<N>: <url>` at the top of the clip's latest storyboard doc."""
+    """Record the final render's Drive link in clip.yaml `review.final_url`."""
     clip_dir = clip_dir.expanduser().resolve()
-    clip = gdoc.load_yaml(clip_dir / "clip.yaml")
-    docs = (clip.get("review") or {}).get("storyboard_docs") or []
-    if not docs:
-        die(f"{clip_dir / 'clip.yaml'} has no review.storyboard_docs — build the storyboard doc first")
-    latest = max(docs, key=lambda d: d["rev"])
-    versions = (clip.get("render") or {}).get("versions") or []
-    if not versions:
-        die(f"{clip_dir / 'clip.yaml'} has no render.versions — render before adding the final link")
-    n = versions[-1]["version"]
-    episode = clip_dir.parent.parent
-    account = (gdoc.load_yaml(episode / "episode.yaml").get("review") or {}).get("account") \
-        or gdoc.review_defaults()["account"]
-    g = gdoc.Google(account)
-    text = f"FINAL RENDER v{n}: {url}"
-    first = _first_paragraph(g.get_doc(latest["id"]))
-    reqs: list[dict[str, Any]] = []
-    if first["text"].startswith("FINAL RENDER v"):
-        if first["text"] == text:
-            print(json.dumps({"doc": latest["url"], "unchanged": True}))
-            return
-        if first["text"].startswith(f"FINAL RENDER v{n}:"):
-            reqs.append({"deleteContentRange": {"range": {"startIndex": first["start"], "endIndex": first["text_end"]}}})
-            insert_at, newline = first["start"], ""
-        else:
-            insert_at, newline = first["start"], "\n"
-    else:
-        insert_at, newline = first["start"], "\n"
-    size = gdoc._utf16_len(text)
-    reqs += [
-        {"insertText": {"location": {"index": insert_at}, "text": text + newline}},
-        {"updateTextStyle": {"range": {"startIndex": insert_at, "endIndex": insert_at + size},
-                             "textStyle": {"bold": True}, "fields": "bold"}},
-        {"updateTextStyle": {"range": {"startIndex": insert_at + size - gdoc._utf16_len(url), "endIndex": insert_at + size},
-                             "textStyle": {"link": {"url": url}}, "fields": "link"}},
-    ]
-    if newline:
-        reqs.append({"updateParagraphStyle": {
-            "range": {"startIndex": insert_at, "endIndex": insert_at + size + 1},
-            "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"}, "fields": "namedStyleType"}})
-    g.batch_update(latest["id"], reqs)
-    after = _first_paragraph(g.get_doc(latest["id"]))
-    if after["text"] != text:
-        die(f"readback mismatch: first paragraph of {latest['url']} is {after['text'][:80]!r}, expected {text!r}")
-    print(json.dumps({"doc": latest["url"], "line": text}))
+    clip = load_clip(clip_dir / "clip.yaml")
+    if not clip.render.versions:
+        die(f"{clip_dir / 'clip.yaml'} has no render.versions — render before recording the final link")
+    clip.review.final_url = url
+    save_clip(clip_dir / "clip.yaml", clip)
+    print(json.dumps({"clip": clip.clip.id, "version": clip.render.versions[-1].version, "final_url": url}))
 
 
-def _first_paragraph(doc: dict[str, Any]) -> dict[str, Any]:
-    for el in doc["body"]["content"]:
-        p = el.get("paragraph")
-        if p:
-            text = "".join(e.get("textRun", {}).get("content", "") for e in p["elements"]).rstrip("\n")
-            return {"start": el.get("startIndex", 1), "text": text,
-                    "text_end": el["endIndex"] - 1}
-    die("document has no paragraphs")
+@app.command()
+def youtube(clip_dir: Path = typer.Argument(..., help="clips/<slug> directory"),
+            url: str = typer.Option(..., "--url", help="YouTube watch/shorts URL of the private upload")) -> None:
+    """Record the private YouTube upload in clip.yaml `review.youtube_url` and mark the clip `delivered`.
+
+    Publishing is the owner's job in YouTube Studio; this only records that the upload exists."""
+    clip_dir = clip_dir.expanduser().resolve()
+    clip = load_clip(clip_dir / "clip.yaml")
+    if clip.clip.status not in ("qc_passed", "delivered"):
+        die(f"{clip.clip.id} is {clip.clip.status!r}; only a qc_passed render may be uploaded")
+    clip.review.youtube_url = url
+    clip.clip.status = "delivered"
+    save_clip(clip_dir / "clip.yaml", clip)
+    print(json.dumps({"clip": clip.clip.id, "youtube_url": url, "status": clip.clip.status}))
 
 
 if __name__ == "__main__":

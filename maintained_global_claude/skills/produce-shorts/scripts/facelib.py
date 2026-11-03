@@ -1,6 +1,6 @@
 """Face detection, speaker identity and crop geometry for the shorts framing path.
 
-Not executable: sibling entry scripts (`extract_segments.py`) import it the way they import
+Not executable: sibling entry scripts (`frame_segments.py`) import it the way they import
 `pslib`; the importing script declares the dependencies (opencv-python-headless, numpy).
 
 Why this exists: one static crop per speaker cannot follow people who move over a 99-minute
@@ -13,7 +13,7 @@ Models (OpenCV Zoo, pinned by sha256, fetched once into ~/.cache/produce-shorts/
 * **YuNet** (`cv2.FaceDetectorYN`) — face boxes + 5 landmarks, ~20 ms/frame on CPU. Chosen over
   MediaPipe BlazeFace: it is the OpenCV-maintained detector, scores higher on hard faces
   (small tiles, glasses, headphones), needs no extra runtime, and `opencv-python-headless` is
-  already a dependency of the stage-2 scripts.
+  already a dependency of plan_framing.py and the render prep.
 * **SFace** int8 (`cv2.FaceRecognizerSF`) — a 128-d identity embedding, used only on shared
   (multi-person) sources to tell which detected face is which speaker.
 
@@ -316,7 +316,12 @@ def speaker_gallery(cache: Path, video: Path, video_rel: str, dims: tuple[int, i
 # ---------------------------------------------------------------------------
 
 SEAM_GRADIENT = 24.0     # grey-level step that counts as a tile seam pixel
-SEAM_COVERAGE = 0.9      # fraction of the probe band the step must span
+# Fraction of the probe band (the face's height +-0.8, not the frame's) the step must span to count as a seam. Measured on
+# the 640x1080 Zoom tiles of episode-bayesian-conspiracy: real seams span 0.59-0.95 of the band, the strongest non-seam
+# column (hair, a collar) 0.40, and 0.9 missed the seam in 6 of 8 frames and so let a crop run into the neighbour's tile.
+SEAM_COVERAGE = 0.5
+SEAM_FACE_SLACK = 0.1    # a face box may overhang its tile seam by this fraction of its width (detector box margin)
+NEIGHBOUR_MIN_SIZE = 0.5 # another detection counts as another person when at least this fraction of the speaker's face height
 Bounds = tuple[float, float, float, float]   # left, top, right, bottom
 
 
@@ -329,11 +334,32 @@ def _seam_bounds(gray: np.ndarray, f: Face) -> Bounds:
     rows = (np.abs(gray[4:, band_x0:band_x1] - gray[:-4, band_x0:band_x1]) > SEAM_GRADIENT).mean(1)
     seam_x = [i + 2 for i in np.nonzero(cols >= SEAM_COVERAGE)[0]]
     seam_y = [i + 2 for i in np.nonzero(rows >= SEAM_COVERAGE)[0]]
-    left = max((x for x in seam_x if x <= f.x), default=0)
-    right = min((x for x in seam_x if x >= f.x + f.w), default=W)
-    top = max((y for y in seam_y if y <= f.y), default=0)
-    bottom = min((y for y in seam_y if y >= f.y + f.h), default=H)
+    sx, sy = SEAM_FACE_SLACK * f.w, SEAM_FACE_SLACK * f.h
+    left = max((x for x in seam_x if x <= f.x + sx), default=0)
+    right = min((x for x in seam_x if x >= f.x + f.w - sx), default=W)
+    top = max((y for y in seam_y if y <= f.y + sy), default=0)
+    bottom = min((y for y in seam_y if y >= f.y + f.h - sy), default=H)
     return float(left), float(top), float(right), float(bottom)
+
+
+def tile_bounds(gray: np.ndarray, face: Face, faces: list[Face], where: str) -> Bounds:
+    """`_seam_bounds`, refused when the tile it finds still holds another person's face.
+
+    A tile with no detected seam silently degrades to the frame edge, which on a gallery frame is every speaker's tile at
+    once. Another person's face inside the speaker's tile is the observable proof that happened (a small low-confidence
+    detection on a hand or a microphone, or a second box on the speaker's own face, is not a person)."""
+    left, top, right, bottom = bounds = _seam_bounds(gray, face)
+    def on_the_speaker(o: Face) -> bool:   # a second box centred on the speaker's own face (beard, glasses) is not a person
+        return face.x <= o.cx <= face.x + face.w and face.y <= o.cy <= face.y + face.h
+
+    intruders = [o for o in faces if o is not face and o.h >= NEIGHBOUR_MIN_SIZE * face.h and not on_the_speaker(o)
+                 and left <= o.cx <= right and top <= o.cy <= bottom]
+    if intruders:
+        raise FaceError(
+            f"{where}: t={face.t:.2f}s the speaker's tile ({left:.0f},{top:.0f})-({right:.0f},{bottom:.0f}) also holds "
+            f"{len(intruders)} other face(s) at x={[round(o.cx) for o in intruders]} — no tile seam was found around the speaker, "
+            f"so a crop could show a neighbour (SEAM_GRADIENT/SEAM_COVERAGE in facelib.py)")
+    return bounds
 
 
 @dataclass
@@ -381,7 +407,8 @@ def _pick_face(frame: np.ndarray, t: float, gallery: dict[str, np.ndarray] | Non
     if sim < SAME_PERSON_COSINE * 0.6 or any(float(v @ emb) > sim for s, v in gallery.items() if s != speaker):
         return None
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    return Face(pick.t, pick.x, pick.y, pick.w, pick.h, pick.score, pick.lm, pick.row, _seam_bounds(gray, pick))
+    return Face(pick.t, pick.x, pick.y, pick.w, pick.h, pick.score, pick.lm, pick.row,
+                tile_bounds(gray, pick, faces, f"speaker {speaker}"))
 
 
 def _jumped(a: Face, b: Face) -> bool:
@@ -413,15 +440,13 @@ MAX_HOLE_S = 0.6             # longest stretch with no face between two differen
 MAX_HOLE_SAME_PLACE_S = 2.5  # ... between two sightings in the same place (head turned, hand over the face)
 MAX_EDGE_HOLE_S = 1.0        # ... at the start/end of a segment (layout assumed unchanged)
 MIN_SHOT_S = 0.4             # shorter layout flashes are absorbed into the neighbouring shot
-FACE_WIDTH_FACTOR = {"panel": 2.8}   # crop width / face width for split-screen panels (closeups use CLOSEUP_FACE_HEIGHT)
-EYE_LINE = 0.33               # eye line as a fraction of crop height (upper third)
+PANEL_FACE_HEIGHT = 0.30      # split-screen / quote-layout speaker panel: detected face box height as a fraction of the panel height
+PANEL_EYE_LINE = 0.36         # ... with the eye line this far down the crop (head room above the face)
 CLOSEUP_FACE_HEIGHT = 0.30    # closeup: detected face box height as a fraction of output height (head and shoulders: 25-35%)
 CLOSEUP_EYE_BAND = (0.30, 0.36)   # closeup: the eye line may drift this far inside a tile before the shot goes blur-fill
 MOUTH_ZONE = (0.62, 1.0)      # nose-base to chin, as fractions of the face box height: what a caption must not cover
-BLUR_SCALE = 4                # the blur-fill backdrop is rendered at 1/BLUR_SCALE size, blurred, then scaled up
-BLUR_SIGMA = 12.0             # gaussian sigma at that reduced size (~48px at full size, as the Remotion blur-fill treatment)
+BLUR_PX = 48.0                # blur-fill backdrop: CSS blur radius in output px
 BLUR_BRIGHTNESS = 0.55        # backdrop luma multiplier: an undimmed blur competes with the sharp foreground
-MIN_FACE_FRAMES = 1.6         # a crop narrower than this many face widths cuts the face
 HEADROOM_FACES = 0.15        # least hair room above the detected box, in face heights (the eye line normally gives more)
 SMOOTH_S = 1.0               # pan smoothing window
 STATIC_TRAVEL = 0.06         # a path that moves less than this fraction of the crop width stays a static crop
@@ -434,8 +459,9 @@ FRAMES_INSIDE_MIN = 0.9      # ... in this fraction of the frames
 class Shot:
     """One continuous framing: a fixed-size crop window whose top-left follows `keys` (source time, x, y) linearly.
 
-    `dst` is None when the crop fills the whole output frame. When set (x, y, w, h in output px) the crop is a
-    blur-fill foreground: it is drawn at that rectangle, sharp, over a blurred, darkened copy of itself.
+    `dst` is None when the crop fills the whole output frame (or panel). When set (x, y, w, h in output px, relative to
+    the panel) the crop is a blur-fill foreground: it is drawn at that rectangle, sharp, over a blurred, darkened copy
+    of itself. `tile` is the speaker's tile on the source frame (left, top, right, bottom): every crop key stays inside it.
     `mouth` is the (top, bottom) output-frame y of the nose-to-chin band over the shot — what a caption must not cover.
     """
 
@@ -449,6 +475,7 @@ class Shot:
     face_frac: float = 0.0      # median face box height / output height
     eye_frac: float = 0.0       # median eye line / output height
     mouth: tuple[float, float] = (0.0, 0.0)
+    tile: tuple[int, int, int, int] | None = None
 
     @property
     def static(self) -> bool:
@@ -497,6 +524,11 @@ def _path(faces: list[Face], t0: float, t1: float, w: int, h: int, tile: tuple[i
 def _finish(shot: Shot, faces: list[Face], out_h: int, tile: tuple[int, int, int, int], where: str) -> Shot:
     """Check the face stays inside the shot's visible crop, then fill in the measured geometry."""
     lb, tb, rb, bb = tile
+    for _, kx, ky in shot.keys:
+        if kx < lb or ky < tb or kx + shot.w > rb or ky + shot.h > bb:
+            raise FaceError(f"{where}: crop {shot.w}x{shot.h}@({kx},{ky}) leaves the speaker's tile ({lb},{tb})-({rb},{bb}) — "
+                            f"a crop must never show a neighbouring tile")
+    shot.tile = tile
 
     def covered(f: Face) -> bool:
         x, y = shot.at(f.t)
@@ -521,26 +553,36 @@ def _finish(shot: Shot, faces: list[Face], out_h: int, tile: tuple[int, int, int
     return shot
 
 
-def _panel_geometry(faces: list[Face], t0: float, t1: float, dims: tuple[int, int], out_w: int, out_h: int, where: str) -> Shot:
-    """A split-screen panel: crop width = FACE_WIDTH_FACTOR x the face, eyes on the upper third, inside the tile."""
+def _panel_geometry(faces: list[Face], t0: float, t1: float, dims: tuple[int, int], out_w: int, out_h: int,
+                    max_upscale: float, where: str) -> Shot:
+    """A split-screen panel (also the quote layout's speaker panel): head and shoulders with head room, inside the tile.
+
+    The crop is as tall as makes the face box PANEL_FACE_HEIGHT of the panel (the closeup rule), capped by the tile
+    height; the eyes sit on PANEL_EYE_LINE. When a crop of the panel's aspect that tall is wider than the tile, the crop
+    is tile-wide instead and drawn to the panel's height with blurred, darkened side gaps (`Shot.dst`), so it stays
+    inside the tile and is never zoomed in to fill the width. Nothing is magnified past `max_upscale`."""
     g = math.gcd(out_w, out_h)
     p, q = out_w // g, out_h // g
     step = 1 if p % 2 == 0 and q % 2 == 0 else 2          # keeps both crop sides even
     aspect = out_w / out_h
-    fw = float(np.median([f.w for f in faces]))
     tile = _tile(faces, dims)
     lb, tb, rb, bb = tile
-    # the eyes sit on EYE_LINE of the crop, so the crop is made only as tall as the room below the lowest eyes allows
-    # (otherwise the tile edge clamps the window upward and the eyes drift out of the upper third) — but never so
-    # tight that it cuts the face: a narrow crop in a tile whose face sits low settles for eyes a little lower
-    eye_low = float(np.percentile([f.eye_y for f in faces], 95))
-    room = (bb - eye_low) / (1.0 - EYE_LINE) * aspect
-    cw = min(FACE_WIDTH_FACTOR["panel"] * fw, rb - lb, (bb - tb) * aspect, max(room, MIN_FACE_FRAMES * fw))
-    k = int(cw // (p * step)) * step
-    if k < step:
-        raise FaceError(f"{where}: the speaker's tile ({lb},{tb})-({rb},{bb}) is too small for a {out_w}x{out_h} crop")
-    w, h = p * k, q * k
-    shot = Shot(t0, t1, w, h, _path(faces, t0, t1, w, h, tile, EYE_LINE), scale=out_w / w)
+    face_h = float(np.median([f.h for f in faces]))
+    h = min(face_h / PANEL_FACE_HEIGHT, bb - tb)           # crop height that frames the face at the target size
+    if h * aspect <= rb - lb:
+        k = int(h // (q * step)) * step
+        if k < step:
+            raise FaceError(f"{where}: the speaker's tile ({lb},{tb})-({rb},{bb}) is too small for a {out_w}x{out_h} crop")
+        w, h = p * k, q * k
+    else:
+        w, h = rb - lb, int(h)                             # tile-wide, as tall as the face target allows
+    if w * out_h == h * out_w and out_w / w <= max_upscale:   # the panel's own aspect, within the upscale cap: fills the panel
+        shot = Shot(t0, t1, w, h, _path(faces, t0, t1, w, h, tile, PANEL_EYE_LINE), scale=out_w / w)
+    else:                                                      # fit by height (or by the cap), blurred gaps around it
+        scale = min(out_h / h, out_w / w, max_upscale)
+        ow, oh = min(out_w, round(w * scale / 2) * 2), min(out_h, round(h * scale / 2) * 2)
+        shot = Shot(t0, t1, w, h, _path(faces, t0, t1, w, h, tile, PANEL_EYE_LINE), scale=ow / w,
+                    dst=((out_w - ow) // 2, (out_h - oh) // 2, ow, oh))
     return _finish(shot, faces, out_h, tile, where)
 
 
@@ -576,9 +618,9 @@ def _closeup_geometry(faces: list[Face], t0: float, t1: float, dims: tuple[int, 
     if fw < 2 or fh < 2:
         raise FaceError(f"{where}: the speaker's tile ({lb},{tb})-({rb},{bb}) does not overlap the framing window")
     ow, oh = min(out_w, round(fw * scale / 2) * 2), min(out_h, round(fh * scale / 2) * 2)
-    dx, dy = round((x0 - wx) * scale), round((y0 - wy) * scale)
-    # vertically centred, so the blurred backdrop shows equally above and below the sharp crop
-    dx, dy = max(0, min(dx, out_w - ow)), (out_h - oh) // 4 * 2
+    # centred both ways, so the blurred backdrop shows equally left/right and above/below the sharp crop (the tile may
+    # clip the window on one side, but the sharp rect stays in the middle of the frame)
+    dx, dy = (out_w - ow) // 2, (out_h - oh) // 4 * 2
     face_top = float(np.median([f.y for f in faces]))
     if tb > face_top - 0.1 * face_h:
         logger.warning(f"{where}: the speaker's tile starts at y={tb} but the face box at y={face_top:.0f} "
@@ -590,7 +632,7 @@ def _closeup_geometry(faces: list[Face], t0: float, t1: float, dims: tuple[int, 
 def _shot_geometry(faces: list[Face], t0: float, t1: float, dims: tuple[int, int], out_w: int, out_h: int,
                    kind: str, max_upscale: float, where: str) -> Shot:
     if kind == "panel":
-        return _panel_geometry(faces, t0, t1, dims, out_w, out_h, where)
+        return _panel_geometry(faces, t0, t1, dims, out_w, out_h, max_upscale, where)
     if kind == "closeup":
         return _closeup_geometry(faces, t0, t1, dims, out_w, out_h, max_upscale, where)
     raise ValueError(f"{where}: unknown shot kind {kind!r}")

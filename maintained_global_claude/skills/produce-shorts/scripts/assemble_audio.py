@@ -22,7 +22,7 @@ fade-out on the outgoing side and fade-in on the incoming side. That is a
 constant-length splice, so the assembled duration stays sample-exact against
 `clip.output.duration_s`; a true overlapping `acrossfade` would shorten the
 timeline by the crossfade length at every internal cut and desync the video, which
-is cut to exact per-segment lengths by extract_segments.py.
+is cut to exact per-segment lengths by the Remotion composition (frame_segments.py decides the framing).
 
 Truly contiguous source audio is concatenated with no processing at all.
 
@@ -63,6 +63,7 @@ from pslib import (
 from psmedia import (
     episode_root_for,
     ff_time,
+    ffmpeg_tool,
     load_config,
     media_path,
     probed_duration,
@@ -72,8 +73,7 @@ from psmedia import (
 console = Console()
 app = typer.Typer(add_completion=False)
 
-# Stage 2 (storyboard) runs render prep on frozen/storyboarded clips; stage 3 on approved_render onward.
-# Audio assembly has no approval gate of its own — the human gate is the final render, not this prep.
+# Audio assembly runs on any frozen-or-later clip; the human gate is the final video, not this prep.
 DUCK_DB = -12.0
 PRE_ROLL_S = 1.0  # decoded-and-discarded audio before each cut (covers decoder priming)
 
@@ -166,7 +166,7 @@ def extract_piece(piece: Piece, episode_root: Path, out_path: Path, crossfade_s:
     Pass 1 seeks on the INPUT side (`-ss` before `-i`: jump to the keyframe/packet before the
     pre-roll, decode a second of audio) and then trims sample-accurately with `atrim`. Output-side
     `-ss` after `-i` decodes the whole file from 0 and discards everything before the cut —
-    ~6 s per cut on a 99-minute episode, the same bug extract_segments.py fixed (measured 95x).
+    ~6 s per cut on a 99-minute episode, the same input-seek bug the old ffmpeg video pre-cut had (measured 95x).
     The pre-roll absorbs the decoder's priming samples so `atrim` starts from clean, timestamped
     samples; `atrim` counts in the post-seek timeline, so the cut lands on the exact sample.
 
@@ -235,7 +235,7 @@ INSERT_PEAK_LIMIT = 0.891  # -1 dBFS: the limiter after the loudness-match gain
 def integrated_lufs(path: Path) -> float:
     """EBU R128 integrated loudness of a wav (loudnorm's measurement pass)."""
     out = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-nostdin", "-i", str(path), "-af",
+        [ffmpeg_tool("ffmpeg"), "-hide_banner", "-nostdin", "-i", str(path), "-af",
          "loudnorm=I=-23:TP=-1:LRA=11:print_format=json", "-f", "null", "-"],
         capture_output=True, text=True,
     )
@@ -335,7 +335,7 @@ def main(
     if not clip_dir.is_dir():
         raise typer.BadParameter(f"clip directory does not exist: {clip_dir}")
     root = episode_root_for(clip_dir, episode_root)
-    config = load_config(config_path)
+    config = load_config(config_path, root)
 
     clip = load_clip(clip_dir / "clip.yaml")
     episode = load_episode(root / "episode.yaml")

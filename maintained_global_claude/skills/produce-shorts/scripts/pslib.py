@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -28,19 +28,22 @@ EPISODE_STAGE_ORDER: list[str] = [
     "ingested",
     "picking",
     "frozen",
-    "storyboarding",
     "rendering",
     "delivered",
 ]
 
 CLIP_STATUS_ORDER: list[str] = [
     "frozen",
-    "storyboarded",
-    "approved_render",
     "rendered",
     "qc_passed",
     "delivered",
 ]
+
+# Manifests written before the storyboard doc was removed: these values meant "frozen, awaiting render".
+LEGACY_EPISODE_STAGES = {"storyboarding": "frozen"}
+LEGACY_CLIP_STATUSES = {"storyboarded": "frozen", "approved_render": "frozen"}
+# Legacy review keys that no longer exist; ignored on read, absent on write.
+LEGACY_REVIEW_KEYS = ("storyboard_docs", "cover")
 
 CLIP_FORMATS = ("short", "clip")
 SHORT_MAX_DURATION_S = 180.0
@@ -87,6 +90,34 @@ class Speaker(Strict):
     name: str
     camera_file: str | None = None
     preferred_crop: str | None = None
+    #: name as shown on name tags and the intro card (`name` is the short label used in pick docs)
+    full_name: str | None = None
+    #: lower-third subline for this speaker's name tag (e.g. "co-host, Bayesian Conspiracy")
+    role: str | None = None
+
+
+class ShowMeta(Strict):
+    """Whose show this is — the intro card reads `<NAME> / <hosts> / with <guest>` from it."""
+
+    name: str
+    hosts: list[str]
+    #: omitted for the owner's own episodes (the card then has no "with ..." line)
+    guest: str | None = None
+    #: true = the owner's own show (Increments branding); false = a guest appearance elsewhere
+    own_show: bool = False
+
+
+TILE_NAMES = ("left", "mid", "right")
+
+
+class LayoutSpan(Strict):
+    """Gallery tile layout from `from_s` (SOURCE time) until the next span: tile -> speaker id.
+
+    Zoom-style galleries can reorder tiles mid-episode; name tags and pips in horizontal clips
+    are placed from this timeline (detected from face tracks, confirmed on source frames)."""
+
+    from_s: float
+    tiles: dict[Literal["left", "mid", "right"], str]
 
 
 class MediaProbe(Strict):
@@ -132,7 +163,12 @@ class TranscriptRef(Strict):
 
 
 class EpisodeStatus(Strict):
-    stage: Literal["ingested", "picking", "frozen", "storyboarding", "rendering", "delivered"]
+    stage: Literal["ingested", "picking", "frozen", "rendering", "delivered"]
+
+    @field_validator("stage", mode="before")
+    @classmethod
+    def _legacy_stage(cls, v: Any) -> Any:
+        return LEGACY_EPISODE_STAGES.get(v, v)
 
 
 class Episode(Strict):
@@ -142,13 +178,40 @@ class Episode(Strict):
     media: MediaSpec
     sync: list[SyncEntry] = Field(default_factory=list)
     transcript: TranscriptRef
+    show: ShowMeta | None = None
+    #: Gallery tile layout over source time (see LayoutSpan); ascending `from_s`, first span at 0.
+    layout_timeline: list[LayoutSpan] = Field(default_factory=list)
     #: Written by build_pick_doc.py / doc_ops.py (account, folder_id, pick_doc, picks, round, ...).
     #: Opaque here: those scripts own its shape. Absent until the pick doc exists.
     review: dict[str, Any] | None = None
     status: EpisodeStatus
+    #: Per-episode pipeline-config overrides, shaped like config/defaults.yaml. Opaque here:
+    #: psmedia.load_config merges and validates them.
+    config_overrides: dict[str, Any] | None = None
 
     def speaker_ids(self) -> set[str]:
         return {s.id for s in self.speakers}
+
+    @model_validator(mode="after")
+    def _layout_timeline_consistent(self) -> "Episode":
+        spans = self.layout_timeline
+        if not spans:
+            return self
+        if spans[0].from_s != 0:
+            raise ValueError(f"layout_timeline must start at from_s: 0 (got {spans[0].from_s})")
+        if any(b.from_s <= a.from_s for a, b in zip(spans, spans[1:])):
+            raise ValueError("layout_timeline from_s values must be strictly ascending")
+        unknown = {sid for sp in spans for sid in sp.tiles.values()} - self.speaker_ids()
+        if unknown:
+            raise ValueError(f"layout_timeline names unknown speaker ids {sorted(unknown)}")
+        return self
+
+    def tile_of(self, speaker_id: str, source_s: float) -> str | None:
+        """Tile ('left' | 'mid' | 'right') the speaker occupies at SOURCE time, or None when no layout is recorded."""
+        span = next((sp for sp in reversed(self.layout_timeline) if sp.from_s <= source_s), None)
+        if span is None:
+            return None
+        return next((tile for tile, sid in span.tiles.items() if sid == speaker_id), None)
 
 
 # ---------------------------------------------------------------------------
@@ -189,9 +252,14 @@ class ClipMeta(Strict):
     pick: str
     format: Literal["short", "clip"]
     title: str
-    status: Literal["frozen", "storyboarded", "approved_render", "rendered", "qc_passed", "delivered"]
+    status: Literal["frozen", "rendered", "qc_passed", "delivered"]
     why: str
     ends_on: str
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _legacy_status(cls, v: Any) -> Any:
+        return LEGACY_CLIP_STATUSES.get(v, v)
 
 
 class VisualSpec(Strict):
@@ -305,16 +373,15 @@ class OutputSpec(Strict):
     duration_s: float
 
 
-class StoryboardDocRef(Strict):
-    rev: int
-    id: str
-    url: str
-
-
 class ClipReview(Strict):
-    storyboard_docs: list[StoryboardDocRef] = Field(default_factory=list)
-    cover: int | None = None
     final_url: str | None = None
+    #: the private/unlisted YouTube upload awaiting the owner's review in Studio (publishing is the owner's job)
+    youtube_url: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_legacy_keys(cls, v: Any) -> Any:
+        return {k: x for k, x in v.items() if k not in LEGACY_REVIEW_KEYS} if isinstance(v, dict) else v
 
 
 class RenderVersion(Strict):

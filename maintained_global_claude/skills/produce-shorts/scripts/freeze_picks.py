@@ -212,7 +212,7 @@ def build_clip(ctx: Ctx, model: Model, pid: str, slug: str, max_t: float | None)
         "subtitles": {"font": sub["font"], "base_color": sub["base_color"], "emphasis_palette": [sub["emphasis_color"]],
                       "position_default": "bottom-center", "lines": []},
         "assets": [],
-        "review": {"storyboard_docs": [], "cover": None, "final_url": None},
+        "review": {"final_url": None},
         "output": {"aspect": aspect, "resolution": resolution, "fps": 30, "duration_s": t},
         "render": {"versions": []},
     }
