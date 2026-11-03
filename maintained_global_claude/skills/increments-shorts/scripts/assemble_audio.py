@@ -1,0 +1,404 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "static-ffmpeg>=2.7",
+#   "platformdirs>=4",
+#   "pydantic>=2.9",
+#   "pyyaml>=6.0",
+#   "typer>=0.12",
+#   "loguru>=0.7",
+#   "rich>=13.7",
+# ]
+# ///
+"""Stage 8 step 1 — assemble the clip's edited audio from the timeline mapping.
+
+Extracts each timeline segment's source audio range sample-accurately, applies the
+segment's `audio` action (as-recorded | duck | mute), and concatenates in output
+order into `renders/v<N>-audio.wav` (48 kHz stereo pcm_s16le).
+
+Internal cuts — adjacent segments whose source audio is NOT continuous (different
+source file, non-contiguous source times, or a change of audio action) — get a
+micro-crossfade of `render.internal_cut_crossfade_ms` across the splice: an equal
+fade-out on the outgoing side and fade-in on the incoming side. That is a
+constant-length splice, so the assembled duration stays sample-exact against
+`clip.output.duration_s`; a true overlapping `acrossfade` would shorten the
+timeline by the crossfade length at every internal cut and desync the video, which
+is cut to exact per-segment lengths by the Remotion composition (frame_segments.py decides the framing).
+
+Truly contiguous source audio is concatenated with no processing at all.
+
+Insert segments (`visual.kind: insert`, horizontal clips only — a credited non-episode source
+such as a guest's talk) are cut the same way from their own file, then gained so their
+integrated loudness matches the episode (host) pieces of this clip (`insert.loudness:
+match-hosts`), with a true-peak limiter so the gain can never clip. The final per-profile
+loudnorm then sees one consistent level instead of pumping across the splice.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import typer
+from loguru import logger
+from rich.console import Console
+from rich.table import Table as RichTable
+
+from pslib import (
+    CLIP_STATUS_ORDER,
+    EPSILON,
+    Clip,
+    Episode,
+    TimelineSegment,
+    ffprobe_media,
+    fmt_range,
+    load_clip,
+    load_episode,
+)
+from psmedia import (
+    episode_root_for,
+    ff_time,
+    ffmpeg_tool,
+    load_config,
+    media_path,
+    probed_duration,
+    run_ffmpeg,
+)
+
+console = Console()
+app = typer.Typer(add_completion=False)
+
+# Audio assembly runs on any frozen-or-later clip; the human gate is the final video, not this prep.
+DUCK_DB = -12.0
+PRE_ROLL_S = 1.0  # decoded-and-discarded audio before each cut (covers decoder priming)
+
+
+@dataclass
+class Piece:
+    """One extracted segment of the assembled audio."""
+
+    segment: TimelineSegment
+    fade_in: bool
+    fade_out: bool
+    cut_before: str | None  # why this segment starts an internal cut, None if continuous
+
+    @property
+    def action_filter(self) -> str | None:
+        if self.segment.audio == "as-recorded":
+            return None
+        if self.segment.audio == "duck":
+            return f"volume={DUCK_DB}dB"
+        return "volume=0"
+
+
+# ---------------------------------------------------------------------------
+# Planning
+# ---------------------------------------------------------------------------
+
+
+def cut_reason(prev: TimelineSegment, seg: TimelineSegment) -> str | None:
+    """Why the splice from `prev` to `seg` is an internal cut, or None if continuous."""
+    if prev.source_file != seg.source_file:
+        return f"source file {prev.source_file} → {seg.source_file}"
+    gap = seg.source_in - prev.source_out
+    if abs(gap) > EPSILON:
+        return f"source jump {prev.source_out:.3f} → {seg.source_in:.3f} ({gap:+.3f}s)"
+    if prev.audio != seg.audio:
+        return f"audio action {prev.audio} → {seg.audio}"
+    return None
+
+
+def plan_pieces(clip: Clip) -> list[Piece]:
+    if not clip.timeline:
+        raise ValueError("clip.yaml has an empty timeline — nothing to assemble")
+    reasons = [None, *(cut_reason(prev, seg) for prev, seg in zip(clip.timeline, clip.timeline[1:]))]
+    return [
+        Piece(
+            segment=seg,
+            fade_in=reasons[i] is not None,
+            fade_out=i + 1 < len(reasons) and reasons[i + 1] is not None,
+            cut_before=reasons[i],
+        )
+        for i, seg in enumerate(clip.timeline)
+    ]
+
+
+def check_gate(clip: Clip) -> None:
+    status = clip.clip.status
+    if status not in CLIP_STATUS_ORDER:
+        raise typer.BadParameter(
+            f"clip {clip.clip.id} has status {status!r}; audio assembly runs on a frozen clip or later "
+            f"({', '.join(CLIP_STATUS_ORDER)}). Freeze the pick first (freeze_picks.py)."
+        )
+
+
+def check_sources(clip: Clip, episode: Episode, episode_root: Path) -> None:
+    """Every source range must exist on disk and lie inside the probed duration."""
+    problems: list[str] = []
+    for seg in clip.timeline:
+        duration = (
+            ffprobe_media(media_path(episode_root, seg.source_file)).duration_s
+            if seg.is_insert else probed_duration(episode, seg.source_file)
+        )
+        if seg.source_in < -EPSILON or seg.source_out > duration + EPSILON:
+            problems.append(
+                f"{seg.id}: source range {fmt_range(seg.source_in, seg.source_out)} is outside "
+                f"{seg.source_file} (probed duration {duration:.3f}s)"
+            )
+        media_path(episode_root, seg.source_file)
+    if problems:
+        raise ValueError("timeline source ranges are unusable:\n  " + "\n  ".join(problems))
+
+
+# ---------------------------------------------------------------------------
+# Extraction and concatenation
+# ---------------------------------------------------------------------------
+
+
+def extract_piece(piece: Piece, episode_root: Path, out_path: Path, crossfade_s: float, work: Path) -> float:
+    """Cut the segment (pass 1) and, at internal cuts, de-click it (pass 2). Returns its duration.
+
+    Pass 1 seeks on the INPUT side (`-ss` before `-i`: jump to the keyframe/packet before the
+    pre-roll, decode a second of audio) and then trims sample-accurately with `atrim`. Output-side
+    `-ss` after `-i` decodes the whole file from 0 and discards everything before the cut —
+    ~6 s per cut on a 99-minute episode, the same input-seek bug the old ffmpeg video pre-cut had (measured 95x).
+    The pre-roll absorbs the decoder's priming samples so `atrim` starts from clean, timestamped
+    samples; `atrim` counts in the post-seek timeline, so the cut lands on the exact sample.
+
+    The two passes are not an accident: `atrim`+`asetpts=PTS-STARTPTS` hands the fade filter a
+    timeline that starts at 0, but `afade`'s `st=` is easiest to reason about on the extracted PCM,
+    so fades run in a second pass over the extracted piece (a segment cut from 16 s that still
+    carried source timestamps would reach `afade` at t=16 s and emit silence — measured).
+    """
+    seg = piece.segment
+    faded = piece.fade_in or piece.fade_out
+    if faded and crossfade_s * 2 > seg.source_duration:
+        raise ValueError(
+            f"{seg.id}: segment is {seg.source_duration:.3f}s but the internal-cut crossfade is "
+            f"{crossfade_s * 1000:.1f}ms on each side — lower render.internal_cut_crossfade_ms "
+            f"or lengthen the segment"
+        )
+
+    pre_roll = min(PRE_ROLL_S, seg.source_in)
+    cut_filters = [
+        "aresample=async=0",
+        f"atrim=start={pre_roll:.6f}:duration={seg.source_duration:.6f}",
+        "asetpts=PTS-STARTPTS",
+    ]
+    action = piece.action_filter
+    if action:
+        cut_filters.append(action)
+    cut_filters.append("aformat=sample_fmts=s16:sample_rates=48000:channel_layouts=stereo")
+
+    cut_path = work / f"{seg.id}-cut.wav" if faded else out_path
+    run_ffmpeg(
+        [
+            "-ss", ff_time(seg.source_in - pre_roll),
+            "-i", str(media_path(episode_root, seg.source_file)),
+            "-vn", "-sn", "-dn",
+            "-af", ",".join(cut_filters),
+            "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le",
+            str(cut_path),
+        ],
+        what=f"extracting {seg.id} audio from {seg.source_file}",
+    )
+    cut_duration = ffprobe_media(cut_path).duration_s
+    if not faded:
+        return cut_duration
+
+    fades = []
+    if piece.fade_in:
+        fades.append(f"afade=t=in:st=0:d={crossfade_s:.6f}")
+    if piece.fade_out:
+        fades.append(f"afade=t=out:st={cut_duration - crossfade_s:.6f}:d={crossfade_s:.6f}")
+    run_ffmpeg(
+        ["-i", str(cut_path), "-af", ",".join(fades), "-c:a", "pcm_s16le", str(out_path)],
+        what=f"de-clicking {seg.id} across its internal cut",
+    )
+    faded_duration = ffprobe_media(out_path).duration_s
+    if abs(faded_duration - cut_duration) > EPSILON:
+        raise RuntimeError(
+            f"{seg.id}: the de-click pass changed the piece from {cut_duration:.3f}s to "
+            f"{faded_duration:.3f}s — a splice fade must never change length"
+        )
+    return faded_duration
+
+
+INSERT_PEAK_LIMIT = 0.891  # -1 dBFS: the limiter after the loudness-match gain
+
+
+def integrated_lufs(path: Path) -> float:
+    """EBU R128 integrated loudness of a wav (loudnorm's measurement pass)."""
+    out = subprocess.run(
+        [ffmpeg_tool("ffmpeg"), "-hide_banner", "-nostdin", "-i", str(path), "-af",
+         "loudnorm=I=-23:TP=-1:LRA=11:print_format=json", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        raise RuntimeError(f"loudness measurement of {path} failed (exit {out.returncode}): {out.stderr[-1500:]}")
+    blob = out.stderr[out.stderr.rindex("{"):]
+    value = float(json.loads(blob[: blob.index("}") + 1])["input_i"])
+    if value < -70:
+        raise RuntimeError(f"{path} measures {value} LUFS — silence; an insert or host piece has no audio")
+    return value
+
+
+def match_insert_loudness(pieces: list[Piece], paths: dict[str, Path], work: Path) -> dict[str, float]:
+    """Gain every insert piece to the hosts' integrated loudness. Returns the gain per insert (dB)."""
+    inserts = [p for p in pieces if p.segment.is_insert]
+    if not inserts:
+        return {}
+    hosts = [paths[p.segment.id] for p in pieces if not p.segment.is_insert]
+    if not hosts:
+        raise ValueError("every segment is an insert — there is no host audio to match the insert loudness to")
+    hosts_wav = work / "hosts-only.wav"
+    concat_pieces(hosts, hosts_wav, work)
+    target = integrated_lufs(hosts_wav)
+    gains: dict[str, float] = {}
+    for piece in inserts:
+        seg = piece.segment
+        if seg.insert is None or seg.insert.loudness != "match-hosts":
+            raise ValueError(f"{seg.id}: insert segment without insert.loudness: match-hosts")
+        src = paths[seg.id]
+        gain = target - integrated_lufs(src)
+        matched = work / f"{seg.id}-matched.wav"
+        run_ffmpeg(
+            ["-i", str(src), "-af",
+             f"volume={gain:.3f}dB,alimiter=limit={INSERT_PEAK_LIMIT}:level=false:latency=1",
+             "-c:a", "pcm_s16le", "-ar", "48000", "-ac", "2", str(matched)],
+            what=f"loudness-matching insert {seg.id} ({gain:+.2f} dB to {target:.2f} LUFS)",
+        )
+        if abs(ffprobe_media(matched).duration_s - ffprobe_media(src).duration_s) > EPSILON:
+            raise RuntimeError(f"{seg.id}: the loudness-match pass changed the piece's length")
+        paths[seg.id] = matched
+        gains[seg.id] = gain
+        logger.info(f"{seg.id}: insert gained {gain:+.2f} dB to the hosts' {target:.2f} LUFS")
+    return gains
+
+
+def concat_pieces(paths: list[Path], out_path: Path, work: Path) -> None:
+    listing = work / "concat.txt"
+    listing.write_text("".join(f"file '{p}'\n" for p in paths))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    run_ffmpeg(
+        ["-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(out_path)],
+        what=f"concatenating {len(paths)} audio pieces into {out_path.name}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
+
+
+def render_plan(pieces: list[Piece], measured: dict[str, float]) -> None:
+    table = RichTable(title="Assembled audio", header_style="bold cyan")
+    table.add_column("Seg", no_wrap=True)
+    table.add_column("Source", no_wrap=True)
+    table.add_column("Output", no_wrap=True)
+    table.add_column("Audio")
+    table.add_column("Splice")
+    table.add_column("Measured", justify="right")
+    for piece in pieces:
+        seg = piece.segment
+        table.add_row(
+            seg.id,
+            f"{Path(seg.source_file).name} {fmt_range(seg.source_in, seg.source_out)}",
+            fmt_range(seg.output_in, seg.output_out),
+            seg.audio,
+            f"[yellow]cut[/] ({piece.cut_before})" if piece.cut_before else "[green]continuous[/]",
+            f"{measured[seg.id]:.3f}s",
+        )
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def main(
+    clip_dir: Path = typer.Argument(..., help="Clip directory containing clip.yaml"),
+    version: int = typer.Option(None, "--version", "-v", help="Render version (default: len(render.versions)+1)"),
+    episode_root: Path = typer.Option(None, "--episode-root", help="Episode root holding episode.yaml (default: CLIP_DIR/../..)"),
+    config_path: Path = typer.Option(None, "--config", help="Pipeline config (default: config/defaults.yaml)"),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing v<N> audio file (renders are versioned; only for redoing an unpublished attempt)"),
+) -> None:
+    """Assemble CLIP_DIR's edited audio into renders/v<N>-audio.wav."""
+    clip_dir = clip_dir.resolve()
+    if not clip_dir.is_dir():
+        raise typer.BadParameter(f"clip directory does not exist: {clip_dir}")
+    root = episode_root_for(clip_dir, episode_root)
+    config = load_config(config_path, root)
+
+    clip = load_clip(clip_dir / "clip.yaml")
+    episode = load_episode(root / "episode.yaml")
+    check_gate(clip)
+    check_sources(clip, episode, root)
+
+    n = version if version is not None else len(clip.render.versions) + 1
+    out_path = clip_dir / "renders" / f"v{n}-audio.wav"
+    if out_path.exists() and not force:
+        raise typer.BadParameter(
+            f"{out_path} already exists — renders are versioned and never overwritten. "
+            f"Use --version {len(clip.render.versions) + 1} for a new version, or --force to redo this one."
+        )
+
+    crossfade_s = config.render.internal_cut_crossfade_ms / 1000.0
+    pieces = plan_pieces(clip)
+    cuts = [p for p in pieces if p.cut_before]
+    logger.info(
+        f"clip={clip.clip.id} version={n} segments={len(pieces)} internal_cuts={len(cuts)} "
+        f"crossfade={config.render.internal_cut_crossfade_ms:.1f}ms"
+    )
+
+    with TemporaryDirectory(prefix="ps-audio-") as tmp:
+        work = Path(tmp)
+        paths: dict[str, Path] = {}
+        measured: dict[str, float] = {}
+        for piece in pieces:
+            piece_path = work / f"{piece.segment.id}.wav"
+            duration = extract_piece(piece, root, piece_path, crossfade_s, work)
+            measured[piece.segment.id] = duration
+            if abs(duration - piece.segment.source_duration) > EPSILON:
+                raise RuntimeError(
+                    f"{piece.segment.id}: extracted {duration:.3f}s but the timeline says "
+                    f"{piece.segment.source_duration:.3f}s — the source range is not decodable as written"
+                )
+            paths[piece.segment.id] = piece_path
+        match_insert_loudness(pieces, paths, work)
+        concat_pieces([paths[p.segment.id] for p in pieces], out_path, work)
+
+    result = ffprobe_media(out_path)
+    expected = clip.output.duration_s
+    allowance = EPSILON + crossfade_s
+    delta = result.duration_s - expected
+    render_plan(pieces, measured)
+    console.print(
+        f"[bold]{out_path.relative_to(clip_dir)}[/]: {result.duration_s:.3f}s vs manifest "
+        f"{expected:.3f}s (delta {delta:+.4f}s, tolerance ±{allowance:.4f}s = ε {EPSILON} + one "
+        f"{config.render.internal_cut_crossfade_ms:.0f}ms crossfade), "
+        f"{result.sample_rate} Hz / {result.audio_channels} ch / {result.audio_codec}"
+    )
+    if abs(delta) > allowance:
+        console.print(
+            f"[bold red]FAIL[/] assembled audio duration disagrees with clip.output.duration_s by "
+            f"{delta:+.4f}s — the timeline and the source media do not agree; fix the manifest, do not re-time the audio"
+        )
+        raise typer.Exit(1)
+    console.print(
+        f"[bold green]OK[/] {clip.clip.id} v{n}: {len(pieces)} segments, {len(cuts)} internal cut(s) "
+        f"crossfaded at {config.render.internal_cut_crossfade_ms:.0f}ms → {out_path}"
+    )
+
+
+if __name__ == "__main__":
+    app()

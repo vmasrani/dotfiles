@@ -1,0 +1,168 @@
+# Pipeline defaults for increments-shorts. Override per episode with a top-level
+# `config_overrides:` mapping in episode.yaml, shaped like this file (episode values win per key).
+
+transcription:
+  engine: assemblyai          # assemblyai | faster-whisper — explicit; scripts fail loud
+                              # if the engine's requirements (API key / isolated
+                              # tracks for diarization) are missing.
+  language: en
+
+sync:
+  min_confidence: 0.90        # below this, sync_cameras.py exits nonzero
+
+subtitles:
+  font: "Inter Semibold"
+  font_fallbacks: ["Arial Bold", "Helvetica Bold"]
+  # Word-by-word ("karaoke") captions: every word is drawn in base_color; the word being spoken
+  # is drawn in active_color at active_font_weight (a weight of the bundled Inter variable font,
+  # 600-900; align_subtitles.py sizes the layout at this weight so the highlight never reflows).
+  base_color: "#FFD400"
+  active_color: "#39E75F"
+  active_font_weight: 800
+  # Colour of designed per-word emphasis (clip.yaml subtitles.lines[].emphasis). freeze_picks.py seeds
+  # each clip's emphasis_palette with it. White: distinct from both the yellow text and the green highlight.
+  emphasis_color: "#FFFFFF"
+  # Caption type size as a fraction of frame height: 0.0365 = 70px at 1920. It is the size the fit aims
+  # for and its cap — align_subtitles.py shrinks below it only when a row would not fit the safe box at
+  # active_font_weight, which max_chars_per_line is set to prevent.
+  font_height_fraction: 0.0365
+  max_lines: 2
+  # A card may take up to this many rows ONLY when no split of its words into max_lines-row cards meets
+  # max_chars_per_second (fast speech at a large type size). align_subtitles.py enforces the reason card by
+  # card and fails loud otherwise; validate_subtitles.py accepts the extra row only on a card that cannot
+  # fit max_lines rows of max_chars_per_line.
+  reading_speed_max_lines: 3
+  # 42 was too permissive for 1080x1920: the renderer auto-fits type to the longest line,
+  # so a 42-character card shrinks the whole clip's subtitles to ~42px — small on a phone.
+  # Shorter lines let the fit land larger (measured 42px -> 64px on the same clip).
+  # 22 lets 70px (font_height_fraction) fit at the bold 800 karaoke width: measured on Truth S2, 26 -> 61px,
+  # 24 -> 66px, 22 -> 70px (widest row 11.8 em of the 11.85 em the 900px box allows).
+  max_chars_per_line: 22
+  max_chars_per_second: 20
+  min_display_seconds: 0.8
+  emphasis_max_word_fraction: 0.15
+  # Outline weight as a fraction of font size. Was hard-coded at 0.05, which put a 3px edge on
+  # a 57px font — measurably too light: white captions over a speaker's cream shirt rendered
+  # effectively white-on-white. 0.10 is the thinnest weight that stayed legible over the worst
+  # case in this series (a blown-out white observatory dome behind white text).
+  outline_fraction: 0.10
+  outline_color: "#101010"
+  shadow_fraction: 0.04
+  # "outline" = stroked glyphs (the default, keeps the picture visible).
+  # "plate"   = a semi-opaque box behind the text; use only where footage is so busy or bright
+  #             that no stroke survives. It is heavier and hides more of the frame.
+  border_style: outline
+  plate_opacity: 0.55
+
+safe_zones:                   # 1080x1920 reference frame, pixels
+  top: 200
+  bottom: 320
+  right: 120
+  left: 60
+
+platform_profiles:              # each carries `format:` (short|clip); copied into episode.yaml at ingest
+  - name: youtube-shorts
+    format: short
+    aspect: "9:16"
+    resolution: "1080x1920"
+    fps: 30
+    max_duration_s: 180
+    container: mp4
+    video_codec: h264
+    audio_codec: aac
+    loudness_lufs: -14.0
+    true_peak_dbtp: -1.0
+  - name: tiktok
+    format: short
+    aspect: "9:16"
+    resolution: "1080x1920"
+    fps: 30
+    max_duration_s: 180
+    container: mp4
+    video_codec: h264
+    audio_codec: aac
+    loudness_lufs: -14.0
+    true_peak_dbtp: -1.0
+
+  - name: youtube
+    format: clip
+    aspect: "16:9"
+    resolution: "1920x1080"
+    fps: 30
+    max_duration_s: null      # horizontal clips have no maximum
+    container: mp4
+    video_codec: h264
+    audio_codec: aac
+    loudness_lufs: -14.0
+    true_peak_dbtp: -1.0
+
+review:
+  boundary_pad_s: 0.12        # freeze pads pick edges, never into a neighbouring word
+
+framing:                      # plan_framing.py (shorts)
+  exchange_gap_s: 2.0         # question→answer within this = both parties live
+  exchange_turn_s: 6.0        # back-and-forth of turns shorter than this = split screen
+  max_dwell_s: 12.0           # no single treatment held longer
+  # frame_segments.py: a closeup frames head-and-shoulders (face box ~30% of the frame height, eye line ~0.33).
+  # The source crop is never magnified past this factor; when the speaker's tile cannot fill 9:16 at that scale the
+  # sharp crop is laid over a blurred, darkened copy of itself instead of being zoomed until it turns to mush.
+  max_upscale: 2.0
+
+render:
+  internal_cut_crossfade_ms: 8   # audio micro-crossfade at internal cuts
+  qc_loudness_tolerance_lu: 1.0
+
+# B-roll overlays on horizontal clips (clip.yaml `overlays:`; schemas.md § Overlays).
+# This block is the ONE source of truth for the card / lower-third / label style: overlay_text.py
+# turns it into the Remotion `Card` props, and render_horizontal.py reads pip/grid from it.
+# Pixel values are for a 1920x1080 frame.
+broll:
+  text:
+    font: "Inter Semibold"          # must equal subtitles.font — cards and captions share one family
+    colors:                         # run colour keys usable in clip.yaml (`color: accent`)
+      text: "#FFFFFF"
+      accent: "#FFD400"             # = subtitles.base_color, the series yellow
+      muted: "#C9CDD3"
+      red: "#FF5A5F"
+      blue: "#4EA8FF"
+    weight: 600
+    bold_weight: 800
+    plate_color: "#0E0F12"
+    plate_opacity: 0.80
+    plate_radius: 10
+    plate_pad_v: 16
+    plate_pad_h: 26
+    accent_bar_px: 6
+    line_gap: 1.22
+    rule_color: "#FF5A5F"           # strike-through
+    text_shadow: "0 2px 10px rgba(0,0,0,0.85)"
+    sizes:                          # px
+      lowerthird: 44
+      lowerthird_sub: 30
+      card: 56
+      label: 28
+      tile_label: 26
+    fade_frames: 8
+    pop_frames: 6
+    rule_frames: 12
+    placements:                     # anchor point + max width per placement name
+      lowerthird:  {x: 96,   y: 960, anchor: bottom-left,   max_width: 1300}
+      upper-left:  {x: 96,   y: 96,  anchor: top-left,      max_width: 1100}
+      card:        {x: 960,  y: 120, anchor: top-center,    max_width: 1500}
+      side-panel:  {x: 1824, y: 540, anchor: center-right,  max_width: 640}
+      top-right:   {x: 1824, y: 96,  anchor: top-right,     max_width: 760}
+      title-center: {x: 960, y: 770, anchor: center,        max_width: 1600}   # intro title card
+      # Name tags under a face in a 3-up gallery source (episode.yaml layout_timeline says who sits where)
+      tile-left:   {x: 48,   y: 1016, anchor: bottom-left,  max_width: 560}
+      tile-mid:    {x: 688,  y: 1016, anchor: bottom-left,  max_width: 560}
+      tile-right:  {x: 1328, y: 1016, anchor: bottom-left,  max_width: 560}
+  pip:
+    border_px: 4
+    border_color: "#FFFFFF"
+    label_gap_px: 12                # label sits this far under the pip box
+  grid:
+    gap_px: 8
+    background: "#0E0F12"
+    tile_pop_frames: 5
+  render:
+    card_concurrency: 3             # Remotion workers per card render (CPU bound, see render-qc.md)
