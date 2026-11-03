@@ -404,7 +404,7 @@ def rebuild_timeline(p: Plan) -> list[dict]:
         by_seg.setdefault(w.seg, []).append(i)
     new: list[dict] = []
     for si, seg in enumerate(timeline):
-        if p.locked[by_seg[si][0]]:
+        if si not in by_seg or p.locked[by_seg[si][0]]:  # wordless segments keep their existing treatment
             new.append(seg)
             continue
         idx = by_seg[si]

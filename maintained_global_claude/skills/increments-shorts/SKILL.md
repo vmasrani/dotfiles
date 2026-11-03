@@ -61,7 +61,11 @@ script as `uv run scripts/<name>.py ...` — works the same on every OS. Paths b
    writes `deliverables/<slug>.mp4` (end tag added), `<slug>-thumbnail.jpg`, `<slug>.txt` (title, description, tags).
 10. **Optional YouTube upload** (always PRIVATE): one-time setup in `references/youtube-setup.md`, then
     `uv run scripts/upload_youtube.py upload deliverables/<slug>.mp4 --meta deliverables/<slug>.txt --thumbnail deliverables/<slug>-thumbnail.jpg`.
-    Remind the user: in Studio set **"Related video"** to the full episode (the only tappable link from a Short),
+    `--publish-at 2026-11-04T19:00:00-08:00` (or `upload_youtube.py schedule ID --at ...` later) sets a scheduled release while
+    the video stays private; always write the viewer's UTC offset explicitly (ask which timezone; evenings suit Shorts).
+    **Thumbnails set during processing get replaced by YouTube:** once Studio shows processing done, re-set with
+    `upload_youtube.py thumbnail ID FILE` and confirm by fetching the live thumbnail.
+    Remind the user: in Studio set **"Related video"** to the full episode (the only tappable link from a Short; no API for it),
     and that the Shorts feed may ignore custom thumbnails. YouTube cannot replace a file: a fix = upload new, then
     `upload_youtube.py delete OLD_ID` (asks them to type the id back — only with explicit user confirmation).
 
@@ -99,7 +103,7 @@ script as `uv run scripts/<name>.py ...` — works the same on every OS. Paths b
 | `qc_render.py`, `sample_frame.py` | QC report + contact sheet; frame extraction |
 | `thumbnails.py` | declarative thumbnail options + contact sheet |
 | `endtag.py`, `deliver.py` | end tag, deliverables |
-| `upload_youtube.py` | optional private upload (+ guarded delete) |
+| `upload_youtube.py` | optional private upload, `schedule`, `thumbnail` (after processing), guarded `delete` |
 | `mediatools.py`, `remotion_env.py`, `assets.py`, `pslib.py`, `psmedia.py` | shared libraries |
 
 Tests: `uv run --script scripts/test_<name>.py -q` for each `scripts/test_*.py`.

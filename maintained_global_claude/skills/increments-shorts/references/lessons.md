@@ -4,6 +4,11 @@
   time; never pin one global speaker->tile map. Name tags/pips read `layout_timeline` in `episode.yaml` for the layout at the clip's time.
 - **Blur-fill close-ups:** the sharp rect is centred (`dx = (out_w - ow) // 2`). `test_framing.py` guards this.
 - **Captions break at every speaker change; minimum display 0.8 s** (a muted tail filler segment may extend a last short word).
+  A quick exchange ("Nice." / "Yeah.") that can't fit 0.8 s per card: lower it per episode in `episode.yaml`
+  `config_overrides.subtitles.min_display_seconds` (0.45 worked) with a comment saying why — never trim the audio to fit.
+- **To keep the original pacing of an ending exactly,** split it by speaker into consecutive segments at the transcript's own
+  boundaries (no gaps); each segment's `dialogue` is only that speaker's audible words (`validate_clip` invariant 11).
+  An overlapping backchannel becomes its own `as-recorded` segment; lock the visual to whoever should be on screen.
 - **`validate_clip.py` invariant:** clip `dialogue` must match transcript tokens. If you fix a transcript word, sync the same fix
   into every clip's `dialogue` (and re-run `validate_clip.py`).
 - **Long meaningful pauses can be kept deliberately** (split-screen reaction shot): set the segment's visual `locked: true` with a `reason`.

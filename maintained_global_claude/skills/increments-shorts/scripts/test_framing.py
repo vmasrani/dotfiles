@@ -205,3 +205,24 @@ def test_panel_sharp_rect_is_horizontally_centred_over_the_backdrop(face_cx: flo
     shot = facelib.plan_shots(SpeakerTrack(0.0, 2.0, 6.0, samples), (W, H), OUT_W, PANEL_H, "panel", MAX_UPSCALE, "test")[0]
     dx, _, ow, _ = shot.dst
     assert dx == (OUT_W - ow) // 2, f"left margin {dx}, right margin {OUT_W - ow - dx}"
+
+
+def test_wordless_segment_keeps_its_existing_treatment() -> None:
+    """A segment with no transcript words (muted / as-recorded) must pass through rebuild_timeline untouched."""
+    from types import SimpleNamespace
+
+    import plan_framing
+    from cliplib import OutWord
+
+    def seg(sid, a, b, dialogue, visual):
+        return {"id": sid, "source_in": a, "source_out": b, "output_in": a, "output_out": b, "dialogue": dialogue, "speaker": "A", "visual": visual}
+
+    wordless = seg("S01", 0.0, 2.0, "", {"kind": "aroll", "treatment": "as-recorded", "locked": False})
+    spoken = seg("S02", 2.0, 4.0, "hello there", {"kind": "aroll", "treatment": "x", "locked": False})
+    words = [OutWord(0, 1, "hello", "A", 2.0, 2.5, 2.0, 2.5), OutWord(1, 1, "there", "A", 2.5, 3.0, 2.5, 3.0)]
+    lab = plan_framing.Label("closeup-A")
+    plan = plan_framing.Plan(ctx=SimpleNamespace(clip={"timeline": [wordless, spoken]}), cfg=None, words=words, spk=["A", "A"], locked=[False, False],
+                             label=[lab, lab], reason=["r", "r"], duration=4.0, fps=30.0, transcript=[])
+    out = plan_framing.rebuild_timeline(plan)
+    assert out[0] == wordless
+    assert out[1]["visual"]["treatment"] == "closeup-A"

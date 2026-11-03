@@ -7,6 +7,9 @@
 
   upload_youtube.py auth                      # one-time browser consent (needs client_secret.json; see references/youtube-setup.md)
   upload_youtube.py upload deliverables/<slug>.mp4 --meta deliverables/<slug>.txt [--thumbnail deliverables/<slug>-thumbnail.jpg]
+  upload_youtube.py upload ... --publish-at 2026-11-04T19:00:00-08:00   # schedule (stays private until then; offset REQUIRED)
+  upload_youtube.py schedule VIDEO_ID --at 2026-11-04T19:00:00-08:00    # schedule an existing private video
+  upload_youtube.py thumbnail VIDEO_ID FILE   # only works once processing has succeeded
   upload_youtube.py delete VIDEO_ID           # asks you to type the id back
 
 Privacy is ALWAYS private — publishing is done by a human in YouTube Studio. YouTube cannot replace a video's
@@ -17,6 +20,7 @@ from __future__ import annotations
 
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -40,12 +44,44 @@ def parse_meta(text: str) -> dict:
     return {"title": title.strip(), "description": desc.strip(), "tags": [t.strip() for t in tags.split(",") if t.strip()]}
 
 
-def build_body(meta: dict, language: str = "en") -> dict:
-    return {
+def parse_publish_at(value: str) -> datetime:
+    """ISO 8601 with an explicit UTC offset -> aware UTC datetime in the future."""
+    try:
+        when = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as e:
+        raise typer.BadParameter(f"not ISO 8601: {e}")
+    if when.tzinfo is None:
+        raise typer.BadParameter(f"{value!r} has no UTC offset; the machine's timezone is not the viewer's. Add one, e.g. 2026-11-04T19:00:00-08:00")
+    when = when.astimezone(timezone.utc)
+    if when <= datetime.now(timezone.utc):
+        raise typer.BadParameter(f"{value!r} is not in the future")
+    return when
+
+
+def utc_z(when: datetime) -> str:
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def schedule_body(video_id: str, when: datetime, status: dict) -> dict:
+    return {"id": video_id, "status": {"privacyStatus": "private", "publishAt": utc_z(when),
+                                       "selfDeclaredMadeForKids": status.get("madeForKids", False)}}
+
+
+def require_processed(item: dict) -> None:
+    state = item.get("processingDetails", {}).get("processingStatus")
+    if state != "succeeded":
+        raise RuntimeError(f"video is still processing (processingStatus={state!r}); YouTube replaces thumbnails set before processing succeeds. Retry in a few minutes.")
+
+
+def build_body(meta: dict, language: str = "en", publish_at: datetime | None = None) -> dict:
+    body = {
         "snippet": {"title": meta["title"], "description": meta["description"], "tags": meta["tags"], "categoryId": CATEGORY_PEOPLE_AND_BLOGS,
                     "defaultLanguage": language, "defaultAudioLanguage": language},
         "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
     }
+    if publish_at is not None:
+        body["status"]["publishAt"] = utc_z(publish_at)
+    return body
 
 
 def credentials():
@@ -83,13 +119,15 @@ def auth() -> None:
 
 @app.command()
 def upload(video: Path = typer.Argument(...), meta: Path = typer.Option(..., "--meta"), thumbnail: Path = typer.Option(None, "--thumbnail"),
-           language: str = typer.Option("en", "--language", help="snippet.defaultLanguage and defaultAudioLanguage")) -> None:
+           language: str = typer.Option("en", "--language", help="snippet.defaultLanguage and defaultAudioLanguage"),
+           publish_at: str = typer.Option(None, "--publish-at", help="ISO 8601 WITH UTC offset, e.g. 2026-11-04T19:00:00-08:00; stays private until then")) -> None:
     """Upload VIDEO as a private video with the title/description/tags from --meta."""
     from googleapiclient.http import MediaFileUpload  # noqa: PLC0415
 
     if not video.is_file():
         raise FileNotFoundError(video)
-    body = build_body(parse_meta(meta.read_text()), language)
+    when = parse_publish_at(publish_at) if publish_at else None
+    body = build_body(parse_meta(meta.read_text()), language, when)
     yt = service()
     req = yt.videos().insert(part="snippet,status", body=body, media_body=MediaFileUpload(str(video), chunksize=8 * 1024 * 1024, resumable=True))
     resp = None
@@ -100,7 +138,41 @@ def upload(video: Path = typer.Argument(...), meta: Path = typer.Option(..., "--
     vid = resp["id"]
     if thumbnail:
         yt.thumbnails().set(videoId=vid, media_body=MediaFileUpload(str(thumbnail))).execute()
+        print(f"WARNING: thumbnail set during processing may be replaced by YouTube — re-set it once processing finishes: upload_youtube.py thumbnail {vid} {thumbnail}")
+    if when:
+        print(f"scheduled for {resp['status'].get('publishAt', utc_z(when))} UTC (given: {publish_at})")
     print(f"https://studio.youtube.com/video/{vid}/edit   (private — publish it yourself; set 'Related video' to the full episode)")
+
+
+@app.command()
+def schedule(video_id: str = typer.Argument(...), at: str = typer.Option(..., "--at", help="ISO 8601 WITH UTC offset, e.g. 2026-11-04T19:00:00-08:00")) -> None:
+    """Schedule an existing PRIVATE video to go public at --at."""
+    when = parse_publish_at(at)
+    yt = service()
+    items = yt.videos().list(part="status", id=video_id).execute().get("items", [])
+    if not items:
+        raise RuntimeError(f"video {video_id} not found")
+    status = items[0]["status"]
+    if status["privacyStatus"] != "private":
+        raise RuntimeError(f"video is {status['privacyStatus']!r}; only private videos can be scheduled")
+    resp = yt.videos().update(part="status", body=schedule_body(video_id, when, status)).execute()
+    print(f"publishAt (UTC): {resp['status']['publishAt']}   given: {at}")
+
+
+@app.command()
+def thumbnail(video_id: str = typer.Argument(...), file: Path = typer.Argument(...)) -> None:
+    """Set a thumbnail — refused until the video has finished processing."""
+    from googleapiclient.http import MediaFileUpload  # noqa: PLC0415
+
+    if not file.is_file():
+        raise FileNotFoundError(file)
+    yt = service()
+    items = yt.videos().list(part="processingDetails", id=video_id).execute().get("items", [])
+    if not items:
+        raise RuntimeError(f"video {video_id} not found")
+    require_processed(items[0])
+    yt.thumbnails().set(videoId=video_id, media_body=MediaFileUpload(str(file))).execute()
+    print(f"thumbnail set for {video_id}")
 
 
 @app.command()

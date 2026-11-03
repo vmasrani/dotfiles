@@ -8,6 +8,8 @@ Short, plain-spoken: a flat claim with an edge, or a straight question. **Never 
 Real examples: "The shady history of Effective Altruism" · "Calling Math True Is A Category Error" · "Does P(doom) make any sense?" ·
 "It sucks to be a doomer" · "Iraq was not a war for oil" · "Longtermism is a wicked idea" · "Judge an idea by the crazies it
 produces" · "What do you say if Reagan asks you the probability of nuclear war?". Max 100 characters.
+**No hashtags in the title** — they cost title characters and read as spam; the three hashtags live in the description
+(YouTube shows the first ones above the title anyway).
 
 ## Description (links + hashtags only, no commentary)
 
