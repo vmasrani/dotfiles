@@ -5,9 +5,9 @@
 # ///
 """Append the Increments end tag to a finished video.
 
-Holds the last frame for the tag's length, composites the tag (ProRes 4444 with alpha, 1080x1920)
-over the hold, and mixes the tag's sound in after the speech. Vertical input: the tag fills the frame.
-Horizontal input: the tag is scaled to the frame height and centred over the held last frame.
+The tag is its own segment after the untouched video: a full black screen (input size and fps) with the tag
+(ProRes 4444 with alpha, 1080x1920) composited on top, plus the tag's sound, concatenated after the video.
+Vertical input: the tag fills the frame. Horizontal input: the tag is scaled to the frame height and centred.
 The tag is downloaded once into the user cache (assets.end_tag) and size-verified.
 """
 
@@ -44,23 +44,22 @@ def duration(path: Path) -> float:
     return float(proc.stdout.strip())
 
 
-def audio_delay_ms(video_s: float) -> int:
-    """The tag's sound starts exactly when the speech video ends."""
-    return int(video_s * 1000)
+def probe_fps(path: Path) -> str:
+    num, den = probe(path, "stream=r_frame_rate")[0].split("/")
+    return f"{int(num)}/{int(den)}"
 
 
-def build_filter(video_s: float, tag_s: float, out_w: int, out_h: int) -> str:
-    """filter_complex string. Vertical (out_h > out_w): tag fills the frame; else scaled to out_h and centred."""
+def build_filter(tag_s: float, out_w: int, out_h: int, fps: str = "30") -> str:
+    """filter_complex string; inputs 0=short, 1=tag, 2=black lavfi. The tag is its own segment after the untouched short.
+    Vertical (out_h > out_w): tag fills the frame; else scaled to out_h and centred on the black screen."""
     tag_scale = "" if out_h > out_w else f"scale=-2:{out_h},"
-    pos = "" if out_h > out_w else ":x=(W-w)/2:y=0"
-    ms = audio_delay_ms(video_s)
     return (
-        f"[0:v]tpad=stop_mode=clone:stop_duration={tag_s:.3f}[base];"
-        f"[1:v]{tag_scale}setpts=PTS-STARTPTS+{video_s:.3f}/TB[tag];"
-        f"[base][tag]overlay=eof_action=pass:format=auto{pos},format=yuv420p[v];"
-        f"[0:a]apad=pad_dur={tag_s:.3f}[a0];"
-        f"[1:a]aresample=48000,adelay={ms}|{ms}[ta];"
-        "[a0][ta]amix=inputs=2:normalize=0:duration=first[a]"
+        f"[0:v]fps={fps},setsar=1,format=yuv420p[main];"
+        f"[1:v]{tag_scale}format=yuva444p[tagv];"
+        f"[2:v][tagv]overlay=format=auto:eof_action=pass:x=(W-w)/2:y=(H-h)/2,setsar=1,format=yuv420p[end];"
+        "[0:a]aresample=48000,aformat=channel_layouts=stereo[ma];"
+        f"[1:a]aresample=48000,aformat=channel_layouts=stereo,apad=whole_dur={tag_s:.3f}[ea];"
+        "[main][ma][end][ea]concat=n=2:v=1:a=1[v][a]"
     )
 
 
@@ -71,8 +70,10 @@ def add_end_tag(src: Path, dst: Path, tag: Path | None = None) -> float:
     tag = tag or end_tag()
     w, h = (int(x) for x in probe(src, "stream=width,height")[:2])
     d, t = duration(src), duration(tag)
+    fps = probe_fps(src)
     cmd = [ffmpeg_tool("ffmpeg"), "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-i", str(tag),
-           "-filter_complex", build_filter(d, t, w, h), "-map", "[v]", "-map", "[a]",
+           "-f", "lavfi", "-i", f"color=c=black:s={w}x{h}:r={fps}:d={t:.3f}",
+           "-filter_complex", build_filter(t, w, h, fps), "-map", "[v]", "-map", "[a]",
            "-c:v", "libx264", "-crf", "16", "-preset", "slow", "-profile:v", "high", "-r", "30",
            "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", str(dst)]
     proc = subprocess.run(cmd, capture_output=True, text=True)

@@ -11,6 +11,6 @@
 - **Quote overlays:** prefer ONE fixed highlight on the key sentence for the whole quote, not stepping highlights.
 - **Fail loud everywhere.** A red validator is information; fix the input. Never hand-edit a generated output.
 - **Real credited media only**; every B-roll file needs a provenance entry.
-- **End tag** is added last (`endtag.py`): holds the final frame 2.33 s, overlays the alpha tag, mixes its sound after the speech.
+- **End tag** is added last (`endtag.py`): concatenates a 2.33 s black segment with the alpha tag and its sound after the untouched short.
   Shorts are cut to <= 2:57.6 so the finished file stays under YouTube's 3:00 Shorts limit.
 - **Crosstalk:** a stretched backchannel ("Yeah.") aligned across seconds of another speaker's speech stays in the audio, uncaptioned.

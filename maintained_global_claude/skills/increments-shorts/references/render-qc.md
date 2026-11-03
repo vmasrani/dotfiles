@@ -51,8 +51,8 @@ name tags on the right faces, captions legible at phone size, quote screenshot r
 ## Deliver
 
 `deliver.py CLIP_DIR --title ... --thumbnail ... --hashtag A --hashtag B --hashtag C` -> `deliverables/`. It refuses unless the clip is `qc_passed`.
-The end tag (`endtag.py`) is applied to every vertical short (full-frame overlay on a held last frame, sound after the speech) and,
-for horizontal clips, scaled to the frame height and centred on the held last frame.
+The end tag (`endtag.py`) is applied to every vertical short (its own segment after the untouched short: full black screen with the tag over it, the tag's sound) and,
+for horizontal clips, scaled to the frame height and centred on the black screen.
 Upload (optional): `youtube-setup.md`.
 
 ## Failure playbook

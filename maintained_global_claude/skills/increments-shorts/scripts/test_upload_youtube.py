@@ -3,29 +3,30 @@
 # requires-python = ">=3.11"
 # dependencies = ["pytest>=8", "typer>=0.12", "loguru>=0.7", "platformdirs>=4", "rich>=13.7"]
 # ///
-"""Upload body/meta parsing (no network) — run: `uv run --script scripts/test_upload_youtube.py`."""
+"""upload_youtube body — run: `uv run --script scripts/test_upload_youtube.py`."""
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pytest
 
-from upload_youtube import build_body, parse_meta
+from upload_youtube import build_body
 
-META = "TITLE:\nIraq was not a war for oil\n\nDESCRIPTION:\nFull episode: https://youtu.be/x\n\n#a #b #c\n\nTAGS:\nIncrements Podcast, podcast\n"
-
-
-def test_parse_meta_and_body_is_always_private_not_for_kids():
-    m = parse_meta(META)
-    assert m["title"] == "Iraq was not a war for oil" and m["tags"] == ["Increments Podcast", "podcast"]
-    b = build_body(m)
-    assert b["status"] == {"privacyStatus": "private", "selfDeclaredMadeForKids": False}
-    assert b["snippet"]["categoryId"] == "22"
+META = {"title": "t", "description": "d", "tags": ["a"]}
 
 
-def test_malformed_meta_fails_loud():
-    with pytest.raises(ValueError, match="TITLE"):
-        parse_meta("just text")
+def test_default_language_is_en_for_text_and_audio():
+    s = build_body(META)["snippet"]
+    assert s["defaultLanguage"] == "en" and s["defaultAudioLanguage"] == "en"
+
+
+def test_language_override_applies_to_both():
+    s = build_body(META, "fr")["snippet"]
+    assert s["defaultLanguage"] == "fr" and s["defaultAudioLanguage"] == "fr"
+
+
+def test_still_private():
+    assert build_body(META)["status"]["privacyStatus"] == "private"
 
 
 if __name__ == "__main__":

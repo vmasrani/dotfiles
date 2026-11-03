@@ -40,9 +40,10 @@ def parse_meta(text: str) -> dict:
     return {"title": title.strip(), "description": desc.strip(), "tags": [t.strip() for t in tags.split(",") if t.strip()]}
 
 
-def build_body(meta: dict) -> dict:
+def build_body(meta: dict, language: str = "en") -> dict:
     return {
-        "snippet": {"title": meta["title"], "description": meta["description"], "tags": meta["tags"], "categoryId": CATEGORY_PEOPLE_AND_BLOGS},
+        "snippet": {"title": meta["title"], "description": meta["description"], "tags": meta["tags"], "categoryId": CATEGORY_PEOPLE_AND_BLOGS,
+                    "defaultLanguage": language, "defaultAudioLanguage": language},
         "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
     }
 
@@ -81,13 +82,14 @@ def auth() -> None:
 
 
 @app.command()
-def upload(video: Path = typer.Argument(...), meta: Path = typer.Option(..., "--meta"), thumbnail: Path = typer.Option(None, "--thumbnail")) -> None:
+def upload(video: Path = typer.Argument(...), meta: Path = typer.Option(..., "--meta"), thumbnail: Path = typer.Option(None, "--thumbnail"),
+           language: str = typer.Option("en", "--language", help="snippet.defaultLanguage and defaultAudioLanguage")) -> None:
     """Upload VIDEO as a private video with the title/description/tags from --meta."""
     from googleapiclient.http import MediaFileUpload  # noqa: PLC0415
 
     if not video.is_file():
         raise FileNotFoundError(video)
-    body = build_body(parse_meta(meta.read_text()))
+    body = build_body(parse_meta(meta.read_text()), language)
     yt = service()
     req = yt.videos().insert(part="snippet,status", body=body, media_body=MediaFileUpload(str(video), chunksize=8 * 1024 * 1024, resumable=True))
     resp = None
