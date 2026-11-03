@@ -1,0 +1,433 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "httpx>=0.27",
+#     "typer>=0.12",
+#     "rich>=13.7",
+#     "loguru>=0.7",
+# ]
+# ///
+"""buffer — schedule Increments Podcast vertical shorts through Buffer's public API.
+
+Buffer has no upload endpoint: the MP4 must sit at a public, stable HTTPS URL.
+Media host: Google Drive via the `gog` CLI (upload into a `buffer-media` folder,
+share anyone-with-link, serve from drive.usercontent.google.com). The URL is
+verified (HTTP 200/206, video/mp4, `ftyp` magic bytes, no HTML interstitial)
+before any post is created.
+
+API key: read ONLY from ~/.config/buffer/token (mode 600). Never printed.
+
+Commands: channels, schedule, posts, delete.
+"""
+
+import hashlib
+import json
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+import httpx
+import typer
+from loguru import logger
+from rich.console import Console
+from rich.table import Table
+
+API_URL = "https://api.buffer.com"
+TOKEN_PATH = Path.home() / ".config/buffer/token"
+CACHE_PATH = Path.home() / ".cache/buffer-cli/media.json"
+DRIVE_FOLDER = "buffer-media"
+DOWNLOAD_URL = "https://drive.usercontent.google.com/download?id={id}&export=download"
+PLACEHOLDER_ID = "<DRIVE_FILE_ID_ASSIGNED_ON_UPLOAD>"
+
+# CLI alias -> Buffer `Service` enum value.
+ALIASES = {
+    "ig": "instagram",
+    "instagram": "instagram",
+    "tiktok": "tiktok",
+    "tt": "tiktok",
+    "youtube": "youtube",
+    "yt": "youtube",
+}
+TEXT_LIMITS = {"instagram": 2200, "tiktok": 2200, "youtube": 5000}
+YT_TITLE_LIMIT = 100
+
+console = Console()
+err = Console(stderr=True)
+app = typer.Typer(add_completion=False, no_args_is_help=True, help=__doc__.split("\n")[0])
+logger.remove()
+logger.add(sys.stderr, level="INFO", format="<level>{level: <7}</level> {message}")
+
+
+# --------------------------------------------------------------------------- API
+
+
+def read_token() -> str:
+    if not TOKEN_PATH.is_file():
+        raise SystemExit(f"Buffer API key missing: create {TOKEN_PATH} (mode 600) containing the key.")
+    mode = TOKEN_PATH.stat().st_mode & 0o777
+    if mode & 0o077:
+        raise SystemExit(f"{TOKEN_PATH} is mode {mode:o}; run: chmod 600 {TOKEN_PATH}")
+    token = TOKEN_PATH.read_text().strip()
+    if not token:
+        raise SystemExit(f"{TOKEN_PATH} is empty.")
+    return token
+
+
+def gql(query: str, variables: dict | None = None) -> dict:
+    """POST one GraphQL request. Raises on HTTP, rate-limit, or GraphQL errors. Never echoes headers."""
+    body = {"query": query, **({"variables": variables} if variables else {})}
+    resp = httpx.post(
+        API_URL,
+        headers={"Authorization": f"Bearer {read_token()}"},
+        json=body,
+        timeout=60,
+    )
+    if resp.status_code == 429:
+        raise SystemExit(
+            f"Buffer rate limit hit (429). Windows: {resp.headers.get('ratelimit', 'n/a')}. "
+            f"Retry after {resp.headers.get('retry-after', 'the window resets')}."
+        )
+    if resp.status_code >= 400:
+        raise SystemExit(f"Buffer API HTTP {resp.status_code}: {resp.text[:500]}")
+    payload = resp.json()
+    if payload.get("errors"):
+        msgs = "; ".join(e.get("message", "?") for e in payload["errors"])
+        raise SystemExit(f"Buffer GraphQL error: {msgs}")
+    logger.debug("ratelimit: {}", resp.headers.get("ratelimit"))
+    return payload["data"]
+
+
+def mutation_result(data: dict, field: str) -> dict:
+    result = data[field]
+    if "message" in result:
+        raise SystemExit(f"Buffer rejected {field}: {result['message']}")
+    return result
+
+
+def get_org_id(org: str | None) -> str:
+    if org:
+        return org
+    orgs = gql("{ account { organizations { id name } } }")["account"]["organizations"]
+    if len(orgs) != 1:
+        names = ", ".join(f"{o['id']} ({o['name']})" for o in orgs)
+        raise SystemExit(f"Account has {len(orgs)} organizations; pass --org ID. Options: {names}")
+    return orgs[0]["id"]
+
+
+CHANNELS_Q = """query Channels($org: OrganizationId!) {
+  channels(input: { organizationId: $org }) {
+    id service name displayName type isDisconnected isLocked isQueuePaused timezone
+    metadata { __typename ... on TiktokMetadata { defaultToReminders } }
+  }
+}"""
+
+
+def list_channels(org_id: str) -> list[dict]:
+    return gql(CHANNELS_Q, {"org": org_id})["channels"]
+
+
+def resolve_channels(spec: str, channels: list[dict]) -> list[dict]:
+    """Map 'ig,tiktok,youtube' (or raw channel ids) to exactly one live channel each."""
+    picked = []
+    for token in (t.strip().lower() for t in spec.split(",") if t.strip()):
+        if token in ALIASES:
+            service = ALIASES[token]
+            matches = [c for c in channels if c["service"] == service]
+            if not matches:
+                have = ", ".join(sorted({c["service"] for c in channels}))
+                raise SystemExit(
+                    f"No connected {service} channel in Buffer (connected: {have}). "
+                    f"Connect it at https://publish.buffer.com and retry."
+                )
+            if len(matches) > 1:
+                opts = ", ".join(f"{c['id']} ({c['name']})" for c in matches)
+                raise SystemExit(f"{len(matches)} {service} channels match '{token}'; pass a channel id instead: {opts}")
+            picked.append(matches[0])
+        else:
+            matches = [c for c in channels if c["id"].lower() == token]
+            if not matches:
+                raise SystemExit(f"Unknown channel '{token}'. Use ig, tiktok, youtube or an id from `buffer channels`.")
+            picked.append(matches[0])
+    if not picked:
+        raise SystemExit("--channels is empty.")
+    if len({c["id"] for c in picked}) != len(picked):
+        raise SystemExit("--channels lists the same channel twice.")
+    for c in picked:
+        if c["isDisconnected"] or c["isLocked"]:
+            raise SystemExit(f"Channel {c['service']}/{c['name']} is disconnected or locked in Buffer; reconnect it first.")
+    return picked
+
+
+def auto_publish_note(c: dict) -> str:
+    if c["service"] == "tiktok" and c["metadata"].get("defaultToReminders"):
+        return "reminder (TikTok defaults to reminders)"
+    return "automatic"
+
+
+# ----------------------------------------------------------------------- Media
+
+
+def run_gog(*args: str) -> dict:
+    proc = subprocess.run(["gog", *args, "-j", "--force", "--no-input"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit(f"gog {' '.join(args[:2])} failed (exit {proc.returncode}): {proc.stderr.strip()[:500]}")
+    return json.loads(proc.stdout)
+
+
+def ensure_drive_folder() -> str:
+    query = f"name='{DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    files = run_gog("drive", "ls", "--query", query, "--max", "5").get("files", [])
+    if files:
+        return files[0]["id"]
+    created = run_gog("drive", "mkdir", DRIVE_FOLDER)
+    return (created.get("folder") or created.get("file") or created)["id"]
+
+
+def load_cache() -> dict:
+    return json.loads(CACHE_PATH.read_text()) if CACHE_PATH.is_file() else {}
+
+
+def sha256_of(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_public_video(url: str, expected_size: int) -> None:
+    """Fetch the first KB the way Buffer will: anonymous GET, must be raw MP4 — not an HTML interstitial."""
+    resp = httpx.get(url, headers={"Range": "bytes=0-1023"}, follow_redirects=True, timeout=60)
+    ctype = resp.headers.get("content-type", "")
+    if resp.status_code not in (200, 206):
+        raise SystemExit(f"Media URL not publicly fetchable: HTTP {resp.status_code}")
+    if not ctype.startswith("video/"):
+        raise SystemExit(f"Media URL serves {ctype!r}, not video/mp4 (Drive interstitial or login page?)")
+    if resp.content[4:8] != b"ftyp":
+        raise SystemExit("Media URL body is not an MP4 (no 'ftyp' box at offset 4).")
+    total = resp.headers.get("content-range", "").rpartition("/")[2] or resp.headers.get("content-length", "")
+    if total.isdigit() and int(total) != expected_size:
+        raise SystemExit(f"Media URL reports {total} bytes but local file is {expected_size}.")
+
+
+def host_media(path: Path) -> str:
+    """Upload to Drive (once per content hash), share anyone-with-link, verify, return the direct URL."""
+    digest = sha256_of(path)
+    cache = load_cache()
+    file_id = cache.get(digest)
+    if file_id:
+        logger.info("reusing Drive upload {} for {}", file_id, path.name)
+    else:
+        folder = ensure_drive_folder()
+        logger.info("uploading {} ({:.1f} MB) to Drive/{}", path.name, path.stat().st_size / 1e6, DRIVE_FOLDER)
+        file_id = run_gog("drive", "upload", str(path), "--parent", folder)["file"]["id"]
+        run_gog("drive", "share", file_id, "--to=anyone", "--role=reader")
+        CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CACHE_PATH.write_text(json.dumps({**cache, digest: file_id}, indent=2))
+    url = DOWNLOAD_URL.format(id=file_id)
+    verify_public_video(url, path.stat().st_size)
+    logger.info("media URL verified (raw video/mp4, public): {}", url)
+    return url
+
+
+# ------------------------------------------------------------------- Schedule
+
+CREATE_POST_M = """mutation CreatePost($input: CreatePostInput!) {
+  createPost(input: $input) {
+    ... on PostActionSuccess { post { id dueAt status channelService } }
+    ... on MutationError { message }
+  }
+}"""
+
+SCHEDULED_Q = """query Scheduled($org: OrganizationId!, $channels: [ChannelId!]) {
+  posts(first: 100, input: { organizationId: $org, filter: { status: [scheduled], channelIds: $channels } }) {
+    edges { node { id channelId dueAt } }
+  }
+}"""
+
+
+def parse_due(at: str) -> datetime:
+    when = datetime.fromisoformat(at)
+    if when.tzinfo is None:
+        when = when.astimezone()  # naive = local
+    when = when.astimezone(timezone.utc)
+    if when <= datetime.now(timezone.utc):
+        raise SystemExit(f"--at {at} is in the past.")
+    return when
+
+
+def build_input(channel: dict, text: str, title: str | None, video_url: str, due: datetime,
+                thumb_ms: int | None, yt_privacy: str) -> dict:
+    video: dict = {"url": video_url}
+    if thumb_ms is not None and channel["service"] in ("instagram", "tiktok"):
+        video["metadata"] = {"thumbnailOffset": thumb_ms}
+    metadata = {
+        "instagram": {"instagram": {"type": "reel", "shouldShareToFeed": True}},
+        "tiktok": {},
+        "youtube": {"youtube": {"title": title, "privacy": yt_privacy, "madeForKids": False, "notifySubscribers": False}},
+    }[channel["service"]]
+    return {
+        "channelId": channel["id"],
+        "text": text,
+        "schedulingType": "automatic",
+        "mode": "customScheduled",
+        "dueAt": due.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "needsApproval": False,
+        "assets": [{"video": video}],
+        **({"metadata": metadata} if metadata else {}),
+    }
+
+
+def validate_text(channels: list[dict], text: str, title: str | None) -> None:
+    for c in channels:
+        limit = TEXT_LIMITS[c["service"]]
+        if len(text) > limit:
+            raise SystemExit(f"--text is {len(text)} chars; {c['service']} allows {limit}.")
+    if any(c["service"] == "youtube" for c in channels):
+        if not title:
+            raise SystemExit("--title is required when scheduling to youtube.")
+        if len(title) > YT_TITLE_LIMIT or "<" in title or ">" in title:
+            raise SystemExit(f"YouTube title must be <= {YT_TITLE_LIMIT} chars with no < or >.")
+        if "<" in text or ">" in text:
+            raise SystemExit("YouTube descriptions cannot contain < or >.")
+
+
+def refuse_slot_collisions(org_id: str, channels: list[dict], due: datetime) -> None:
+    edges = gql(SCHEDULED_Q, {"org": org_id, "channels": [c["id"] for c in channels]})["posts"]["edges"]
+    due_utc = due.strftime("%Y-%m-%dT%H:%M")
+    for e in edges:
+        n = e["node"]
+        if (n["dueAt"] or "")[:16] == due_utc:
+            raise SystemExit(f"A post ({n['id']}) is already scheduled on that channel at {due_utc}Z; refusing to double-book.")
+
+
+def print_request(label: str, body: dict) -> None:
+    console.print(f"[bold]{label}[/bold]")
+    print(f"POST {API_URL}\nAuthorization: Bearer ***REDACTED***\nContent-Type: application/json")
+    print(json.dumps(body, indent=2))
+
+
+@app.command()
+def schedule(
+    file: Path = typer.Argument(..., exists=True, dir_okay=False, help="Vertical MP4"),
+    channels: str = typer.Option(..., "--channels", "-c", help="Comma list: ig,tiktok,youtube (or channel ids)"),
+    at: str = typer.Option(..., "--at", help="ISO datetime; naive = local time"),
+    text: str = typer.Option(..., "--text", help="Caption (IG/TikTok) / description (YouTube)"),
+    title: Optional[str] = typer.Option(None, "--title", help="YouTube title (required for youtube)"),
+    thumb_ms: Optional[int] = typer.Option(None, "--thumb-ms", help="Cover frame offset in ms (IG/TikTok)"),
+    yt_privacy: str = typer.Option("public", "--yt-privacy", help="public|unlisted|private"),
+    org: Optional[str] = typer.Option(None, "--org"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print request bodies; upload and create nothing"),
+):
+    """Host FILE publicly, then create one exactly-timed scheduled post per channel."""
+    if yt_privacy not in ("public", "unlisted", "private"):
+        raise SystemExit("--yt-privacy must be public, unlisted or private.")
+    if file.suffix.lower() != ".mp4":
+        raise SystemExit(f"{file.name}: expected an .mp4 file.")
+    due = parse_due(at)
+    org_id = get_org_id(org)
+    picked = resolve_channels(channels, list_channels(org_id))
+    validate_text(picked, text, title)
+    local = due.astimezone().strftime("%a %Y-%m-%d %H:%M %Z")
+
+    if dry_run:
+        logger.info("DRY RUN: nothing uploaded, nothing created. Due {} ({} UTC)", local, due.strftime("%H:%M"))
+        url = DOWNLOAD_URL.format(id=PLACEHOLDER_ID)
+        for c in picked:
+            body = {"query": CREATE_POST_M,
+                    "variables": {"input": build_input(c, text, title, url, due, thumb_ms, yt_privacy)}}
+            print_request(f"createPost -> {c['service']}/{c['name']} [{auto_publish_note(c)}]", body)
+        return
+
+    refuse_slot_collisions(org_id, picked, due)
+    url = host_media(file)
+    for c in picked:
+        data = gql(CREATE_POST_M, {"input": build_input(c, text, title, url, due, thumb_ms, yt_privacy)})
+        post = mutation_result(data, "createPost")["post"]
+        console.print(f"[green]scheduled[/green] {c['service']:<10} {post['id']}  due {post['dueAt']}  ({local})")
+
+
+# ------------------------------------------------------------ channels / posts
+
+
+@app.command()
+def channels(org: Optional[str] = typer.Option(None, "--org")):
+    """List connected channels."""
+    rows = list_channels(get_org_id(org))
+    table = Table("id", "service", "name", "type", "publishing", "state")
+    table.columns[0].no_wrap = True
+    table.columns[0].min_width = 24
+    for c in rows:
+        state = "disconnected" if c["isDisconnected"] else "locked" if c["isLocked"] else "paused" if c["isQueuePaused"] else "ok"
+        table.add_row(c["id"], c["service"], c["name"], c["type"], auto_publish_note(c), state)
+    console.print(table)
+
+
+POSTS_Q = """query Posts($org: OrganizationId!, $after: String, $filter: PostsFiltersInput) {
+  posts(first: 50, after: $after, input: {
+    organizationId: $org, filter: $filter, sort: [{ field: dueAt, direction: asc }]
+  }) {
+    edges { node { id channelService dueAt status text shareMode schedulingType error { message } } }
+    pageInfo { hasNextPage endCursor }
+  }
+}"""
+
+
+@app.command()
+def posts(
+    channel: Optional[str] = typer.Option(None, "--channel", "-c", help="ig|tiktok|youtube or channel id"),
+    status: str = typer.Option("scheduled", "--status", help="draft|error|needs_approval|scheduled|sending|sent"),
+    org: Optional[str] = typer.Option(None, "--org"),
+):
+    """List posts (default: scheduled) with due time and status."""
+    org_id = get_org_id(org)
+    filt: dict = {"status": [status]}
+    if channel:
+        filt["channelIds"] = [c["id"] for c in resolve_channels(channel, list_channels(org_id))]
+    table = Table("id", "channel", "due (local)", "status", "mode", "text")
+    table.columns[0].no_wrap = True
+    table.columns[0].min_width = 24
+    after = None
+    while True:
+        page = gql(POSTS_Q, {"org": org_id, "after": after, "filter": filt})["posts"]
+        for e in page["edges"]:
+            n = e["node"]
+            due = datetime.fromisoformat(n["dueAt"].replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M %Z") if n["dueAt"] else "-"
+            status_cell = n["status"] + (f": {n['error']['message']}" if n.get("error") else "")
+            table.add_row(n["id"], n["channelService"], due, status_cell, n["schedulingType"] or "-", (n["text"] or "").replace("\n", " ")[:50])
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        after = page["pageInfo"]["endCursor"]
+    console.print(table)
+    console.print(f"{table.row_count} post(s)")
+
+
+DELETE_M = """mutation DeletePost($input: DeletePostInput!) {
+  deletePost(input: $input) {
+    ... on DeletePostSuccess { id }
+    ... on MutationError { message }
+  }
+}"""
+
+
+@app.command()
+def delete(
+    post_id: str = typer.Argument(...),
+    confirm: str = typer.Option(..., "--confirm", help="Must repeat POST_ID exactly"),
+):
+    """Delete one post. Guarded: --confirm must equal POST_ID."""
+    if confirm != post_id:
+        raise SystemExit("--confirm must be identical to POST_ID; nothing deleted.")
+    post = gql("query($id: PostId!) { post(input: { id: $id }) { id channelService dueAt status text } }", {"id": post_id})["post"]
+    if post is None:
+        raise SystemExit(f"No post {post_id}.")
+    console.print(f"deleting {post['id']} {post['channelService']} due {post['dueAt']} [{post['status']}] {(post['text'] or '')[:60]!r}")
+    result = mutation_result(gql(DELETE_M, {"input": {"id": post_id}}), "deletePost")
+    console.print(f"[green]deleted[/green] {result['id']}")
+
+
+if __name__ == "__main__":
+    app()
