@@ -63,6 +63,25 @@ if [[ -n "$model_name" ]]; then
     model_info="\033[36m${model_name}\033[0m "
 fi
 
+# Machine badge: Apple chip generation (M4, M5, ...); short hostname on anything else
+machine_label() {
+    local brand
+    [[ "$(uname)" == "Darwin" ]] && brand=$(sysctl -n machdep.cpu.brand_string)
+    if [[ "$brand" =~ 'Apple (M[0-9]+)' ]]; then
+        echo "${match[1]}"
+    else
+        hostname -s
+    fi
+}
+
+machine=$(machine_label)
+case "$machine" in
+    M4) badge_color="48;5;208;38;5;16" ;;
+    M5) badge_color="48;5;39;38;5;16" ;;
+    *)  badge_color="48;5;240;38;5;255" ;;
+esac
+machine_info="\033[1;${badge_color}m ${machine} \033[0m "
+
 # Session rate limits: 5h and 7d usage with reset times
 color_pct() {
     if [[ "$1" -lt 60 ]]; then
@@ -90,7 +109,7 @@ seven_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // 0')
 limits_info="$(limit_segment "5h" "$five_pct" "$five_reset" "%-I:%M%p")$(limit_segment "7d" "$seven_pct" "$seven_reset" "%a %-I:%M%p")"
 
 # Output status line: main info left, rate limits pushed to the right edge
-left=$(printf "%b%s%s %s%b%b" "$model_info" "$display_path" "$git_branch" "$current_time" "$context_info" "$disk_info")
+left=$(printf "%b%b%s%s %s%b%b" "$machine_info" "$model_info" "$display_path" "$git_branch" "$current_time" "$context_info" "$disk_info")
 right="${limits_info# }"
 
 visible_len() {
