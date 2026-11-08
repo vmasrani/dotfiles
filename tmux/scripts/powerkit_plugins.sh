@@ -29,6 +29,10 @@ mem_widget_ssh() {
     printf '%s' 'external("󰍛"|"#($HOME/dotfiles/tmux/scripts/mem_usage.sh)"|"#c6a0f6"|"#d4b8f8"|"5")'
 }
 
+load_widget() {
+    printf '%s' 'external("󰊚"|"#($HOME/dotfiles/tmux/scripts/load_status.sh)"|"#8bd5ca"|"#a6e0d8"|"5")'
+}
+
 gpu_widget() {
     printf '%s' 'external("󰢮"|"#($HOME/dotfiles/tmux/scripts/gpu_status.sh)"|"#a6da95"|"#bee5b3"|"5")'
 }
@@ -59,7 +63,7 @@ time_widget() {
 }
 
 build_ssh_plugins() {
-    local widgets=("$(cpu_widget_ssh)" "$(mem_widget_ssh)")
+    local widgets=("$(cpu_widget_ssh)" "$(load_widget)" "$(mem_widget_ssh)")
     if has_gpu; then
         widgets+=("$(gpu_widget)")
     fi
@@ -71,6 +75,7 @@ build_ssh_plugins() {
 build_local_plugins() {
     local widgets=(
         "$(cpu_widget_local)"
+        "$(load_widget)"
         "$(mem_widget_local)"
         "$(battery_widget)"
         "$(weather_widget)"
