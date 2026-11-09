@@ -31,9 +31,10 @@ install_iterm2_prefs() {
 	iterm2_rewrite_home "$folder/$ITERM2_DOMAIN.plist" "$HOME" || return 1
 
 	local cur_folder cur_load cur_sel
-	cur_folder=$(defaults read "$ITERM2_DOMAIN" PrefsCustomFolder 2>/dev/null)
-	cur_load=$(defaults read "$ITERM2_DOMAIN" LoadPrefsFromCustomFolder 2>/dev/null)
-	cur_sel=$(defaults read "$ITERM2_DOMAIN" NoSyncNeverRemindPrefsChangesLostForFile_selection 2>/dev/null)
+	# A fresh machine has no such keys: defaults read exits 1, which would trip set -e silently.
+	cur_folder=$(defaults read "$ITERM2_DOMAIN" PrefsCustomFolder 2>/dev/null || true)
+	cur_load=$(defaults read "$ITERM2_DOMAIN" LoadPrefsFromCustomFolder 2>/dev/null || true)
+	cur_sel=$(defaults read "$ITERM2_DOMAIN" NoSyncNeverRemindPrefsChangesLostForFile_selection 2>/dev/null || true)
 	if [[ "$cur_folder" == "$folder" && "$cur_load" == "1" && "$cur_sel" == "2" ]]; then
 		gum_dim "iTerm2 prefs already configured"
 		return 0
