@@ -187,13 +187,15 @@
   fi
 
   ################################[ machine: which computer ]################################
-  # Mac identity is looked up by this machine's LAN IP. Fill in the M4 and MacBook Pro IPs.
-  # Format: [ip]='LABEL|256-color'. Linux is detected by uname and needs no IP.
+  # Mac identity is looked up by this machine's LAN IP. The MacBook Pro roams between
+  # networks, so it is also recognised by hostname when its IP isn't listed.
+  # Format: [ip]='ICON LABEL|256-color'. Linux is detected by uname and needs no IP.
   typeset -gA _P9K_MACHINES=(
-    [192.168.86.26]='M5|201'     # Mac mini M5   (magenta)
-    [192.168.86.43]='M4|45'     # Mac mini M4   (cyan)
-    # [192.168.86.YY]='MBP|208'  # MacBook Pro   (orange)    <- put its IP here
+    [192.168.86.26]=$' M5|201'   # Mac mini M5   (magenta)
+    [192.168.86.43]=$' M4|45'    # Mac mini M4   (cyan)
+    [10.250.129.233]='󰌢|208'           # MacBook Pro   (orange)
   )
+  typeset -g _P9K_MBP_ENTRY='󰌢|208'
   typeset -g _P9K_MACHINE_SEGMENT
   if [[ $OSTYPE == linux* ]]; then
     _P9K_MACHINE_SEGMENT=$'%F{220}\uF17C linux%f'
@@ -203,8 +205,9 @@
       _ip=$(ipconfig getifaddr $_ifc 2>/dev/null) && [[ -n $_ip ]] && break
     done
     _entry=${_P9K_MACHINES[$_ip]}
+    [[ -z $_entry && $(scutil --get LocalHostName 2>/dev/null) == MacBook-Pro* ]] && _entry=$_P9K_MBP_ENTRY
     if [[ -n $_entry ]]; then
-      _P9K_MACHINE_SEGMENT=$'%F{'"${_entry#*|}"$'}\uF179 '"${_entry%%|*}%f"
+      _P9K_MACHINE_SEGMENT="%F{${_entry#*|}}${_entry%%|*}%f"
     else
       _P9K_MACHINE_SEGMENT="%F{196}?? ${_ip:-no-ip}%f"   # unknown machine: add its IP above
     fi
