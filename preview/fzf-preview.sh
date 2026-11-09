@@ -33,17 +33,9 @@ if [[ -f "$1" ]]; then
 
   case "$1" in
     # Data
-    *.db)
-      preview sqlite3 -header -csv "$1" "SELECT * FROM $(sqlite3 "$1" '.tables' | awk '{print $1}')" | head -n $MAX_LINES | print_csv
-      ;;
-    *.csv)
-      preview print_csv "$1"
-      ;;
-    *.tsv)
-      preview column -t -s $'\t' "$1" | head -n $MAX_LINES | bat --color=always -l tsv
-      ;;
-    *.parquet)
-      preview parquet-tools cat --limit 1000 --format jsonl "$1" | jq -C
+    # Tables: DuckDB. stderr kept so a malformed file shows its error.
+    *.csv|*.tsv|*.parquet|*.db|*.sqlite|*.sqlite3|*.duckdb)
+      timeout "$TIMEOUT" table-preview "$1" 2>&1
       ;;
     *.json)
       preview_json "$1"

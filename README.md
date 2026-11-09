@@ -89,13 +89,13 @@ Every fzf panel can preview files inline. The format is detected automatically.
 
 | Extension | Previewer |
 |-----------|-----------|
-| `.csv` | `print_csv` (colorized columns) |
+| `.csv` `.tsv` | `table-preview` (DuckDB: sample rows + column stats) |
 | `.json` | `jq` (syntax-highlighted JSON) |
-| `.parquet` | `parquet-tools` -> `jq` |
+| `.parquet` | `table-preview` (DuckDB) |
 | `.md` | `glow` (rendered markdown) |
 | `.pdf` | `pdftotext` |
 | `.ipynb` | `rich --ipynb` |
-| `.db` | `sqlite3` -> `print_csv` |
+| `.db` `.sqlite` `.duckdb` | `table-preview` (DuckDB, first table) |
 | `.pkl` / `.pickle` | `pkl-preview` (Python pickle) |
 | `.pt` | `torch-preview` (PyTorch tensors) |
 | `.npy` | `npy-preview` (NumPy arrays) |
@@ -249,7 +249,7 @@ Every classic Unix tool has a faster, more informative modern replacement. These
 | [`yq`](https://github.com/mikefarah/yq) | YAML processor |
 | [`pq`](https://github.com/sevagh/pq) | Protobuf processor |
 | [`csvkit`](https://github.com/wireservice/csvkit) (`csvcut`) | CSV column extraction and manipulation |
-| [`parquet-tools`](https://github.com/hangxie/parquet-tools) | Parquet file viewer and processor |
+| [`duckdb`](https://duckdb.org) | SQL engine for CSV/Parquet/JSON; powers table previews |
 | [`rich-cli`](https://github.com/Textualize/rich-cli) | Rich terminal output (tables, syntax, markdown, Jupyter) |
 | [`markitdown`](https://github.com/microsoft/markitdown) | Convert anything to Markdown (PDF, DOCX, EPUB, HTML) |
 | [`chafa`](https://github.com/hpjansson/chafa) | Render images as ASCII art in terminal |
@@ -361,7 +361,7 @@ Every tool is a single file in `tools/`. Python scripts use uv inline dependenci
 
 | Tool | What it does |
 |------|-------------|
-| `print_csv` | Pretty-print CSV files with colors |
+| `print_csv` | Table + column stats for a file or CSV on stdin (DuckDB) |
 | `colorize-columns` | Color columns in tabular output |
 | `pdf_extract_pages` | Extract page ranges from PDFs |
 | `pdf_to_png.py` | Convert PDF pages to PNG |

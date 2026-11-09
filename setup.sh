@@ -102,7 +102,7 @@ install_if_missing jq install_jq # Command-line JSON processor
 install_if_missing pq install_pq # Command-line protobuf processor
 install_if_missing yq install_yq # Command-line yaml processor
 install_if_missing csvcut install_csvcut # CSV column extractor from csvkit
-install_if_missing parquet-tools install_parquet_tools # Parquet file viewer and processor
+install_if_missing duckdb install_duckdb # SQL engine for CSV/Parquet/JSON; powers table previews
 install_if_missing claude install_claude_code_cli # Claude code CLI
 install_if_missing chafa install_chafa # ASCII art image renderer
 install_if_missing "${OS_CLIPBOARD:-xclip}" install_xclip # Clipboard for tmux (xclip on Linux, pbcopy on macOS)

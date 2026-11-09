@@ -1,0 +1,1 @@
+- refactor 'duckdb -c "SELECT * FROM '~/dev/bench/2374/cart/table-v2-time.parquet' LIMIT 2000"' for previews

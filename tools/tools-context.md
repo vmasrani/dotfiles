@@ -11,7 +11,7 @@
 | `summarize_url.py` | AI-powered URL summarizer using `tabstack` + Pydantic models; imports from `url_renderers.py` and `summarize_url_models.py` |
 | `url_renderers.py` | Rendering helpers (`render_overview`, `render_one_pager`, `render_report`) imported by `summarize_url.py` — not standalone |
 | `summarize_url_models.py` | Pydantic models and system prompts for `summarize_url.py` — not standalone |
-| `print_csv` | Rich-formatted CSV/Parquet viewer; caps at 40 rows and 2MB sample for safety |
+| `print_csv` | Thin wrapper over `table-preview` (DuckDB); also accepts CSV on stdin |
 | `pdf_extract_pages` | Extract page ranges from PDFs to stdout or file |
 | `update-packages` | Frontend to `update_checks/update_functions.sh`; wraps check/show/refresh actions |
 | `ctx-index` | Build project map from `*-context.md` files — one summary line per directory |

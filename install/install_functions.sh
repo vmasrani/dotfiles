@@ -499,6 +499,7 @@ install_dotfiles() {
 		"$dotfiles/preview/npy-preview.py:$bin/npy-preview"
 		"$dotfiles/preview/feather-preview.py:$bin/feather-preview"
 		"$dotfiles/preview/arrow-preview.py:$bin/arrow-preview"
+		"$dotfiles/preview/table-preview.sh:$bin/table-preview"
 		"$dotfiles/preview/pkl-preview.py:$bin/pkl-preview"
 		"$dotfiles/preview/onnx-preview.py:$bin/onnx-preview"
 
@@ -1128,9 +1129,15 @@ install_eza() {
 	gum_success "eza installed successfully."
 }
 
-install_parquet_tools() {
-	install_github_release hangxie/parquet-tools parquet-tools '.'
-	gum_success "parquet-tools installed successfully."
+install_duckdb() {
+	if [[ "$OS_TYPE" == "mac" ]]; then
+		brew install duckdb
+	else
+		install_github_release duckdb/duckdb duckdb 'duckdb_cli'
+	fi
+	# sqlite reader for table-preview on .db files (otherwise fetched on first use)
+	duckdb -c "INSTALL sqlite"
+	gum_success "duckdb installed successfully."
 }
 
 install_fzf_tab_completion() {
