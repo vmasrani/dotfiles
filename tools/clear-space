@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# Conservative, best-effort macOS cache cleanup. It never uses sudo.
+# Conservative, best-effort macOS cache cleanup. It never uses sudo, except
+# for the opt-in --symbol-cache step.
 
 set -uo pipefail
 
@@ -10,7 +11,12 @@ DRY_RUN=false
 ASSUME_YES=false
 WITH_DOCKER=false
 AGGRESSIVE=false
+WITH_SYMBOL_CACHE=false
 HAD_ERROR=0
+NOW=""
+SYMBOL_CACHE_DIR=/System/Volumes/Data/System/Library/Caches/com.apple.coresymbolicationd
+SYMBOL_CACHE_DATA=/System/Volumes/Data/System/Library/Caches/com.apple.coresymbolicationd/data
+SYMBOL_CACHE_HINT_KB=$((20 * 1024 * 1024))
 PROCESS_LIST=""
 
 usage() {
@@ -28,6 +34,10 @@ Options:
       --docker     Also prune unused Docker images, stopped containers,
                    unused networks, and build cache. Docker volumes are kept.
       --aggressive With --docker only, also prune unused Docker volumes.
+      --symbol-cache
+                   Also clear the macOS symbol cache (coresymbolicationd 'data'
+                   entry) and restart that service. Uses sudo; this is the only
+                   step that does, and it is off by default.
   -h, --help       Show this help.
 
 Default cleanup:
@@ -39,6 +49,7 @@ Default cleanup:
   * orphaned Google Chrome code-sign clones (full Chrome.app copies leaked by
     every Chrome launch that did not exit cleanly; running Chrome's kept)
 
+Without --symbol-cache the command never uses sudo.
 The command never removes source/worktree roots, ~/.cargo/bin, Cargo config or
 credentials, installed Rust toolchains, user application data, or active Docker
 resources. Missing paths and unavailable tools are reported or skipped.
@@ -81,6 +92,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         --aggressive)
             AGGRESSIVE=true
+            ;;
+        --symbol-cache)
+            WITH_SYMBOL_CACHE=true
             ;;
         -h|--help)
             usage
@@ -167,18 +181,20 @@ remove_children() {
 }
 
 stat_mtime() {
-    if stat -f %m "$1" >/dev/null 2>&1; then
-        stat -f %m "$1"
-    else
-        stat -c %Y "$1" 2>/dev/null || return 1
-    fi
+    local m
+    m=$(stat -f %m "$1" 2>/dev/null) || m=$(stat -c %Y "$1" 2>/dev/null) || return 1
+    printf '%s\n' "$m"
+}
+
+# Called at the start of each cleanup function so is_old never forks date per entry.
+refresh_now() {
+    NOW=$(date +%s) || fail "could not obtain current time"
 }
 
 is_old() {
-    local path=$1 modified now
+    local path=$1 modified
     modified=$(stat_mtime "$path") || { report_failure "could not read modification time: $path"; return 1; }
-    now=$(date +%s) || { report_failure "could not obtain current time"; return 1; }
-    (( now - modified >= DAYS * 86400 ))
+    (( NOW - modified >= DAYS * 86400 ))
 }
 
 is_referenced_by_process() {
@@ -196,6 +212,7 @@ is_claude_memory_path() {
 }
 
 clean_claude_transcripts() {
+    refresh_now
     local path
     note "Claude transcripts older than $DAYS day(s):"
     [[ -d "$CLAUDE_ROOT" ]] || { note "  skipped (missing): $CLAUDE_ROOT"; return; }
@@ -208,6 +225,7 @@ clean_claude_transcripts() {
 
 clean_omp_sessions() {
     local sessions_root="$OMP_ROOT/agent/sessions" project session_file session_dir
+    refresh_now
     note "OMP agent sessions older than $DAYS day(s):"
     [[ -d "$sessions_root" ]] || { note "  skipped (missing): $sessions_root"; return; }
     while IFS= read -r -d '' project; do
@@ -265,12 +283,13 @@ clean_omp_browser_profiles() {
 
 clean_temp_families() {
     local path base
+    refresh_now
     note "Abandoned Darwin temporary families older than $DAYS day(s):"
     [[ -n "$DARWIN_TEMP_ROOT" && -d "$DARWIN_TEMP_ROOT" ]] || { note "  skipped (Darwin temp directory unavailable)"; return; }
     while IFS= read -r -d '' path; do
         base=${path##*/}
         case "$base" in
-            cartridge-test-*|pack-csv-*|"pytest-of-${USER:-unknown}"|.tmp*)
+            cartridge-test-*|pack-csv-*|cartpress-test-home*|csv-ingest-*|log-ingest-*|parquet-ingest-*|parquet-map-int-*|plan-chunks-*|text-ingest-*|cartridge-tui-*|"pytest-of-${USER:-unknown}"|.tmp*)
                 is_old "$path" || continue
                 safe_remove "$path" "$DARWIN_TEMP_ROOT" || true
                 ;;
@@ -280,6 +299,7 @@ clean_temp_families() {
 
 clean_private_tmp_targets() {
     local target parent
+    refresh_now
     note "Stale Rust target directories under $PRIVATE_TMP_ROOT older than $DAYS day(s):"
     [[ -d "$PRIVATE_TMP_ROOT" ]] || { note "  skipped (missing): $PRIVATE_TMP_ROOT"; return; }
     if has_active_rust_build; then
@@ -353,6 +373,66 @@ clean_chrome_code_sign_clones() {
     done < <(find "$root" -mindepth 1 -maxdepth 1 -name 'code_sign_clone.*' -print0 2>/dev/null)
 }
 
+# Size of the symbol cache in KiB, readable only without a password prompt.
+# Prints nothing when unknown. Never fails.
+symbol_cache_kb() {
+    local out
+    [[ -d "$SYMBOL_CACHE_DIR" ]] || return 0
+    command -v sudo >/dev/null 2>&1 || return 0
+    out=$(sudo -n du -sk "$SYMBOL_CACHE_DIR" 2>/dev/null </dev/null) || return 0
+    out=${out%%[[:space:]]*}
+    [[ "$out" =~ ^[0-9]+$ ]] && printf '%s\n' "$out"
+    return 0
+}
+
+format_kb() {
+    awk -v k="$1" 'BEGIN { printf "%.1f GB", k / 1024 / 1024 }'
+}
+
+# Removes exactly <symbol cache dir>/data, then restarts the service. The only sudo use.
+clean_symbol_cache() {
+    local kb out
+    note "macOS symbol cache (uses sudo):"
+    [[ -d "$SYMBOL_CACHE_DIR" ]] || { note "  skipped (missing): $SYMBOL_CACHE_DIR"; return 0; }
+    kb=$(symbol_cache_kb)
+    if [[ -n "$kb" ]]; then
+        note "  current size: $(format_kb "$kb")"
+    else
+        note "  current size: unknown without sudo"
+    fi
+    if [[ "$DRY_RUN" == true ]]; then
+        note "  [dry-run] run sudo rm -rf $SYMBOL_CACHE_DATA"
+        note "  [dry-run] run sudo killall coresymbolicationd"
+        return 0
+    fi
+    if [[ ! -t 0 ]] && ! sudo -n true >/dev/null 2>&1 </dev/null; then
+        report_failure "--symbol-cache needs sudo; run interactively"
+        return 0
+    fi
+    if sudo rm -rf "$SYMBOL_CACHE_DATA"; then
+        note "  removed $SYMBOL_CACHE_DATA"
+    else
+        report_failure "could not remove $SYMBOL_CACHE_DATA"
+        return 0
+    fi
+    if out=$(sudo killall coresymbolicationd 2>&1); then
+        note "  restarted coresymbolicationd"
+    elif [[ "$out" == *"No matching"* ]]; then
+        note "  coresymbolicationd was not running"
+    else
+        report_failure "could not restart coresymbolicationd: $out"
+    fi
+}
+
+symbol_cache_hint() {
+    local kb
+    kb=$(symbol_cache_kb)
+    if [[ -n "$kb" ]] && (( kb > SYMBOL_CACHE_HINT_KB )); then
+        note "Hint: the macOS symbol cache is $(format_kb "$kb"); re-run with --symbol-cache (uses sudo) to clear it."
+    fi
+    return 0
+}
+
 run_external_cleanup() {
     local label=$1
     shift
@@ -376,6 +456,9 @@ note "  • npm, Bun, and regenerative Cargo caches"
 note "  • Claude and OMP sessions older than $DAYS day(s)"
 note "  • inactive OMP browser profiles, abandoned temporary data, stale Rust targets, and Cursor server builds"
 note "  • orphaned Google Chrome code-sign clones"
+if [[ "$WITH_SYMBOL_CACHE" == true ]]; then
+    note "  • macOS symbol cache data entry (sudo) and coresymbolicationd restart"
+fi
 if [[ "$WITH_DOCKER" == true ]]; then
     if [[ "$AGGRESSIVE" == true ]]; then
         note "  • unused Docker resources including unused volumes"
@@ -384,6 +467,10 @@ if [[ "$WITH_DOCKER" == true ]]; then
     fi
 fi
 note "Preserved: uv cache, worktrees/source roots, user application data, current sessions, Cargo binaries/config/credentials/toolchains, and active Docker resources."
+if [[ "$WITH_SYMBOL_CACHE" != true ]]; then
+    note "Preserved: the macOS symbol cache (left alone; pass --symbol-cache to clear it with sudo)."
+    symbol_cache_hint
+fi
 
 if [[ "$DRY_RUN" != true && "$ASSUME_YES" != true ]]; then
     if [[ ! -t 0 ]]; then
@@ -418,6 +505,7 @@ clean_temp_families
 clean_private_tmp_targets
 clean_cursor_server_versions
 clean_chrome_code_sign_clones
+[[ "$WITH_SYMBOL_CACHE" == true ]] && clean_symbol_cache
 
 if [[ "$WITH_DOCKER" == true ]]; then
     if command -v docker >/dev/null 2>&1; then

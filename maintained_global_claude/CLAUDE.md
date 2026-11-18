@@ -99,6 +99,12 @@ Repos with the workflow kit (`.agent-workflow/AGENT_WORKFLOW.md`, `ci-fast`/`ci-
 # Design doctrine
 
 - **A substantial change is a smell** — "add X to every path" means the duplication is the bug; consolidate into one primitive first.
+- **Decide in one place; everything else executes (no scattered decision logic).** Whenever code chooses HOW to do something (a query plan, a strategy by size or count, a format, a mode, an "auto" default), one planning stage makes the choice and records it in a plan value; every later stage reads that record and never looks at the original request again.
+  - Options are entries in ONE list, each stating the property it needs (of the data, never of the request's spelling), its cost, and how it produces. Adding an option is adding an entry.
+  - Decide per part, not per request: one part that cannot use a fast option never takes the other parts' fast options away.
+  - Review flags, each one a sign the choice has leaked into the workers: a worker that asks "do I apply?" and declines (`applies` / `admitted` / `*_shape` / `try_*` ladders, first match wins); a second enum of strategies for the same operation; the same flag, limit, count or threshold read in more than one function to steer behaviour; a steering constant defined twice; a decision recomputed downstream (pricing, handler, executor) instead of read; explain / log output that cannot name the strategy that ran.
+  - The test for a fix: a related request (one thing changed) gets the same option whenever the property holds. Prove it on a set of related requests, never on the one that prompted the work.
+  - Before adding a fast path or a strategy, `rg` for the existing chooser and add an entry there; if there is no chooser, building it IS the task. Reference incident: cartridge SQL, 2026-11-16 — about 53 strategy variants across seven enums, 29 sites reading the limit, and limit handling "fixed" per statement form across eight issues.
 - **Many small scripts beat one big one.** Split by concern.
 - **"auto" defaults adapt to inputs** — a deterministic function of measurable properties, never a hidden constant; explicit user values win.
 - **"Identical" means byte-identical** — `diff -r`; report name-matches and content-matches separately.
